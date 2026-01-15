@@ -1,0 +1,61 @@
+/* ======================================================
+   TT TYPOGRAFI – SIDEOVERSKRIFTER (ALLE FANER)
+   ====================================================== */
+
+.tt-page-title {
+  font-family: 'PT Serif', serif;
+  font-size: 18px;
+  line-height: 28px;
+  color: #464547;
+  letter-spacing: 15px;
+  text-transform: uppercase;
+  font-weight: 300;
+  text-align: center;
+  margin: 0 0 22px;
+}
+
+@media (max-width: 767px) {
+  .tt-page-title {
+    letter-spacing: 5px;
+  }
+}
+
+/* ======================================================
+   TT DIVIDER – ÉN SAMMENHENGENDE STREK PÅ HVER SIDE
+   BRUKER: /public/title-divider.png
+   ====================================================== */
+
+//* ===== TT DIVIDER – EN LANG STREK PER SIDE ===== */
+.tt-divider {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin: 24px 0 40px;
+}
+
+.tt-divider::before,
+.tt-divider::after {
+  content: "";
+  width: 220px;
+  height: 1px;
+  background-color: #c8bfae;
+}
+
+.tt-divider img {
+  height: 32px;
+  margin: 0 24px;
+}
+
+/* ===== TT TITLE WRAPPER – GLOBAL ===== */
+.tt-title-wrap {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  width: 100%;
+}
+
+/* ===== TT CONTENT CARD – MER LUFT NED ===== */
+.tt-content-card {
+  margin-top: 80px;
+}

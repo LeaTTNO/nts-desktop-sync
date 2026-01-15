@@ -1,0 +1,37 @@
+/* src/renderer/components/ui/TTTitle.css */
+
+.tt-divider-block {
+  text-align: center;
+  margin: 40px 0 32px 0;
+}
+
+.tt-divider-title {
+  font-family: "Montserrat", sans-serif;
+  font-size: 24px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.32em;
+  color: #2D3A36; /* Safari grønn */
+  margin-bottom: 20px;
+}
+
+.tt-divider-lines {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 28px;
+}
+
+.tt-divider-line {
+  height: 1.5px;
+  width: 72px;
+  background-color: #C6B79B; /* Elegant gull-brun */
+  opacity: 0.9;
+}
+
+.tt-divider-icon {
+  width: 42px;
+  height: auto;
+  opacity: 0.92;
+  filter: drop-shadow(0px 1px 1px rgba(0,0,0,0.22));
+}

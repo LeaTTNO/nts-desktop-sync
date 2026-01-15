@@ -1,0 +1,179 @@
+/* TT layout (tt-layout.css) – STABIL, KORREKT OVERLAY */
+
+/* ROOT */
+.layout-root {
+  min-height: 100vh;
+  width: 100%;
+  overflow-x: hidden;
+  padding-bottom: 40px;
+  position: relative;
+  background-size: cover;
+  background-position: center top;
+}
+
+/* TOP BAR */
+.tt-topbar {
+  width: 100%;
+  height: 95px;
+  background-color: transparent;
+  display: flex;
+  justify-content: center;
+  position: relative;
+  z-index: 200;
+}
+
+.tt-topbar-inner {
+  width: 100%;
+  max-width: 1400px;
+  padding: 0 24px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+/* LOGO */
+.tt-logo-wrap {
+  display: flex;
+  align-items: center;
+  height: 140px;
+}
+.tt-logo {
+  height: 140px;
+}
+
+/* NAV LINKS */
+.tt-nav-links {
+  display: flex;
+  gap: 12px;
+  font-family: "Montserrat", sans-serif;
+  font-size: 13px;
+  font-weight: 600;
+  text-transform: uppercase;
+  align-items: center;
+}
+
+.tt-nav-links a {
+  color: white;
+  text-decoration: none;
+  padding: 10px 26px;
+  border-radius: 30px;
+  border: 1px solid rgba(255,255,255,0.8);
+  background-color: rgba(255,255,255,0.25);
+  cursor: pointer;
+  backdrop-filter: blur(4px);
+  transition: all 0.2s;
+}
+
+.tt-nav-links a:hover {
+  background-color: rgba(255,255,255,0.4);
+}
+
+/* FLOATING TABS */
+.tabs-floating {
+  display: flex;
+  justify-content: center;
+  width: 100%;
+  margin-top:100px;
+  margin-bottom: -100px;
+  z-index: 200;
+  position: relative;
+  padding: 0 16px;
+  pointer-events: auto;
+}
+
+.tab-btn {
+  pointer-events: auto;
+  z-index: 201;
+}
+
+/* PAGE CONTENT */
+.page-wrapper {
+  width: 100%;
+  display: flex;
+  justify-content: center;
+  padding: 0 16px;
+  overflow: visible;
+  margin-top: 170px;
+}
+
+/* SENTRERENDE WRAPPER */
+.content-wrapper {
+  position: relative;
+  width: 100%;
+  max-width: 1000px;
+  overflow: visible; /* 🔑 Tillater giraffen å gå utenfor */
+  margin: 0 auto;
+  z-index: 50;
+  margin-top: 0;
+}
+
+/* HOVEDBOKS – REFERANSE */
+.layout-content {
+  position: relative;
+  background: #ffffff;
+  width: 100%;
+  padding: 20px 50px 40px;
+  border-radius: 18px;
+  min-height: 400px;
+  margin-top: -40px;
+  margin-bottom: 40px;
+  z-index: 100;
+  box-shadow: 0 25px 60px rgba(0,0,0,0.15);
+  overflow: visible;
+}
+
+/* TITLER */
+.tt-page-title {
+  font-family: "Montserrat", sans-serif;
+  text-transform: uppercase;
+  letter-spacing: 4px;
+  font-weight: 600;
+  text-align: center;
+  color: #2f4a3a;
+  font-size: 24px;
+  margin: 6px 0 8px;
+}
+
+.tt-title-wrap {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  width: 100%;
+  margin-top: 10px;
+  margin-bottom: 0;
+}
+
+.tt-divider {
+  display: flex;
+  justify-content: center;
+  margin-bottom: 6px;
+}
+
+/* INNHOLDSKORT */
+.tt-content-card {
+  background: #ffffff;
+  border-radius: 16px;
+  padding: 40px 46px 46px;
+  box-shadow: 0 18px 40px rgba(0,0,0,0.08);
+}
+
+/* GIRAFFE OVERLAY */
+.giraffe-overlay {
+  position: absolute;
+  top: -324px;      /* ← OPP / NED */
+  right: -300px;  /* ← VENSTRE / HØYRE */
+  width: 1000px;
+  height: auto;
+  z-index: 101;
+  pointer-events: none;
+}
+
+/* RESPONSIVE */
+@media (max-width: 700px) {
+  .tt-nav-links { display: none; }
+  .tabs-floating { margin-top: 100px; margin-bottom: -20px; }
+  .layout-content { padding: 24px; margin-top: 0; }
+  .giraffe-overlay { display: none; }
+}
+

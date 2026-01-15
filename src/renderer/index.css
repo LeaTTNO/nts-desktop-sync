@@ -1,0 +1,334 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* =========================================
+   DESIGN SYSTEM
+   ========================================= */
+
+@layer base {
+  :root {
+    --background: 45 15% 97%;
+    --foreground: 20 14.3% 4.1%;
+
+    --card: 0 0% 100%;
+    --card-foreground: 20 14.3% 4.1%;
+
+    --popover: 0 0% 100%;
+    --popover-foreground: 20 14.3% 4.1%;
+
+    --primary: 22 95% 45%;
+    --primary-foreground: 0 0% 100%;
+
+    --secondary: 45 25% 90%;
+    --secondary-foreground: 20 14.3% 4.1%;
+
+    --muted: 45 15% 95%;
+    --muted-foreground: 25 5.3% 44.7%;
+
+    --accent: 30 80% 60%;
+    --accent-foreground: 60 9.1% 97.8%;
+
+    --destructive: 0 84.2% 60.2%;
+    --destructive-foreground: 210 40% 98%;
+
+    --border: 214.3 31.8% 91.4%;
+    --input: 214.3 31.8% 91.4%;
+    --ring: 222.2 84% 4.9%;
+
+    --radius: 0.5rem;
+  }
+
+  body {
+    color: hsl(var(--foreground));
+  }
+}
+
+/* =========================================
+   LAYOUT
+   ========================================= */
+
+html, body {
+  margin: 0;
+  padding: 0;
+  width: 100%;
+  height: 100%;
+  overflow-x: hidden;
+}
+
+body {
+  margin: 0;
+  padding: 0;
+  background-color: #ffffff;
+  min-height: 100vh;
+}
+
+.layout-root {
+  min-height: 100vh;
+  width: 100%;
+  position: relative;
+  background-image: url('/savana.jpg');
+  background-size: cover;
+  background-position: center 20%;
+  background-repeat: no-repeat;
+  background-color: #6b8fb3;
+  background-attachment: fixed;
+}
+
+/* =========================================
+   TOP BAR (HEADER)
+   ========================================= */
+
+.tt-topbar {
+  width: 100%;
+  height: 95px;
+  background-color: transparent;
+  display: flex;
+  justify-content: center;
+  position: relative;
+  z-index: 200;
+  border-bottom: none;
+}
+
+.tt-topbar-inner {
+  width: 100%;
+  max-width: 1400px;
+  display: flex;
+  padding: 0 24px;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.tt-logo-wrap {
+  display: flex;
+  align-items: center;
+  background: transparent !important;
+}
+
+.tt-logo {
+  height: 140px;
+  object-fit: contain;
+  background: transparent !important;
+  mix-blend-mode: multiply;
+  filter: brightness(2) contrast(1.5) drop-shadow(0 2px 4px rgba(0, 0, 0, 0.4));
+}
+
+.tt-nav-links {
+  display: flex;
+  gap: 36px;
+  font-family: "Montserrat", sans-serif;
+  font-size: 15px;
+  font-weight: 700;
+  text-transform: uppercase;
+}
+
+.tt-nav-links a {
+  color: white;
+  text-decoration: none;
+  transition: color 0.2s;
+  text-shadow: 0 2px 8px rgba(0, 0, 0, 0.8), 0 0 20px rgba(0, 0, 0, 0.6);
+}
+
+.tt-nav-links a:hover {
+  color: #d2c5a3;
+  text-shadow: 0 2px 12px rgba(0, 0, 0, 0.9), 0 0 25px rgba(0, 0, 0, 0.7);
+}
+
+
+
+.hero-bg {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  object-position: center bottom;
+}
+
+/* =========================================
+   FLOATING TABS - SE tt-layout.css
+   ========================================= */
+
+.tab-btn {
+  padding: 10px 26px;
+  margin: 0 10px;
+  font-family: "Montserrat", sans-serif;
+  font-size: 13px;
+  font-weight: 600;
+  border-radius: 30px;
+  border: 1px solid rgba(255,255,255,0.8);
+  background-color: rgba(255,255,255,0.25);
+  color: white;
+  cursor: pointer;
+  backdrop-filter: blur(4px);
+  transition: all 0.2s;
+}
+
+.tab-btn:hover {
+  background-color: rgba(255,255,255,0.4);
+}
+
+.tab-btn.active {
+  background-color: rgba(255,255,255,0.5);
+  border-color: white;
+}
+
+/* =========================================
+   LANGUAGE TOGGLE
+   ========================================= */
+
+.language-toggle-wrap {
+  position: absolute;
+  top: 105px;
+  right: 24px;
+  z-index: 150;
+}
+
+.tts-language {
+  display: flex;
+  gap: 8px;
+}
+
+.tts-language .lang-btn {
+  padding: 10px 20px;
+  border-radius: 30px;
+  border: 1px solid rgba(255,255,255,0.8);
+  background-color: rgba(255,255,255,0.25);
+  color: white;
+  font-family: "Montserrat", sans-serif;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  backdrop-filter: blur(4px);
+  transition: all 0.2s;
+}
+
+.tts-language .lang-btn.active {
+  background-color: rgba(255,255,255,0.5);
+  border-color: white;
+}
+
+.tts-language .lang-btn:hover {
+  background-color: rgba(255,255,255,0.4);
+}
+
+/* =========================================
+   PAGE TITLE
+   ========================================= */
+
+/* .tt-title-wrap {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  width: 100%;
+  margin-top: 5px;
+  margin-bottom: 0;
+} */
+
+.tt-page-title {
+  font-family: 'PT Serif', serif;
+  font-size: 18px;
+  line-height: 22px;    /* ↓ mindre optisk luft */
+  letter-spacing: 12px;
+  text-transform: uppercase;
+  font-weight: 300;
+  color: #464547;
+  margin: 0 0 4px;      /* ↓ tettere mot divider */
+}
+
+@media (max-width: 767px) {
+  .tt-page-title {
+    letter-spacing: 5px;
+  }
+}
+
+/* =========================================
+   DIVIDER (FIKSET)
+   ========================================= */
+
+.tt-divider {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;            /* styrer avstand til logo */
+  margin: 6px 0 4px;    /* mindre luft over/under */
+}
+
+.tt-divider::before,
+.tt-divider::after {
+  content: "";
+  flex: 1;
+  max-width: 220px;
+  border-top: 1px solid #c8bfae;  /* ren, sammenhengende strek */
+}
+
+.tt-divider img {
+  height: 32px;
+  margin: 0;            /* VIKTIG: fjernet margin */
+}
+
+/* =========================================
+   CONTENT - SE tt-layout.css
+   ========================================= */
+
+/* 🦒 GIRAFF - STYRES FRA tt-layout.css */
+/* Duplikat regel fjernet - se tt-layout.css for giraffe-overlay */
+
+.tt-content-card {
+  background: transparent;
+  border-radius: 16px;
+  padding: 8px 32px 32px;
+  margin: 30px auto 0;
+  box-shadow: none;
+  max-width: 980px;
+  position: relative;
+  z-index: 1;
+}
+
+/* =========================================
+   MOBILE
+   ========================================= */
+
+@media (max-width: 768px) {
+  .tt-topbar {
+    height: 70px;
+  }
+  
+  .tt-logo {
+    height: 50px;
+  }
+  
+  .tt-nav-links {
+    display: none;
+  }
+  
+
+  
+  /* .tabs-floating {
+    margin-top: 80px !important;
+    margin-bottom: -20px !important;
+  } */
+  
+  /*
+  .tab-btn {
+    padding: 8px 16px;
+    font-size: 11px;
+    margin: 4px;
+  }
+  */
+
+  /* .layout-content {
+    padding: 20px;
+    margin-top: 20px;
+  } */
+
+  .tt-content-card {
+    padding: 20px;
+  }
+}
+
+/* =========================================
+   Z-INDEX FIX FOR CALENDAR POPOVER
+   ========================================= */
+
+/* Removed aggressive z-index overrides - let components control their own stacking */
+/* Calendar popovers in FlightRobot now use z-50 which is below result cards */

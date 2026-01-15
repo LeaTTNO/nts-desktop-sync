@@ -1,0 +1,235 @@
+/* src/renderer/styles/builder.css */
+
+/* Root layout for builder */
+.builder-root {
+  width: 100%;
+  padding: 24px;
+  box-sizing: border-box;
+}
+
+.builder-hero-spacer {
+  height: 160px; /* leaves hero visible above */
+}
+
+/* Card */
+.builder-card {
+  max-width: 1200px;
+  margin: -100px auto 40px; /* pulls card up under hero like TT */
+  background: #fff;
+  border-radius: 8px;
+  padding: 32px;
+  box-shadow: 0 8px 24px rgba(0,0,0,0.08);
+}
+
+/* Title */
+.builder-title {
+  text-align: center;
+  text-transform: uppercase;
+  letter-spacing: 6px;
+  font-family: "Montserrat", sans-serif;
+  color: #2f4a3a;
+  margin-bottom: 12px;
+}
+
+/* form */
+.builder-form .field {
+  margin-bottom: 16px;
+}
+
+.field .label {
+  font-size: 14px;
+  color: #333;
+  margin-bottom: 6px;
+}
+
+input[type="date"],
+select,
+input[type="text"] {
+  width: 100%;
+  padding: 10px 12px;
+  border-radius: 6px;
+  border: 1px solid #e6e6e6;
+  background: #fafafa;
+}
+
+/* safari grid */
+.safari-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 14px;
+}
+.safari-grid .full-width {
+  grid-column: 1 / -1;
+}
+
+/* include checkboxes */
+.include-list {
+  margin: 18px 0;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.checkbox {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
+/* Template dropdown area */
+.template-picker {
+  margin-top: 18px;
+  margin-bottom: 18px;
+}
+
+/* TemplateDropdown styles */
+.dropdown-root {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.dropdown-category {
+  border: 1px solid #f0f0f0;
+  padding: 12px;
+  border-radius: 8px;
+  background: #fff;
+}
+
+.dropdown-cat-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 8px;
+}
+
+.cat-name {
+  font-weight: 600;
+  color: #2f4a3a;
+}
+.cat-count { color: #666; font-size: 13px; }
+
+.dropdown-template-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 8px 4px;
+  border-top: 1px solid #f7f7f7;
+}
+
+.tpl-left { display: flex; flex-direction: column; }
+.tpl-name { font-weight: 600; }
+.tpl-fn { font-size: 12px; color: #888; }
+
+.incl-label { display: flex; gap: 8px; align-items: center; }
+
+/* Selected templates list */
+.selected-templates { margin-top: 18px; }
+.selected-list { margin-top: 8px; display: flex; flex-direction: column; gap: 8px; }
+
+.selected-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 10px;
+  border-radius: 8px;
+  border: 1px solid #eee;
+  background: #fff;
+  cursor: grab;
+}
+
+.selected-name { font-weight: 600; }
+.selected-meta { font-size: 12px; color: #777; }
+
+.empty { color: #777; padding: 12px; }
+
+/* action buttons */
+.builder-actions {
+  display: flex;
+  gap: 12px;
+  margin-top: 18px;
+  align-items: center;
+}
+
+.generate-btn {
+  background: #e67e22; /* orange like vercel image */
+  color: white;
+  padding: 12px 18px;
+  border-radius: 8px;
+  border: none;
+  font-weight: 600;
+  cursor: pointer;
+  flex: 1;
+}
+
+.clear-btn {
+  background: #eee;
+  border: 1px solid #ddd;
+  padding: 10px 14px;
+  border-radius: 8px;
+  cursor: pointer;
+}
+
+.small-btn {
+  padding: 6px 10px;
+  border-radius: 6px;
+  border: 1px solid #ddd;
+  background: #fff;
+  cursor: pointer;
+}
+
+/* responsive */
+@media (max-width: 900px) {
+  .safari-grid { grid-template-columns: 1fr; }
+  .builder-card { margin: -60px 12px 24px; padding: 20px; }
+  .builder-hero-spacer { height: 120px; }
+}
+
+/* ===== SAFARIPERIODE ===== */
+
+.safari-period-section {
+  margin-top: 28px;
+}
+
+.safari-period-title {
+  font-weight: 600;
+  margin-bottom: 14px;
+}
+
+.safari-period-list {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.safari-period-item {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.safari-period-label {
+  font-size: 14px;
+  color: #333;
+}
+
+.safari-period-select {
+  width: 100%;
+}
+
+select {
+  padding: 12px 14px;
+  border-radius: 10px;
+  border: 1px solid #ccd6d1;
+  font-size: 14px;
+  background: white;
+}
+
+.field select {
+  margin-top: 6px;
+}
+
+optgroup {
+  font-weight: 600;
+  color: #5f7c5b;
+}

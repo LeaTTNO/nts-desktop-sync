@@ -1,0 +1,66 @@
+.tts-header {
+  background: transparent;
+  padding: 16px 32px;
+  display: flex;
+  align-items: center;
+  gap: 28px;
+}
+
+/* LOGO */
+.tts-logo img {
+  height: 42px;
+}
+
+/* NAVIGATION */
+.tts-nav {
+  display: flex;
+  gap: 24px;
+  margin-left: 20px;
+}
+
+.tts-nav a {
+  color: white;
+  text-decoration: none;
+  font-weight: 600;
+  letter-spacing: 1px;
+}
+
+.tts-nav a:hover {
+  text-decoration: underline;
+}
+
+/* LANGUAGE SWITCHER */
+.tts-language {
+  display: flex;
+  gap: 8px;
+  margin-left: auto;
+}
+
+.tts-language .lang-btn {
+  padding: 6px 12px;
+  border-radius: 14px;
+  border: 1px solid rgba(255,255,255,0.7);
+  background: transparent;
+  color: white;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  opacity: 0.7;
+  transition: opacity 0.12s ease, background 0.12s ease;
+}
+
+.tts-language .lang-btn.active {
+  opacity: 1;
+  background: rgba(255,255,255,0.2);
+}
+
+.tts-language .lang-btn:hover {
+  opacity: 1;
+}
+
+/* TRUST */
+.tts-trust {
+  margin-left: 16px;
+  font-size: 13px;
+  opacity: 0.9;
+}

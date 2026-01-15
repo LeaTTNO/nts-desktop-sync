@@ -1,0 +1,149 @@
+/* src/renderer/components/Flyrobott.css */
+
+.flyrobott-root {
+  max-width: 1000px;
+  margin: 0 auto;
+  padding: 20px 0 60px;
+}
+
+.page-title {
+  font-family: "Montserrat", sans-serif;
+  text-transform: uppercase;
+  letter-spacing: 4px;
+  text-align: center;
+  color: #2f4a3a;
+  margin-top: 6px;
+  margin-bottom: 6px;
+}
+
+.title-divider {
+  width: 260px;
+  height: 30px;
+  margin: 8px auto 28px auto;
+  background-image: url("/title-divider.png");
+  background-repeat: no-repeat;
+  background-size: contain;
+  background-position: center;
+}
+
+/* grid */
+.flyrobott-grid {
+  display: grid;
+  grid-template-columns: 320px 1fr;
+  gap: 24px;
+}
+
+/* modules column */
+.modules-column {
+  background: #fff;
+  border-radius: 8px;
+  padding: 16px;
+  box-shadow: 0 6px 20px rgba(0,0,0,0.06);
+}
+
+.modules-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: 12px;
+}
+
+.mod-item {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  padding: 8px 10px;
+  border-radius: 6px;
+  border: 1px solid #eee;
+  cursor: pointer;
+}
+
+.mod-item.active {
+  background: rgba(47,74,58,0.06);
+  border-color: #2f4a3a;
+}
+
+/* config column */
+.config-column {
+  background: #fff;
+  padding: 18px;
+  border-radius: 8px;
+  box-shadow: 0 6px 20px rgba(0,0,0,0.06);
+}
+
+.form-row {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-bottom: 12px;
+}
+
+.form-row.small {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+}
+
+.form-row input[type="text"],
+.form-row input[type="date"],
+.form-row input[type="number"] {
+  padding: 10px 12px;
+  border-radius: 6px;
+  border: 1px solid #ddd;
+}
+
+/* buttons */
+.btn-primary {
+  background: #2f4a3a;
+  color: #fff;
+  padding: 8px 14px;
+  border-radius: 6px;
+  cursor: pointer;
+}
+
+.btn-success {
+  background: #6c9b6f;
+  color: #fff;
+  padding: 8px 14px;
+  border-radius: 6px;
+  cursor: pointer;
+}
+
+/* preview */
+.preview-box {
+  margin-top: 18px;
+  border-top: 1px dashed #eee;
+  padding-top: 12px;
+}
+
+.itinerary-preview {
+  background: #f7f7f7;
+  padding: 12px;
+  border-radius: 6px;
+  white-space: pre-wrap;
+  min-height: 80px;
+}
+
+.selected-list {
+  list-style: none;
+  padding: 0;
+  margin-top: 10px;
+}
+
+.selected-list li {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 8px 10px;
+  border: 1px solid #eee;
+  border-radius: 6px;
+  margin-bottom: 8px;
+}
+
+.reorder-controls button {
+  margin-left: 6px;
+  padding: 6px 8px;
+  border-radius: 4px;
+  border: 1px solid #ccc;
+  cursor: pointer;
+}

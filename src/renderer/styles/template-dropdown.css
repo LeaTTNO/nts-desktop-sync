@@ -1,0 +1,79 @@
+/* src/renderer/styles/template-dropdown.css */
+
+.template-dropdown-root {
+  padding: 12px;
+  background: transparent;
+}
+
+.template-dropdown-columns {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 18px;
+}
+
+.category-block {
+  width: 300px;
+  background: transparent;
+}
+
+.category-header {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 8px;
+}
+
+.category-pill {
+  padding: 8px 14px;
+  border-radius: 20px;
+  background: #eee;
+  border: 1px solid #ddd;
+  font-weight: 600;
+}
+
+.category-pill.hidden {
+  opacity: 0.5;
+}
+
+.cat-vis { font-size: 13px; }
+
+.category-templates {
+  background: #fff;
+  border-radius: 8px;
+  padding: 6px;
+  box-shadow: 0 2px 6px rgba(0,0,0,0.04);
+}
+
+.template-item {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  align-items: center;
+  padding: 10px;
+  border-bottom: 1px solid #f0f0f0;
+}
+
+.template-item:last-child { border-bottom: none; }
+
+.tpl-name { flex: 1; }
+.tpl-actions { display: flex; gap: 8px; align-items: center; }
+
+.template-item .danger {
+  background: #8b2e2e;
+  color: white;
+  border-radius: 6px;
+  padding: 6px 10px;
+  border: none;
+}
+
+/* actions row */
+.template-dropdown-actions {
+  margin-top: 16px;
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
+.upload-sml input { display: none; }
+
+.hidden-drop-target { display:none; }

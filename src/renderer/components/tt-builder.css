@@ -1,0 +1,77 @@
+/* --- Tittel --- */
+
+.tt-title-block {
+  text-align: center;
+  margin-bottom: 40px;
+}
+
+.tt-title {
+  font-family: "Montserrat", sans-serif;
+  font-weight: 300;
+  font-size: 32px;
+  letter-spacing: 3px;
+  text-transform: uppercase;
+  color: #2e2e2e;
+}
+
+.tt-title-divider {
+  width: 260px;
+  margin: 15px auto 0 auto;
+  display: block;
+}
+
+
+/* --- Kategoriknapper --- */
+
+.template-categories {
+  display: flex;
+  justify-content: center;
+  gap: 12px;
+  margin-bottom: 25px;
+}
+
+.template-categories button {
+  background: #eee;
+  border: 1px solid #ccc;
+  padding: 8px 14px;
+  border-radius: 4px;
+  text-transform: uppercase;
+  font-size: 12px;
+  letter-spacing: 1px;
+}
+
+.template-categories button.active {
+  background: #5f7c5b;
+  color: white;
+  border-color: #5f7c5b;
+}
+
+/* --- Mal-liste --- */
+
+.template-list {
+  margin-top: 25px;
+}
+
+.template-item {
+  display: flex;
+  justify-content: space-between;
+  padding: 12px;
+  border-bottom: 1px solid #ddd;
+}
+
+.template-item .buttons button {
+  margin-left: 10px;
+}
+
+.delete {
+  background: #b42f2f !important;
+  color: white;
+}
+
+/* --- Tom kategori --- */
+
+.empty {
+  text-align: center;
+  color: #777;
+  font-style: italic;
+}

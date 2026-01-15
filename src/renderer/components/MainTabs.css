@@ -1,0 +1,30 @@
+/* Midtstilte faneknapper over hero */
+
+.tabs-container {
+  display: flex;
+  justify-content: center;
+  gap: 18px;
+  align-items: center;
+  background: transparent;
+}
+
+/* pill buttons */
+.tab-btn {
+  padding: 12px 28px;
+  border-radius: 28px;
+  border: 2px solid rgba(255,255,255,0.9);
+  background: rgba(0,0,0,0.35);
+  color: white;
+  text-transform: uppercase;
+  font-weight: 700;
+  letter-spacing: 1px;
+  font-family: 'Montserrat', sans-serif; /* VIKTIG */
+  cursor: pointer;
+  box-shadow: 0 6px 18px rgba(0,0,0,0.25);
+  transition: transform .12s ease, background .12s ease;
+}
+
+.tab-btn:hover {
+  transform: translateY(-2px);
+  background: rgba(0,0,0,0.45);
+}

@@ -1,0 +1,156 @@
+/* TT layout (tt-layout.css)
+   Plasser i: src/renderer/styles/tt-layout.css
+   Dette styrer toppbar, hero, fluktende faner og sidekort.
+*/
+
+/* root page */
+.layout-root {
+  min-height: 100vh;
+  width: 100%;
+  overflow-x: hidden;
+  padding-bottom: 40px;
+  position: relative;
+}
+
+/* topbar */
+.tt-topbar {
+  width: 100%;
+  height: 95px;
+  background-color: transparent;
+  display: flex;
+  justify-content: center;
+  position: relative;
+  z-index: 200;
+  box-shadow: none;
+}
+
+.tt-topbar-inner {
+  width: 100%;
+  max-width: 1400px;
+  padding: 0 24px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+/* logo */
+.tt-logo-wrap { display:flex; align-items:center; height:140px; }
+.tt-logo { height:140px; object-fit:contain; }
+
+/* center placeholder */
+.tt-topbar-center { flex:1; display:flex; justify-content:center; align-items:center; }
+
+/* nav links on right */
+.tt-nav-links {
+  display:flex;
+  gap: 38px;
+  font-family: "Montserrat", sans-serif;
+  font-size: 15px;
+  font-weight: 700;
+  text-transform: uppercase;
+  align-items:center;
+}
+.tt-nav-links a { color: white; text-decoration:none; padding:8px 12px; }
+.tt-nav-links a:hover { color: #d2c5a3; }
+
+
+
+/* floating tabs - SE tt-layout.css */
+
+
+/* content wrapper (outer green bars shown at sides) */
+/*
+.page-wrapper {
+  width:100%;
+  display:flex;
+  justify-content:center;
+  margin-top: 240px;
+}
+*/
+
+/* inner white card */
+.layout-content {
+  background: #ffffff;
+  width: 100%;
+  max-width: 1000px;
+  margin: 20px;
+  padding: 30px;
+  border-radius: 8px;
+  min-height: 400px;
+  box-shadow: 0 6px 20px rgba(0,0,0,0.12);
+}
+
+/* Page title style (centered like TT) */
+.page-title {
+  font-family: "Montserrat", sans-serif;
+  text-transform: uppercase;
+  letter-spacing: 4px;
+  font-weight: 600;
+  text-align: center;
+  color: #2f4a3a;
+  font-size: 24px;
+  margin-top: 6px;
+  margin-bottom: 8px;
+}
+
+/* title divider  */
+.title-divider {
+  display:block;
+  width: 260px;
+  height: 30px;
+  margin: 14px auto 28px auto;
+  background-image: url("/title-divider.png");
+  background-repeat: no-repeat;
+  background-size: contain;
+  background-position: center;
+}
+
+/* responsiveness */
+@media (max-width:1200px) {
+  .layout-content { padding:32px; margin:0; max-width: 1000px; }
+}
+
+@media (max-width:900px) {
+  .tt-nav-links { gap:20px; font-size:13px; }
+}
+
+@media (max-width:700px) {
+  .tt-nav-links { display:none; }
+  .layout-content { padding:20px; margin:0; }
+}
+
+/* ===== GIRAFFE OVERLAY (FAKE 3D EFFECT) ===== */
+
+.giraffe-head-overlay {
+  position: absolute;
+  top: 180px;              /* justeres */
+  right: 6%;               /* justeres */
+  width: 320px;            /* justeres */
+  max-width: 40vw;
+  height: auto;
+  z-index: 300;            /* OVER white card */
+  pointer-events: none;   /* viktig – ikke klikkbar */
+}
+
+/* Litt mindre på mindre skjermer */
+@media (max-width: 1200px) {
+  .giraffe-head-overlay {
+    width: 260px;
+    right: 4%;
+  }
+}
+
+@media (max-width: 900px) {
+  .giraffe-head-overlay {
+    width: 200px;
+    right: 2%;
+    top: 160px;
+  }
+}
+
+@media (max-width: 700px) {
+  .giraffe-head-overlay {
+    display: none; /* skjul på mobil */
+  }
+}
+
