@@ -2,8 +2,14 @@ import type { Config } from "tailwindcss";
 
 export default {
   darkMode: ["class"],
-  content: ["./**/*.{ts,tsx}", "./components/**/*.{ts,tsx}", "./pages/**/*.{ts,tsx}", "./App.tsx", "./main.tsx"],
+
+  // ✅ KUN renderer – ingen node_modules
+  content: [
+    "./src/renderer/**/*.{ts,tsx,js,jsx,html}",
+  ],
+
   prefix: "",
+
   theme: {
     container: {
       center: true,
@@ -12,6 +18,7 @@ export default {
         "2xl": "1400px",
       },
     },
+
     extend: {
       colors: {
         border: "hsl(var(--border))",
@@ -19,6 +26,7 @@ export default {
         ring: "hsl(var(--ring))",
         background: "hsl(var(--background))",
         foreground: "hsl(var(--foreground))",
+
         primary: {
           DEFAULT: "hsl(var(--primary))",
           foreground: "hsl(var(--primary-foreground))",
@@ -47,6 +55,7 @@ export default {
           DEFAULT: "hsl(var(--card))",
           foreground: "hsl(var(--card-foreground))",
         },
+
         sidebar: {
           DEFAULT: "hsl(var(--sidebar-background))",
           foreground: "hsl(var(--sidebar-foreground))",
@@ -57,6 +66,7 @@ export default {
           border: "hsl(var(--sidebar-border))",
           ring: "hsl(var(--sidebar-ring))",
         },
+
         safari: {
           sunset: "hsl(var(--safari-sunset))",
           earth: "hsl(var(--safari-earth))",
@@ -64,42 +74,40 @@ export default {
           sky: "hsl(var(--safari-sky))",
         },
       },
+
       borderRadius: {
         lg: "var(--radius)",
         md: "calc(var(--radius) - 2px)",
         sm: "calc(var(--radius) - 4px)",
       },
+
       backgroundImage: {
         "gradient-sunset": "var(--gradient-sunset)",
         "gradient-earth": "var(--gradient-earth)",
       },
+
       boxShadow: {
         warm: "var(--shadow-warm)",
         soft: "var(--shadow-soft)",
       },
+
       keyframes: {
         "accordion-down": {
-          from: {
-            height: "0",
-          },
-          to: {
-            height: "var(--radix-accordion-content-height)",
-          },
+          from: { height: "0" },
+          to: { height: "var(--radix-accordion-content-height)" },
         },
         "accordion-up": {
-          from: {
-            height: "var(--radix-accordion-content-height)",
-          },
-          to: {
-            height: "0",
-          },
+          from: { height: "var(--radix-accordion-content-height)" },
+          to: { height: "0" },
         },
       },
+
       animation: {
         "accordion-down": "accordion-down 0.2s ease-out",
         "accordion-up": "accordion-up 0.2s ease-out",
       },
     },
   },
+
   plugins: [require("tailwindcss-animate")],
 } satisfies Config;

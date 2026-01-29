@@ -1,7 +1,6 @@
 import React, { useState, useEffect } from "react";
 import { useTemplateStore } from "@/store/useTemplateStore";
 import TemplateDropdown from "./TemplateDropdown";
-import { buildPresentation, openGeneratedPath } from "@/services/powerpoint/PPTGeneratorBridge";
 import { getBaseTemplateFileName, getAllBaseTemplateOptions, type DestinationSelection } from "@/config/baseTemplateSelector";
 import { getUserPrefix } from "@/config/userConfig";
 import { getUserBaseCategory } from "@/config/templateCategories";
@@ -21,27 +20,12 @@ import { cn } from "@/lib/utils";
    KONSTANTER - KATEGORIER (språkavhengige)
 ========================= */
 
-const getCategoryNames = (lang: 'no' | 'da') => ({
-  SAFARI_PERIODS: [
-    "Safari - Midt DEC - FEB (Ndutu)",
-    "Safari - MARTS (Ndutu uden Tar)",
-    lang === 'no' ? "Safari - APRIL - MAI (Ser uden Tar)" : "Safari - APRIL - MAJ (Ser uden Tar)",
-    "Safari - JUNI - ca. 10. JULI (Ser)",
-    "Safari - ca. 10. JULI - SEP (Tar + Ser nord)",
-    "Safari - OKT (Tar + Ser)",
-    "Safari - NOV - Midt DEC (Tar + Ser)",
-  ],
-  FIRST_NIGHT: lang === 'no' ? "Arusha første natt" : "Arusha første nat",
-  LAST_NIGHT: lang === 'no' ? "Siste natt safari" : "Sidste nat safari",
-  ZANZIBAR_MAIN: lang === 'no' ? "Zanzibar hotell 1" : "Zanzibar hotel 1",
-  ZANZIBAR_STONE: "Stone Town Hotel",
-  ZANZIBAR_HOTEL_2: lang === 'no' ? "Zanzibar hotell 2" : "Zanzibar hotel 2",
-  KILIMANJARO: "Kilimanjaro",
-  ARUSHA_SLIDES: "Aktiviteter Arusha - Slides",
-  FASTLAND: "Diverse Fastland",
-  EXTRA: "Ekstra Slides",
-  FLIGHT: lang === 'no' ? "Flyinformasjon" : "Flyinformation"
-});
+
+// Helper to get category name by id from store
+function getCategoryNameById(categories, id) {
+  const cat = categories.find(c => c.id === id);
+  return cat ? cat.name : "";
+}
 
 /* =========================
    COMPONENT
@@ -54,22 +38,7 @@ interface TravelProgramBuilderProps {
 export default function TravelProgramBuilder({ language = 'no' }: TravelProgramBuilderProps) {
   const { userEmail, userLanguage, isAdmin: userIsAdmin } = useAuth();
   const userPrefix = userEmail ? getUserPrefix(userEmail) : undefined;
-  
-  // Språkavhengige konstanter
-  const categoryNames = getCategoryNames(userLanguage);
-  const AUTO_PROGRAM_CATEGORY = userLanguage === 'da' ? "Rejseprogram og Tilbud" : "Reiseprogram og Tilbud";
-  const SAFARI_PERIODS = categoryNames.SAFARI_PERIODS;
-  const FIRST_NIGHT_CATEGORY = categoryNames.FIRST_NIGHT;
-  const LAST_NIGHT_CATEGORY = categoryNames.LAST_NIGHT;
-  const ZANZIBAR_MAIN = categoryNames.ZANZIBAR_MAIN;
-  const ZANZIBAR_STONE_TOWN = userLanguage === 'no' ? "Zanzibar & Stone Town" : "Zanzibar & Stone Town";
-  const ZANZIBAR_STONE = categoryNames.ZANZIBAR_STONE;
-  const ZANZIBAR_HOTEL_2 = categoryNames.ZANZIBAR_HOTEL_2;
-  const KILIMANJARO = categoryNames.KILIMANJARO;
-  const ARUSHA_SLIDES = categoryNames.ARUSHA_SLIDES;
-  const FASTLAND = categoryNames.FASTLAND;
-  const EXTRA = categoryNames.EXTRA;
-  
+
   const {
     categories,
     templates,
@@ -80,7 +49,23 @@ export default function TravelProgramBuilder({ language = 'no' }: TravelProgramB
     clearSelectedTemplates,
     getTemplatesByCategoryName,
     loadFromDB,
+    slides, // <-- bring in slides from global state
   } = useTemplateStore();
+
+  // Dynamically get category names from store
+  const AUTO_PROGRAM_CATEGORY = getCategoryNameById(categories, "base_program");
+  const SAFARI_PERIODS = categories.filter(c => c.parentId === "safari_period_group").map(c => c.name);
+  const FIRST_NIGHT_CATEGORY = getCategoryNameById(categories, "arusha_first_night");
+  const LAST_NIGHT_CATEGORY = getCategoryNameById(categories, "last_safari_night");
+  const ZANZIBAR_MAIN = getCategoryNameById(categories, "zanzibar_hotel_1");
+  const ZANZIBAR_STONE_TOWN = getCategoryNameById(categories, "zanzibar_stone_town");
+  const ZANZIBAR_STONE = getCategoryNameById(categories, "stone_town_hotel");
+  const ZANZIBAR_HOTEL_2 = getCategoryNameById(categories, "zanzibar_hotel_2");
+  const KILIMANJARO = getCategoryNameById(categories, "kilimanjaro");
+  const ARUSHA_SLIDES = getCategoryNameById(categories, "arusha_activities_slides");
+  const FASTLAND = getCategoryNameById(categories, "diverse_mainland");
+  const EXTRA = getCategoryNameById(categories, "extra_slides");
+  const FLIGHT = getCategoryNameById(categories, "flyinformasjon");
 
   /* =========================
      HELPER - Filtrer templates basert på bruker
@@ -233,18 +218,7 @@ export default function TravelProgramBuilder({ language = 'no' }: TravelProgramB
           fileName: t!.fileName,
         }));
 
-      const result = await buildPresentation({
-        departureDate: departureDate || null,
-        modules,
-        language,
-      });
-
-      if (result.ok) {
-        await openGeneratedPath(result);
-        toast.success("PowerPoint generert og lastet ned!");
-      } else {
-        toast.error(result.error || "Feil ved generering");
-      }
+        
     } catch (error) {
       console.error("Error generating PowerPoint:", error);
       toast.error("Feil ved generering av PowerPoint");
@@ -291,21 +265,16 @@ export default function TravelProgramBuilder({ language = 'no' }: TravelProgramB
 
   // Helper: Sorter templates etter dager i filnavn
   function sortTemplatesByDays<T extends { name: string }>(templates: T[]): T[] {
-    return [...templates].sort((a, b) => {
-      const daysA = extractDaysFromName(a.name);
-      const daysB = extractDaysFromName(b.name);
-      
-      // Begge har tall - sorter etter tall
-      if (daysA !== null && daysB !== null) {
-        return daysA - daysB;
-      }
-      // Kun a har tall - a først
-      if (daysA !== null) return -1;
-      // Kun b har tall - b først
-      if (daysB !== null) return 1;
-      // Ingen har tall - alfabetisk
-      return a.name.localeCompare(b.name, 'nb');
+    // Ny sortering: først de med tall, stigende, så resten alfabetisk
+    const withNumber = templates.filter(t => /^\d+/.test(t.name));
+    const withoutNumber = templates.filter(t => !/^\d+/.test(t.name));
+    withNumber.sort((a, b) => {
+      const numA = parseInt(a.name.match(/^\d+/)?.[0] || '0', 10);
+      const numB = parseInt(b.name.match(/^\d+/)?.[0] || '0', 10);
+      return numA - numB;
     });
+    withoutNumber.sort((a, b) => a.name.localeCompare(b.name, 'nb'));
+    return [...withNumber, ...withoutNumber];
   }
 
   // Helper: Grupper templates etter hotellnavn (første ord)
@@ -350,6 +319,7 @@ export default function TravelProgramBuilder({ language = 'no' }: TravelProgramB
     onSelectChange,
     indent = false,
     groupByHotel = false,
+    hideCheckbox = false,
   }: {
     id: string;
     label: string;
@@ -360,12 +330,15 @@ export default function TravelProgramBuilder({ language = 'no' }: TravelProgramB
     onSelectChange: (id: string | null) => void;
     indent?: boolean;
     groupByHotel?: boolean;
+    hideCheckbox?: boolean;
   }) {
     const [isOpen, setIsOpen] = useState(false);
     const [selectedHotel, setSelectedHotel] = useState<string | null>(null);
     
     const categoryTemplates = getFilteredTemplatesByCategoryName(category).filter(t => t.visibleInBuilder);
-    const groupedTemplates = groupByHotel ? groupTemplatesByHotel(categoryTemplates) : null;
+    // Zanzibar-hotell: to-trinns dropdown
+    const isZanzibarHotel = [ZANZIBAR_MAIN, ZANZIBAR_HOTEL_2, ZANZIBAR_STONE, ZANZIBAR_STONE_TOWN].includes(category);
+    const groupedTemplates = isZanzibarHotel ? groupTemplatesByHotel(categoryTemplates) : (groupByHotel ? groupTemplatesByHotel(categoryTemplates) : null);
     const hotelNames = groupedTemplates ? Object.keys(groupedTemplates).sort() : [];
     
     const selectedTemplate = selectedId ? templates.find(t => t.id === selectedId) : null;
@@ -379,25 +352,26 @@ export default function TravelProgramBuilder({ language = 'no' }: TravelProgramB
     
     return (
       <div className={`space-y-2 ${indent ? 'ml-6' : ''}`}>
-        <div className="flex items-center space-x-2">
-          <Checkbox
-            id={id}
-            checked={checked}
-            onCheckedChange={(c) => {
-              const isChecked = c as boolean;
-              onCheckedChange(isChecked);
-              if (!isChecked && selectedId) {
-                removeSelectedTemplate(selectedId);
-                onSelectChange(null);
-              }
-            }}
-          />
-          <Label htmlFor={id} className={`cursor-pointer ${indent ? 'text-sm' : ''}`}>
-            {label}
-          </Label>
-        </div>
-        
-        {checked && categoryTemplates.length > 0 && (
+        {!hideCheckbox && (
+          <div className="flex items-center space-x-2">
+            <Checkbox
+              id={id}
+              checked={checked}
+              onCheckedChange={(c) => {
+                const isChecked = c as boolean;
+                onCheckedChange(isChecked);
+                if (!isChecked && selectedId) {
+                  removeSelectedTemplate(selectedId);
+                  onSelectChange(null);
+                }
+              }}
+            />
+            <Label htmlFor={id} className={`cursor-pointer ${indent ? 'text-sm' : ''}`}>
+              {label}
+            </Label>
+          </div>
+        )}
+        {(hideCheckbox || checked) && categoryTemplates.length > 0 && (
           <Popover open={isOpen} onOpenChange={setIsOpen} modal={false}>
             <PopoverTrigger asChild>
               <Button
@@ -416,10 +390,8 @@ export default function TravelProgramBuilder({ language = 'no' }: TravelProgramB
             </PopoverTrigger>
             <PopoverContent className="w-[300px] p-0 bg-background z-50" align="start" onPointerDownOutside={(e) => e.preventDefault()}>
               <div className="max-h-[300px] overflow-y-auto">
-                {groupByHotel && groupedTemplates ? (
-                  // Gruppert visning - to-trinns
+                {isZanzibarHotel ? (
                   !selectedHotel ? (
-                    // Trinn 1: Vis hotell-grupper
                     <div className="p-1">
                       {hotelNames.map((hotelName) => (
                         <button
@@ -436,7 +408,6 @@ export default function TravelProgramBuilder({ language = 'no' }: TravelProgramB
                       ))}
                     </div>
                   ) : (
-                    // Trinn 2: Vis filer for valgt hotell
                     <div className="p-1">
                       <button
                         onClick={(e) => {
@@ -474,28 +445,84 @@ export default function TravelProgramBuilder({ language = 'no' }: TravelProgramB
                     </div>
                   )
                 ) : (
-                  // Standard visning - direkte liste sortert etter dager
-                  <div className="p-1">
-                    {sortTemplatesByDays(categoryTemplates).map((t) => (
-                      <button
-                        key={t.id}
-                        onClick={(e) => {
-                          e.preventDefault();
-                          e.stopPropagation();
-                          replaceTemplate(selectedId, t.id);
-                          onSelectChange(t.id);
-                          setIsOpen(false);
-                        }}
-                        className={cn(
-                          "w-full text-left px-3 py-2 text-sm rounded-sm hover:bg-accent hover:text-accent-foreground transition-colors flex items-center justify-between",
-                          selectedId === t.id && "bg-accent"
-                        )}
-                      >
-                        {t.name}
-                        {selectedId === t.id && <Check className="h-4 w-4" />}
-                      </button>
-                    ))}
-                  </div>
+                  groupByHotel && groupedTemplates ? (
+                    !selectedHotel ? (
+                      <div className="p-1">
+                        {hotelNames.map((hotelName) => (
+                          <button
+                            key={hotelName}
+                            onClick={(e) => {
+                              e.preventDefault();
+                              e.stopPropagation();
+                              setSelectedHotel(hotelName);
+                            }}
+                            className="w-full text-left px-3 py-2 text-sm rounded-sm hover:bg-accent hover:text-accent-foreground transition-colors"
+                          >
+                            {hotelName}
+                          </button>
+                        ))}
+                      </div>
+                    ) : (
+                      <div className="p-1">
+                        <button
+                          onClick={(e) => {
+                            e.preventDefault();
+                            e.stopPropagation();
+                            setSelectedHotel(null);
+                          }}
+                          className="w-full text-left px-3 py-2 text-sm rounded-sm hover:bg-accent hover:text-accent-foreground transition-colors text-muted-foreground flex items-center gap-2"
+                        >
+                          <ArrowLeft className="h-3 w-3" />
+                          Tilbake
+                        </button>
+                        <div className="px-3 py-1 text-xs font-semibold text-primary border-b mb-1">
+                          {selectedHotel}
+                        </div>
+                        {sortTemplatesByDays(groupedTemplates[selectedHotel] || []).map((t) => (
+                          <button
+                            key={t.id}
+                            onClick={(e) => {
+                              e.preventDefault();
+                              e.stopPropagation();
+                              replaceTemplate(selectedId, t.id);
+                              onSelectChange(t.id);
+                              setIsOpen(false);
+                            }}
+                            className={cn(
+                              "w-full text-left px-3 py-2 text-sm rounded-sm hover:bg-accent hover:text-accent-foreground transition-colors flex items-center justify-between",
+                              selectedId === t.id && "bg-accent"
+                            )}
+                          >
+                            {t.name}
+                            {selectedId === t.id && <Check className="h-4 w-4" />}
+                          </button>
+                        ))}
+                      </div>
+                    )
+                  ) : (
+                    // Standard visning - direkte liste sortert etter dager
+                    <div className="p-1">
+                      {sortTemplatesByDays(categoryTemplates).map((t) => (
+                        <button
+                          key={t.id}
+                          onClick={(e) => {
+                            e.preventDefault();
+                            e.stopPropagation();
+                            replaceTemplate(selectedId, t.id);
+                            onSelectChange(t.id);
+                            setIsOpen(false);
+                          }}
+                          className={cn(
+                            "w-full text-left px-3 py-2 text-sm rounded-sm hover:bg-accent hover:text-accent-foreground transition-colors flex items-center justify-between",
+                            selectedId === t.id && "bg-accent"
+                          )}
+                        >
+                          {t.name}
+                          {selectedId === t.id && <Check className="h-4 w-4" />}
+                        </button>
+                      ))}
+                    </div>
+                  )
                 )}
               </div>
             </PopoverContent>
@@ -626,158 +653,150 @@ export default function TravelProgramBuilder({ language = 'no' }: TravelProgramB
 
   return (
     <div className="space-y-6">
-        {/* Rad 1: Reiseprogram og Tilbud + Utreisedato */}
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          {/* 1. Reiseprogram og Tilbud (Base) - Automatisk valg */}
-          <div className="space-y-2">
-            <div className="flex items-center justify-between">
-              <Label className="text-base font-semibold">
-                {userLanguage === 'da' ? 'Rejseprogram og Tilbud' : 'Reiseprogram og Tilbud'}
-              </Label>
-              {!manualBaseOverride && (
-                <span className="text-xs text-muted-foreground italic">
-                  {userLanguage === 'da' ? 'Vælges automatisk' : 'Velges automatisk'}
-                </span>
-              )}
-            </div>
-            <Select
-              value={baseProgramId ?? ""}
-              onValueChange={(value) => {
-                replaceTemplate(baseProgramId, value || null);
-                setBaseProgramId(value || null);
-                setManualBaseOverride(value || null);
-              }}
-            >
-              <SelectTrigger className="bg-background">
-                <SelectValue placeholder={userLanguage === 'da' ? 'Vælg basis-skabelon' : 'Velg base-mal'} />
-              </SelectTrigger>
-              <SelectContent className="bg-background z-50">
-                {getUserBaseTemplates()
-                  .filter((t) => t.visibleInBuilder)
-                  .map((t) => (
-                    <SelectItem key={t.id} value={t.id}>
-                      {t.name}
-                    </SelectItem>
-                  ))}
-              </SelectContent>
-            </Select>
-            {manualBaseOverride && (
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={() => {
-                  setManualBaseOverride(null);
-                  toast.info("Automatisk valg aktivert");
-                }}
-                className="text-xs"
-              >
-                <RotateCcw className="h-3 w-3 mr-1" />
-                Tilbakestill til automatisk
-              </Button>
+      {/* Rad 1: Reiseprogram og Tilbud + Utreisedato + Arusha første natt */}
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+        {/* 1. Reiseprogram og Tilbud (Base) - Automatisk valg */}
+        <div className="space-y-2">
+          <div className="flex items-center justify-between">
+            <Label className="text-base font-semibold">
+              {userLanguage === 'da' ? 'Rejseprogram og Tilbud' : 'Reiseprogram og Tilbud'}
+            </Label>
+            {!manualBaseOverride && (
+              <span className="text-xs text-muted-foreground italic">
+                {/* Automatisk tekst fjernet etter ønske */}
+              </span>
             )}
           </div>
-
-          {/* 2. Utreisedato */}
-          <div className="space-y-2">
-            <Label htmlFor="departure-date">Utreisedato (valgfritt)</Label>
-            <Input
-              id="departure-date"
-              type="date"
-              value={departureDate}
-              onChange={(e) => setDepartureDate(e.target.value)}
-            />
-          </div>
+          <Select
+            value={baseProgramId ?? ""}
+            onValueChange={(value) => {
+              replaceTemplate(baseProgramId, value || null);
+              setBaseProgramId(value || null);
+              setManualBaseOverride(value || null);
+            }}
+          >
+            <SelectTrigger className="bg-gray-50">
+              <SelectValue placeholder={userLanguage === 'da' ? 'Vælg basis-skabelon' : 'Velg base-mal'} />
+            </SelectTrigger>
+            <SelectContent className="bg-gray-50 z-50">
+              {getUserBaseTemplates()
+                .filter((t) => t.visibleInBuilder)
+                .map((t) => (
+                  <SelectItem key={t.id} value={t.id}>
+                    {t.name}
+                  </SelectItem>
+                ))}
+            </SelectContent>
+          </Select>
+          {manualBaseOverride && (
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => {
+                setManualBaseOverride(null);
+                toast.info("Automatisk valg aktivert");
+              }}
+              className="text-xs"
+            >
+              <RotateCcw className="h-3 w-3 mr-1" />
+              Tilbakestill til automatisk
+            </Button>
+          )}
         </div>
 
-        {/* Rad 2: Arusha første natt + Safariperiode + Siste natt safari */}
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-          {/* 3. Arusha første natt */}
-          <div className="space-y-2">
-            <Label>Arusha første natt</Label>
-            <Select
-              value={firstNightId ?? ""}
-              onValueChange={(value) => {
-                replaceTemplate(firstNightId, value || null);
-                setFirstNightId(value || null);
-              }}
-            >
-              <SelectTrigger className="bg-background">
-                <SelectValue placeholder="Velg hotell" />
-              </SelectTrigger>
-              <SelectContent className="bg-background z-50">
-                {getFilteredTemplatesByCategoryName(FIRST_NIGHT_CATEGORY)
-                  .filter((t) => t.visibleInBuilder)
-                  .map((t) => (
-                    <SelectItem key={t.id} value={t.id}>
-                      {t.name}
-                    </SelectItem>
-                  ))}
-              </SelectContent>
-            </Select>
-          </div>
-
-          {/* 4. Safariperiode - To-trinns i SAMME dropdown med Popover */}
-          <div className="space-y-2">
-            <Label>Safariperiode</Label>
-            <SafariDropdown
-              selectedPeriod={selectedSafariPeriod}
-              setSelectedPeriod={setSelectedSafariPeriod}
-              selectedTemplateId={safariTemplateId}
-              setSelectedTemplateId={setSafariTemplateId}
-            />
-          </div>
-
-          {/* 5. Siste natt safari */}
-          <div className="space-y-2">
-            <Label>Siste natt safari</Label>
-            <Select
-              value={lastNightId ?? ""}
-              onValueChange={(value) => {
-                replaceTemplate(lastNightId, value || null);
-                setLastNightId(value || null);
-              }}
-            >
-              <SelectTrigger className="bg-background">
-                <SelectValue placeholder="Velg hotell" />
-              </SelectTrigger>
-              <SelectContent className="bg-background z-50">
-                {getFilteredTemplatesByCategoryName(LAST_NIGHT_CATEGORY)
-                  .filter((t) => t.visibleInBuilder)
-                  .map((t) => (
-                    <SelectItem key={t.id} value={t.id}>
-                      {t.name}
-                    </SelectItem>
-                  ))}
-              </SelectContent>
-            </Select>
-          </div>
+        {/* 2. Utreisedato */}
+        <div className="space-y-2">
+          <Label htmlFor="departure-date">Utreisedato (valgfritt)</Label>
+          <Input
+            id="departure-date"
+            type="date"
+            value={departureDate}
+            onChange={(e) => setDepartureDate(e.target.value)}
+            className="bg-gray-50"
+          />
         </div>
+
+        {/* 3. Arusha første natt */}
+        <div className="space-y-2">
+          <Label>Arusha første natt</Label>
+          <Select
+            value={firstNightId ?? ""}
+            onValueChange={(value) => {
+              replaceTemplate(firstNightId, value || null);
+              setFirstNightId(value || null);
+            }}
+          >
+            <SelectTrigger className="bg-gray-50">
+              <SelectValue placeholder="Velg hotell" />
+            </SelectTrigger>
+            <SelectContent className="bg-gray-50 z-50">
+              {getFilteredTemplatesByCategoryName(FIRST_NIGHT_CATEGORY)
+                .filter((t) => t.visibleInBuilder)
+                .map((t) => (
+                  <SelectItem key={t.id} value={t.id}>
+                    {t.name}
+                  </SelectItem>
+                ))}
+            </SelectContent>
+          </Select>
+        </div>
+      </div>
+
+      {/* Rad 2: Safariperiode + Siste natt safari */}
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        {/* 4. Safariperiode - To-trinns i SAMME dropdown med Popover */}
+        <div className="space-y-2">
+          <Label>Safariperiode</Label>
+          <SafariDropdown
+            selectedPeriod={selectedSafariPeriod}
+            setSelectedPeriod={setSelectedSafariPeriod}
+            selectedTemplateId={safariTemplateId}
+            setSelectedTemplateId={setSafariTemplateId}
+          />
+        </div>
+
+        {/* 5. Siste natt safari */}
+        <div className="space-y-2">
+          <Label>Siste natt safari</Label>
+          <Select
+            value={lastNightId ?? ""}
+            onValueChange={(value) => {
+              replaceTemplate(lastNightId, value || null);
+              setLastNightId(value || null);
+            }}
+          >
+            <SelectTrigger className="bg-gray-50">
+              <SelectValue placeholder="Velg hotell" />
+            </SelectTrigger>
+            <SelectContent className="bg-gray-50 z-50">
+              {getFilteredTemplatesByCategoryName(LAST_NIGHT_CATEGORY)
+                .filter((t) => t.visibleInBuilder)
+                .map((t) => (
+                  <SelectItem key={t.id} value={t.id}>
+                    {t.name}
+                  </SelectItem>
+                ))}
+            </SelectContent>
+          </Select>
+        </div>
+      </div>
 
         {/* Rad 3: Zanzibar Hotel 1 + Zanzibar & Stone Town */}
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          {/* 6. Zanzibar Hotel 1 - dropdown (ikke checkbox) */}
+          {/* 6. Zanzibar Hotel 1 - to-trinns dropdown uten sjekkboks */}
           <div className="space-y-2">
-            <Label>Zanzibar hotell 1</Label>
-            <Select
-              value={zanzibarMainId ?? ""}
-              onValueChange={(value) => {
-                replaceTemplate(zanzibarMainId, value || null);
-                setZanzibarMainId(value || null);
-              }}
-            >
-              <SelectTrigger className="bg-background">
-                <SelectValue placeholder="Velg hotell" />
-              </SelectTrigger>
-              <SelectContent className="bg-background z-50">
-                {getFilteredTemplatesByCategoryName(ZANZIBAR_MAIN)
-                  .filter((t) => t.visibleInBuilder)
-                  .map((t) => (
-                    <SelectItem key={t.id} value={t.id}>
-                      {t.name}
-                    </SelectItem>
-                  ))}
-              </SelectContent>
-            </Select>
+            <Label>Zanzibar Hotel 1</Label>
+            <CheckboxWithDropdown
+              id="zanzibar-hotel-1"
+              label=""
+              checked={true}
+              onCheckedChange={() => {}}
+              category={ZANZIBAR_MAIN}
+              selectedId={zanzibarMainId}
+              onSelectChange={setZanzibarMainId}
+              groupByHotel
+              hideCheckbox={true}
+            />
           </div>
 
           {/* 7. Zanzibar & Stone Town */}
@@ -888,48 +907,60 @@ export default function TravelProgramBuilder({ language = 'no' }: TravelProgramB
           </div>
         </div>
 
-        {/* Valgte slides - full bredde */}
+        {/* Valgte slides - full bredde (inkluderer flight slide fra global state) */}
         <div className="space-y-3">
-          <Label className="text-base font-semibold">Valgte maler</Label>
+          <Label className="text-base font-semibold">Valgte slides</Label>
           <div className="border rounded-lg p-3 min-h-[120px] bg-muted/30">
-            {selectedTemplateIds.length === 0 ? (
+            {slides.length === 0 ? (
               <p className="text-muted-foreground text-sm text-center py-4">
-                Ingen maler valgt ennå
+                Ingen slides valgt ennå
               </p>
             ) : (
               <div className="space-y-2">
-                {selectedTemplateIds.map((id, idx) => {
-                  const tpl = templates.find((t) => t.id === id);
-                  if (!tpl) return null;
-                  const isLocked = idx === 0;
-                  return (
-                    <div
-                      key={id}
-                      className={`flex items-center gap-2 p-2 rounded bg-background border ${
-                        isLocked ? 'border-primary/50 bg-primary/5' : ''
-                      }`}
-                      draggable={!isLocked}
-                      onDragStart={(e) => onDragStart(e, idx)}
-                      onDragOver={(e) => e.preventDefault()}
-                      onDrop={(e) => onDrop(e, idx)}
-                    >
-                      {!isLocked && (
-                        <GripVertical className="h-4 w-4 text-muted-foreground cursor-grab" />
-                      )}
-                      <span className="flex-1 text-sm">{tpl.name}</span>
-                      <span className="text-xs text-muted-foreground">{tpl.category}</span>
-                      {!isLocked && (
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          onClick={() => removeSelectedTemplate(id)}
-                          className="h-6 w-6 p-0"
-                        >
-                          <X className="h-3 w-3" />
-                        </Button>
-                      )}
-                    </div>
-                  );
+                {slides.map((slide, idx) => {
+                  if (typeof slide === "string") {
+                    const tpl = templates.find((t) => t.id === slide);
+                    if (!tpl) return null;
+                    const isLocked = idx === 0;
+                    return (
+                      <div
+                        key={slide}
+                        className={`flex items-center gap-2 p-2 rounded bg-background border ${
+                          isLocked ? 'border-primary/50 bg-primary/5' : ''
+                        }`}
+                        draggable={!isLocked}
+                        onDragStart={(e) => onDragStart(e, idx)}
+                        onDragOver={(e) => e.preventDefault()}
+                        onDrop={(e) => onDrop(e, idx)}
+                      >
+                        {!isLocked && (
+                          <GripVertical className="h-4 w-4 text-muted-foreground cursor-grab" />
+                        )}
+                        <span className="flex-1 text-sm">{tpl.name}</span>
+                        <span className="text-xs text-muted-foreground">{tpl.category}</span>
+                        {!isLocked && (
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => removeSelectedTemplate(slide)}
+                            className="h-6 w-6 p-0"
+                          >
+                            <X className="h-3 w-3" />
+                          </Button>
+                        )}
+                      </div>
+                    );
+                  } else if (typeof slide === "object" && slide.type === "flight") {
+                    // Render flight slide summary
+                    return (
+                      <div key={"flight-slide-" + idx} className="flex items-center gap-2 p-2 rounded bg-background border border-blue-400 bg-blue-50">
+                        <span className="flex-1 text-sm font-semibold text-blue-900">✈️ Flyreise (fra Flyrobott)</span>
+                        <span className="text-xs text-muted-foreground">{slide.language === 'da' ? 'Flyinfo (DK)' : 'Flyinfo (NO)'}</span>
+                        {/* Optionally: Add a remove button for flight slide */}
+                      </div>
+                    );
+                  }
+                  return null;
                 })}
               </div>
             )}
@@ -939,8 +970,9 @@ export default function TravelProgramBuilder({ language = 'no' }: TravelProgramB
         {/* Actions */}
         <div className="flex gap-3 justify-center pt-4">
           <Button 
+            variant="outline"
             onClick={generatePowerPoint} 
-            className="gap-2"
+            className="gap-2 border-2 border-primary"
             disabled={isGenerating}
           >
             {isGenerating ? (
@@ -950,7 +982,7 @@ export default function TravelProgramBuilder({ language = 'no' }: TravelProgramB
             )}
             {isGenerating ? "Genererer..." : "Generer PowerPoint"}
           </Button>
-          <Button variant="outline" onClick={handleReset} className="gap-2" disabled={isGenerating}>
+          <Button variant="outline" onClick={handleReset} className="gap-2 border-2 border-primary" disabled={isGenerating}>
             <RotateCcw className="h-4 w-4" />
             Nullstill
           </Button>

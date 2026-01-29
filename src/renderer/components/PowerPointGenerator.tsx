@@ -1,4 +1,5 @@
 import { useState, useEffect } from "react";
+import { STANDARD_ORDER } from "@/config/standardOrder";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Download, FileText, Loader2, AlertCircle, GripVertical } from "lucide-react";
@@ -21,7 +22,7 @@ import {
   useSortable,
 } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
-import { mergePowerPointFiles } from "@/lib/pptxMerger";
+// import { mergePowerPointFiles } from "@/lib/pptxMerger";
 
 interface PowerPointGeneratorProps {
   language: "no" | "da";
@@ -132,11 +133,10 @@ export const PowerPointGenerator = ({
   useEffect(() => {
     if (!formData?.selectedTemplates || !Array.isArray(formData.selectedTemplates)) return;
 
-    const selected: SelectedSlide[] = formData.selectedTemplates
+    let selected: SelectedSlide[] = formData.selectedTemplates
       .map((templateId: string, index: number) => {
         const ref = templateReferences.find((r) => r.id === templateId);
         if (!ref) return null;
-
         return {
           id: `slide-${index}`,
           templateRef: ref,
@@ -144,7 +144,18 @@ export const PowerPointGenerator = ({
         };
       })
       .filter(Boolean) as SelectedSlide[];
+    setOrderedSlides(selected);
 
+    // Sorter etter STANDARD_ORDER hvis mulig
+    const getOrderKey = (slide: SelectedSlide) => {
+      // Prøv å matche navn eller kategori mot STANDARD_ORDER
+      const name = slide.templateRef.name.toLowerCase();
+      const category = slide.templateRef.category?.toLowerCase() || "";
+      // Finn beste match
+      let bestKey = Object.keys(STANDARD_ORDER).find(key => name.includes(key) || category.includes(key));
+      return bestKey ? STANDARD_ORDER[bestKey] : 999;
+    };
+    selected.sort((a, b) => getOrderKey(a) - getOrderKey(b));
     setOrderedSlides(selected);
   }, [formData?.selectedTemplates, templateReferences]);
 
@@ -161,52 +172,42 @@ export const PowerPointGenerator = ({
         return;
       }
 
-      // Log hvilke filer som skal lastes ned
-      console.log('Building presentation with modules:', orderedSlides.map(s => s.templateRef.name));
-      
-      const downloadedFiles: Blob[] = [];
-
+      // Last ned alle valgte moduler som Blob
+      const downloadedFiles: { name: string; buffer: ArrayBuffer }[] = [];
       for (let i = 0; i < orderedSlides.length; i++) {
         const slide = orderedSlides[i];
-        console.log(`Downloading [${i}]: ${slide.templateRef.name} (id: ${slide.templateRef.id})`);
         const file = await downloadTemplate(slide.templateRef);
-        console.log(`Downloaded [${i}]: ${slide.templateRef.name} - size: ${(file.size / 1024).toFixed(1)}KB`);
-        downloadedFiles.push(file);
+        const buffer = await file.arrayBuffer();
+        downloadedFiles.push({ name: slide.templateRef.name, buffer });
       }
 
-      // Check if flight information slide exists in localStorage
+      // Hent flight info fra localStorage hvis tilgjengelig
       const flightDataStr = localStorage.getItem('flyinformasjon-data');
       const flightReady = localStorage.getItem('flyinformasjon-ready');
-      
-      if (flightDataStr && flightReady === 'true') {
-        console.log('Flight information data available, will be populated in Flyinformation template slide');
-        // Note: The flight data will be populated directly in the slide XML during merge
-        // This is handled by the pptxMerger through text replacement
-      }
+      const flightData = flightDataStr && flightReady === 'true' ? JSON.parse(flightDataStr) : null;
 
-      const mergedPptx = await mergePowerPointFiles(downloadedFiles, {
-        departureDate: formData.departureDate || null,
+      // Kall PowerShell/COM via electronAPI
+      if (!window.electronAPI?.generatePpt) throw new Error('generatePpt API ikke tilgjengelig');
+      const result = await window.electronAPI.generatePpt({
+        base: downloadedFiles[0].buffer,
+        modules: downloadedFiles.slice(1).map(f => ({ name: f.name, buffer: f.buffer })),
         language,
-        flightData: flightDataStr ? JSON.parse(flightDataStr) : null,
+        departureDate: formData.departureDate || null,
+        flightData,
       });
 
-      const url = URL.createObjectURL(mergedPptx);
-      const link = document.createElement("a");
-      link.href = url;
-      link.download = `Reiseprogram_${new Date().toISOString().split("T")[0]}.pptx`;
-      document.body.appendChild(link);
-      link.click();
-      document.body.removeChild(link);
-
-      setTimeout(() => URL.revokeObjectURL(url), 1000);
-
-      toast({
-        title: t.success,
-        description: `${downloadedFiles.length} filer slått sammen`,
-      });
-
-      if (onReset) {
-        setTimeout(() => onReset(), 1500);
+      if (result && result.ok) {
+        toast({
+          title: t.success,
+          description: `${downloadedFiles.length} filer slått sammen og åpnet i PowerPoint`,
+        });
+        if (onReset) setTimeout(() => onReset(), 1500);
+      } else {
+        toast({
+          title: t.error,
+          description: language === "no" ? "En feil oppstod under generering" : "Der opstod en fejl under genereringen",
+          variant: "destructive",
+        });
       }
     } catch (err) {
       console.error(err);

@@ -19,6 +19,13 @@ export type Category = {
   parentId?: string;
 };
 
+type FlightSlide = {
+  type: "flight";
+  source: "flyrobott";
+  language: string;
+  data: any;
+};
+
 type Store = {
   templates: TemplateEntry[];
   categories: Category[];
@@ -28,6 +35,10 @@ type Store = {
   removeSelectedTemplate: (id: string) => void;
   moveSelectedTemplate: (from: number, to: number) => void;
   clearSelectedTemplates: () => void;
+
+  slides: (string | FlightSlide)[];
+  addFlightSlide: (flight: any, language: string) => void;
+  removeFlightSlides: () => void;
 
   loadFromDB: () => Promise<void>;
   addTemplate: (t: Partial<TemplateEntry>) => Promise<void>;
@@ -53,6 +64,26 @@ export const useTemplateStore = create<Store>((set, get) => ({
   })),
 
   selectedTemplateIds: [],
+  slides: [],
+
+  addFlightSlide: (flight, language) =>
+    set((s) => {
+      // Fjern eksisterende flight-slide hvis den finnes
+      const slides = s.slides.filter(slide => !(typeof slide === "object" && slide.type === "flight"));
+      // Sett inn flight-slide som nest siste slide
+      const insertAt = Math.max(slides.length - 1, 0);
+      const newSlide: FlightSlide = {
+        type: "flight",
+        source: "flyrobott",
+        language,
+        data: flight,
+      };
+      slides.splice(insertAt, 0, newSlide);
+      return { slides };
+    }),
+
+  removeFlightSlides: () =>
+    set((s) => ({ slides: s.slides.filter(slide => !(typeof slide === "object" && slide.type === "flight")) })),
 
   loadFromDB: async () => {
     const templates = await loadAllTemplates();

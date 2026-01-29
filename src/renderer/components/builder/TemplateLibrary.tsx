@@ -32,7 +32,7 @@ import {
   AccordionItem,
   AccordionTrigger,
 } from "@/components/ui/accordion";
-import { Upload, Trash2, Eye, EyeOff, Plus, Edit2, FolderPlus, RefreshCw } from "lucide-react";
+import { Upload, Trash2, Eye, EyeOff, Plus, Edit2, FolderPlus, RefreshCw, Save } from "lucide-react";
 import { toast } from "sonner";
 
 export default function TemplateLibrary() {
@@ -41,10 +41,12 @@ export default function TemplateLibrary() {
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [openCategories, setOpenCategories] = useState<string[]>([]);
   const [isSyncing, setIsSyncing] = useState(false);
-  
+  const [editingCategoryId, setEditingCategoryId] = useState<string | null>(null);
+  const [editingCategoryName, setEditingCategoryName] = useState<string>("");
+
   const { user, userEmail, userLanguage, isAdmin: userIsAdmin } = useAuth();
   const userPrefix = userEmail ? getUserPrefix(userEmail) : undefined;
-  
+
   const {
     templates,
     addTemplate,
@@ -53,29 +55,64 @@ export default function TemplateLibrary() {
     updateTemplateCategory,
     loadFromDB,
   } = useTemplateStore();
-  
-  const { 
-    categories: userCategories, 
+
+  const {
+    categories: userCategories,
     addCategory: addUserCategory,
     deleteCategory: deleteUserCategory,
-    getCategoriesForUser 
+    getCategoriesForUser,
+    updateCategory: updateUserCategory
   } = useUserCategoryStore();
+
+  // Håndter lagring av nytt navn på kategori
+  const handleEditCategory = (catId: string, currentName: string) => {
+    setEditingCategoryId(catId);
+    setEditingCategoryName(currentName);
+  };
+
+  const handleSaveCategoryName = (catId?: string) => {
+    if (!editingCategoryName.trim()) {
+      toast.error("Kategorinavn kan ikke være tomt");
+      return;
+    }
+    // Update user category if it exists, otherwise update default category
+    const userCat = userCategories.find(c => c.id === catId);
+    if (userCat) {
+      updateUserCategory(catId, editingCategoryName.trim());
+    } else {
+      // Update default category name in Zustand store
+      const idx = uploadableCategories.findIndex(c => c.id === catId);
+      if (idx !== -1) {
+        uploadableCategories[idx].name = editingCategoryName.trim();
+      }
+      // Also update in allCategories for immediate frontend update
+      const idxAll = allCategories.findIndex(c => c.id === catId);
+      if (idxAll !== -1) {
+        allCategories[idxAll].name = editingCategoryName.trim();
+      }
+    }
+    toast.success("Kategorinavn oppdatert");
+    setEditingCategoryId(null);
+    setEditingCategoryName("");
+    // Force reload to reflect changes everywhere
+    loadFromDB();
+  };
 
   useEffect(() => {
     loadFromDB();
   }, [loadFromDB]);
 
   // Legg til brukerens personlige kategori
-  const personalCategory = userPrefix 
+  const personalCategory = userPrefix
     ? getUserPersonalCategory(userPrefix, userLanguage)
     : null;
-  
+
   // Get uploadable categories
-  const uploadableCategories = getUploadableCategories(userLanguage);
-  
+  const uploadableCategories = getUploadableCategories();
+
   // Get base categories for all users (kun for admin)
   const baseCategories = userIsAdmin ? getAllUserBaseCategories(userLanguage) : [];
-  
+
   // Merge default categories with user-specific categories + personal category + base categories (if admin)
   const userCategoryList = userEmail ? getCategoriesForUser(userEmail) : [];
   const allCategories = [
@@ -85,7 +122,7 @@ export default function TemplateLibrary() {
     ...userCategoryList.map(uc => ({
       id: uc.id,
       name: uc.name,
-      kind: "optional" as const,
+      kind: "dropdown" as const,
       order: uc.order,
       isUserCategory: true,
     }))
@@ -172,28 +209,6 @@ export default function TemplateLibrary() {
     setTemplateVisibility(id, !currentlyVisible);
   }
 
-  async function handleSyncNow() {
-    setIsSyncing(true);
-    try {
-      // @ts-ignore - Electron IPC
-      const result = await window.electron.invoke("onedrive:sync-now");
-      if (result.success) {
-        toast.success("OneDrive synkronisering startet!");
-        // Reload templates after a short delay
-        setTimeout(() => {
-          loadFromDB();
-          toast.info("Maler oppdatert");
-        }, 2000);
-      } else {
-        toast.error("Synkronisering feilet: " + result.error);
-      }
-    } catch (error) {
-      console.error("Sync error:", error);
-      toast.error("Kunne ikke starte synkronisering");
-    } finally {
-      setIsSyncing(false);
-    }
-  }
 
   async function handleSyncNow() {
     setIsSyncing(true);
@@ -259,11 +274,38 @@ export default function TemplateLibrary() {
                 <AccordionTrigger className="hover:no-underline py-2">
                   <div className="flex items-center justify-between w-full pr-2">
                     <div className="flex items-center gap-2">
-                      <span className="font-medium text-sm">{cat.name}</span>
-                      {isPersonalCategory && (
-                        <span className="text-xs px-1.5 py-0.5 bg-blue-100 text-blue-700 rounded">
-                          Personlig
-                        </span>
+                      {editingCategoryId === cat.id ? (
+                        <>
+                          <Input
+                            value={editingCategoryName}
+                            onChange={e => setEditingCategoryName(e.target.value)}
+                            onClick={e => e.stopPropagation()}
+                            onKeyDown={e => {
+                              if (e.key === "Enter") handleSaveCategoryName(cat.id);
+                              if (e.key === "Escape") setEditingCategoryId(null);
+                            }}
+                            className="w-36 h-7 text-sm"
+                            autoFocus
+                          />
+                          <Button size="icon" variant="ghost" className="h-7 w-7 p-0" onClick={e => { e.stopPropagation(); handleSaveCategoryName(cat.id); }} title="Lagre">
+                            <Save className="h-4 w-4 text-green-600" />
+                          </Button>
+                          <Button size="icon" variant="ghost" className="h-7 w-7 p-0" onClick={e => { e.stopPropagation(); setEditingCategoryId(null); }} title="Avbryt">
+                            ✕
+                          </Button>
+                        </>
+                      ) : (
+                        <>
+                          <span className="font-medium text-sm">{cat.name}</span>
+                          <Button size="icon" variant="ghost" className="h-7 w-7 p-0" onClick={e => { e.stopPropagation(); handleEditCategory(cat.id, cat.name); }} title="Endre navn">
+                            <Edit2 className="h-4 w-4 text-blue-600" />
+                          </Button>
+                          {isPersonalCategory && (
+                            <span className="text-xs px-1.5 py-0.5 bg-blue-100 text-blue-700 rounded">
+                              Personlig
+                            </span>
+                          )}
+                        </>
                       )}
                     </div>
                     <div className="flex items-center gap-2">

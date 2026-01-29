@@ -17,11 +17,20 @@ export default defineConfig({
   resolve: {
     alias: {
       "@": path.resolve(__dirname, "./src/renderer"),
+
+      // 🔥 TVING ÉN REACT-INSTANS (fikser Invalid hook call)
+      react: path.resolve(__dirname, "node_modules/react"),
+      "react-dom": path.resolve(__dirname, "node_modules/react-dom"),
     },
   },
 
+  // 🔥 Sørger for at Vite/Zustand/React deler samme React
+  optimizeDeps: {
+    dedupe: ["react", "react-dom"],
+  },
+
   server: {
-    port: 5173,
+    port: 5174,
     strictPort: true,
     fs: {
       allow: [

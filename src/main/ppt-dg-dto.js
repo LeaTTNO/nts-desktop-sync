@@ -1,78 +1,99 @@
-// src/renderer/components/TravelProgramBuilder.tsx
-import React, { useState } from "react";
-import TemplateDropdown from "./TemplateDropdown";
-import { useTemplateStore } from "../store/useTemplateStore";
+// src/main/ppt-dg-dto.js
+// --------------------------------------------------
+// DG / DTO – PARVIS ERSTATNING (VBA-LOGIKK)
+// KJØRES KUN VIA POWERPOINT COM
+// --------------------------------------------------
 
-export default function TravelProgramBuilder() {
-  const [selectedModules, setSelectedModules] = useState<string[]>([]);
-  const [departureDate, setDepartureDate] = useState<string>(""); // ISO string: yyyy-mm-dd
+import { execSync } from "child_process";
 
-  // get templates from store
-  const templates = useTemplateStore((s) => s.templates);
-  const baseTemplate = useTemplateStore((s) => s.baseTemplate); // you MUST have this in store
+/**
+ * Kjører DG/DTO-erstatning i åpen PowerPoint
+ * 1 DG + 1 DTO per dag (parvis)
+ * Ingen lagring
+ */
+export function replaceDgDtoPairwise(departureDate) {
+  const dateArg = departureDate ? `"${departureDate}"` : "";
 
-  async function handleGenerate() {
-    if (!baseTemplate?.blob) {
-      alert("Ingen base-mal funnet. Last opp en base-PPT først.");
-      return;
+  const psScript = `
+$pp = [Runtime.InteropServices.Marshal]::GetActiveObject("PowerPoint.Application")
+$pres = $pp.ActivePresentation
+
+$dgShapes = @()
+$dtoShapes = @()
+
+foreach ($slide in $pres.Slides) {
+  foreach ($shape in $slide.Shapes) {
+
+    if ($shape.HasTextFrame -and $shape.TextFrame.HasText) {
+      $txt = $shape.TextFrame.TextRange.Text
+      if ($txt -like "*DG*")  { $dgShapes += $shape }
+      if ($txt -like "*DTO*") { $dtoShapes += $shape }
     }
 
-    // Convert base blob to ArrayBuffer
-    const baseBuffer = await baseTemplate.blob.arrayBuffer();
-
-    // Convert selected modules
-    const moduleObjects = selectedModules
-      .map((id) => templates.find((t) => t.id === id))
-      .filter(Boolean)
-      .map((mod) => ({
-        id: mod!.id,
-        name: mod!.name,
-        blob: mod!.blob, // original blob (PowerPointXmlReplacer håndterer DG/DTO)
-      }));
-
-    window.electronAPI
-      .generatePpt({
-        base: baseBuffer,
-        modules: moduleObjects,
-        language: "no",
-        departureDate: departureDate || null,
-      })
-      .then((res) => {
-        if (!res.success) {
-          alert("Feil under generering: " + res.error);
-          return;
+    if ($shape.Type -eq 6) {
+      foreach ($item in $shape.GroupItems) {
+        if ($item.HasTextFrame -and $item.TextFrame.HasText) {
+          $txt = $item.TextFrame.TextRange.Text
+          if ($txt -like "*DG*")  { $dgShapes += $item }
+          if ($txt -like "*DTO*") { $dtoShapes += $item }
         }
-        alert("PowerPoint generert!\n" + res.path);
-        window.electronAPI.openFolder(res.path);
-      });
+      }
+    }
+
+    if ($shape.HasTable) {
+      $tbl = $shape.Table
+      for ($r = 1; $r -le $tbl.Rows.Count; $r++) {
+        for ($c = 1; $c -le $tbl.Columns.Count; $c++) {
+          $cell = $tbl.Cell($r, $c).Shape
+          if ($cell.HasTextFrame -and $cell.TextFrame.HasText) {
+            $txt = $cell.TextFrame.TextRange.Text
+            if ($txt -like "*DG*")  { $dgShapes += $cell }
+            if ($txt -like "*DTO*") { $dtoShapes += $cell }
+          }
+        }
+      }
+    }
+  }
+}
+
+$hasDate = $false
+if (${dateArg}) {
+  try {
+    $baseDate = Get-Date ${dateArg}
+    $hasDate = $true
+  } catch {}
+}
+
+$pairCount = [Math]::Min($dgShapes.Count, $dtoShapes.Count)
+$day = 1
+
+for ($i = 0; $i -lt $pairCount; $i++) {
+
+  $dg = $dgShapes[$i]
+  $dto = $dtoShapes[$i]
+
+  if ($dg.HasTextFrame) {
+    $dg.TextFrame.TextRange.Text =
+      $dg.TextFrame.TextRange.Text -replace "DG", ("Dag " + $day)
   }
 
-  return (
-    <div className="card animate-fade-in">
+  if ($dto.HasTextFrame) {
+    if ($hasDate) {
+      $d = $baseDate.AddDays($day - 1)
+      $val = $d.ToString("dd MMM", [System.Globalization.CultureInfo]::GetCultureInfo("nb-NO")).ToLower()
+      $dto.TextFrame.TextRange.Text =
+        $dto.TextFrame.TextRange.Text -replace "DTO", $val
+    } else {
+      $dto.TextFrame.TextRange.Text =
+        $dto.TextFrame.TextRange.Text -replace "DTO", ""
+    }
+  }
 
-      <h2 className="section-title mb-4">Bygg reiseprogram</h2>
+  $day++
+}
+`;
 
-      {/* UTREISEDATO */}
-      <label className="block mb-4">
-        <span className="font-medium text-primary">Utreisedato (valgfritt)</span>
-        <input
-          type="date"
-          className="input mt-1"
-          value={departureDate}
-          onChange={(e) => setDepartureDate(e.target.value)}
-        />
-      </label>
-
-      {/* MODULER */}
-      <TemplateDropdown
-        selected={selectedModules}
-        setSelected={setSelectedModules}
-      />
-
-      {/* GENERER */}
-      <button className="btn primary mt-6 w-full" onClick={handleGenerate}>
-        Generer PowerPoint
-      </button>
-    </div>
-  );
+  execSync("powershell -NoProfile -ExecutionPolicy Bypass -Command " + JSON.stringify(psScript), {
+    stdio: "ignore",
+  });
 }

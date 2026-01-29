@@ -50,12 +50,16 @@ export default function Index() {
               <a>KILIMANJARO</a>
             </nav>
 
-            <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-              <LanguageToggle
-                language={language}
-                onLanguageChange={setLanguage}
-              />
-              <UserMenu />
+            <div className="tt-header-right">
+              <div className="tt-logginn-wrap">
+                <UserMenu />
+                <div className="tt-lang-below">
+                  <LanguageToggle
+                    language={language}
+                    onLanguageChange={setLanguage}
+                  />
+                </div>
+              </div>
             </div>
           </div>
         </header>

@@ -1,7 +1,18 @@
 import React, { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 
-export type NestedCategory = { key: string; label: string };
+export type NestedCategory = {
+  key: string;
+  label: string;
+  id: string;
+  onRename?: (id: string, newName: string) => void;
+};
+// TypeScript: Global declaration for window.useUserCategoryStore
+declare global {
+  interface Window {
+    useUserCategoryStore: any;
+  }
+}
 export type NestedItem = { id: string; label: string };
 
 type NestedDropdownProps = {
@@ -96,19 +107,71 @@ export const NestedDropdown: React.FC<NestedDropdownProps> = ({
         </div>
         <div className="grid grid-cols-2 gap-0">
           <div className="max-h-80 overflow-auto p-2 min-w-[180px]">
-            {categories.map((c) => (
-              <div
-                key={c.key}
-                className={`px-2 py-1 rounded cursor-pointer hover:bg-muted-foreground/5 ${selectedKey === c.key ? "bg-accent" : ""}`}
-                onPointerDown={(e) => {
-                  e.preventDefault();
-                  e.stopPropagation();
-                  setSelectedKey(c.key);
-                }}
-              >
-                {c.label}
-              </div>
-            ))}
+            {categories.map((c) => {
+              const [editing, setEditing] = useState(false);
+              const [editValue, setEditValue] = useState(c.label);
+              // Wire up renaming to zustand store if c has id
+              const handleRename = (newName: string) => {
+                if (c.id && window.useUserCategoryStore) {
+                  window.useUserCategoryStore.getState().updateCategory(c.id, newName);
+                }
+                if (typeof c.onRename === "function") c.onRename(c.id, newName);
+              };
+              return (
+                <div
+                  key={c.key}
+                  className={`flex items-center px-2 py-1 rounded cursor-pointer hover:bg-muted-foreground/5 ${selectedKey === c.key ? "bg-accent" : ""}`}
+                  onPointerDown={(e) => {
+                    if (!editing) {
+                      e.preventDefault();
+                      e.stopPropagation();
+                      setSelectedKey(c.key);
+                    }
+                  }}
+                >
+                  {editing ? (
+                    <input
+                      type="text"
+                      className="text-sm px-1 py-0.5 rounded border"
+                      value={editValue}
+                      autoFocus
+                      onChange={e => setEditValue(e.target.value)}
+                      onBlur={() => {
+                        setEditing(false);
+                        if (editValue !== c.label && window.confirm("Lagre nytt navn på kategori?")) {
+                          handleRename(editValue);
+                        }
+                      }}
+                      onKeyDown={e => {
+                        if (e.key === "Enter") {
+                          setEditing(false);
+                          if (editValue !== c.label && window.confirm("Lagre nytt navn på kategori?")) {
+                            handleRename(editValue);
+                          }
+                        }
+                        if (e.key === "Escape") setEditing(false);
+                      }}
+                    />
+                  ) : (
+                    <>
+                      <span className="flex-1">{c.label}</span>
+                      <button
+                        className="ml-2 text-xs text-muted-foreground hover:text-primary"
+                        title="Endre navn"
+                        onPointerDown={e => {
+                          e.preventDefault();
+                          e.stopPropagation();
+                          setEditing(true);
+                        }}
+                        style={{ background: "none", border: "none", cursor: "pointer" }}
+                      >
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4 12.5-12.5z"/></svg>
+                      </button>
+                    </>
+                  )}
+                </div>
+              );
+            })}
           </div>
           <div className="max-h-80 overflow-auto p-2 min-w-[220px]">
             {items.length === 0 ? (

@@ -27,7 +27,7 @@
   max-width: 1400px;
   padding: 0 24px;
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   justify-content: space-between;
 }
 
@@ -36,6 +36,25 @@
   display: flex;
   align-items: center;
   height: 140px;
+}
+
+.tt-header-right {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  margin-left: auto;
+  min-width: 120px;
+}
+
+.tt-logginn-wrap {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 0.5rem;
+}
+
+.tt-lang-below {
+  margin-top: 8px;
 }
 .tt-logo {
   height: 140px;
@@ -51,6 +70,7 @@
   text-transform: uppercase;
   align-items: center;
 }
+
 
 .tt-nav-links a {
   color: white;

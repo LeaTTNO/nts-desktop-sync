@@ -130,7 +130,7 @@ export const DEFAULT_ORDER: Record<string, number> = {
   "arusha siste natt": 3,
   "kilimanjaro": 4,
   "siste dag safari": 5,
-  "zanzibar hotel 1": 6,
+  "Zanzibar Hotel 1": 6,
   "zanzibar hotel 2": 7,
   "stone town hotel": 8,
 };

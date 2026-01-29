@@ -2,6 +2,8 @@ import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
+import { Calendar } from "@/components/ui/calendar";
+import { nb, da } from "date-fns/locale";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Calendar, MapPin, Hotel, Plane, Users, Baby } from "lucide-react";
@@ -84,6 +86,14 @@ export const TravelForm = ({ language }: TravelFormProps) => {
     setFormData(prev => ({ ...prev, [field]: value }));
   };
 
+  // For kalender
+  const handleDateChange = (date: Date | undefined) => {
+    if (!date) return;
+    // Format til yyyy-MM-dd for konsistens
+    const iso = date.toISOString().slice(0, 10);
+    setFormData(prev => ({ ...prev, departureDate: iso }));
+  };
+
   const handleChildrenCountChange = (value: string) => {
     const childrenCount = parseInt(value) || 0;
     setFormData(prev => ({ 
@@ -120,14 +130,23 @@ export const TravelForm = ({ language }: TravelFormProps) => {
                 <Calendar className="h-4 w-4 text-primary" />
                 {t.departureDate}
               </Label>
-              <Input
-                id="departure"
-                type="date"
-                value={formData.departureDate}
-                onChange={(e) => handleInputChange('departureDate', e.target.value)}
-                className="border-muted focus:border-primary"
-                required
-              />
+              <div>
+                <Calendar
+                  mode="single"
+                  selected={formData.departureDate ? new Date(formData.departureDate) : undefined}
+                  onSelect={handleDateChange}
+                  locale={language === 'da' ? da : nb}
+                  fromDate={new Date()}
+                  className="bg-white rounded-lg shadow border"
+                />
+                {/* Skjult input for form-validasjon */}
+                <input
+                  type="hidden"
+                  name="departureDate"
+                  value={formData.departureDate}
+                  required
+                />
+              </div>
             </div>
 
             <div className="space-y-2">

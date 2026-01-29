@@ -263,46 +263,90 @@ export const mergePowerPointFiles = async (
     merged.file(slidePaths[i], xml);
   });
 
-  // 5. Replace flight information placeholders if flight data is available
+  // 5. Replace flight information placeholders or fill table if flight data is available
   if (flightData && flightData.flights && flightData.flights.length > 0) {
-    console.log('Populating Flyinformasjon slide with flight data');
-    
-    // Build flight text content
-    let flightText = `Reiseperiode: ${flightData.period}\\nAntall passasjerer: ${flightData.passengers}\\n\\n`;
-    
-    flightData.flights.forEach((flight: any) => {
-      flightText += `${flight.title}:\\n`;
-      flightText += `Pris: ${flight.price} per person\\n\\n`;
-      flightText += `Utreise: ${flight.outbound.route}\\n`;
-      flightText += `Avgang: ${flight.outbound.departure}\\n`;
-      flightText += `Ankomst: ${flight.outbound.arrival}\\n`;
-      flightText += `Reisetid: ${flight.outbound.duration}\\n`;
-      flightText += `Stopp: ${flight.outbound.stops}\\n`;
-      
-      if (flight.inbound) {
-        flightText += `\\nHjemreise: ${flight.inbound.route}\\n`;
-        flightText += `Avgang: ${flight.inbound.departure}\\n`;
-        flightText += `Ankomst: ${flight.inbound.arrival}\\n`;
-        flightText += `Reisetid: ${flight.inbound.duration}\\n`;
-        flightText += `Stopp: ${flight.inbound.stops}\\n`;
-      }
-      flightText += `\\n`;
-    });
-    
-    // Find and update Flyinformasjon slide
+    // Helper: Build table rows from flightData
+    function buildFlightTableRows(flights: any[], language: string) {
+      // Strict mapping: outbound/inbound, price, stops, etc.
+      return flights.map((flight: any) => {
+        const rows = [];
+        // Outbound row
+        rows.push([
+          language === "da" ? "Udrejse" : "Utreise",
+          flight.outbound.route || "",
+          flight.outbound.departure || "",
+          flight.outbound.arrival || "",
+          flight.outbound.duration || "",
+          String(flight.outbound.stops ?? ""),
+        ]);
+        // Inbound row (if present)
+        if (flight.inbound) {
+          rows.push([
+            language === "da" ? "Hjemrejse" : "Hjemreise",
+            flight.inbound.route || "",
+            flight.inbound.departure || "",
+            flight.inbound.arrival || "",
+            flight.inbound.duration || "",
+            String(flight.inbound.stops ?? ""),
+          ]);
+        }
+        return rows;
+      }).flat();
+    }
+
     for (const slidePath of slidePaths) {
       let slideXml = await merged.files[slidePath].async("string");
-      
       // Check if this slide contains "FLYINFORMATION" or "Flyinformasjon" text
       if (slideXml.includes('FLYINFORMATION') || slideXml.includes('Flyinformasjon') || slideXml.includes('FLYINFORMASJON')) {
-        console.log(`Found Flyinformasjon slide: ${slidePath}`);
-        
-        // Replace placeholder text with actual flight information
-        // Look for text placeholders and replace them
-        slideXml = slideXml.replace(/FLYINFORMATION|Flyinformasjon|FLYINFORMASJON/g, flightText);
-        
+        // Try to find a table in the XML
+        const tblMatch = slideXml.match(/<a:tbl>([\s\S]*?)<\/a:tbl>/);
+        if (tblMatch) {
+          let tblXml = tblMatch[0];
+          // Build table rows XML
+          const headerRow = [
+            language === "da" ? "Type" : "Type",
+            language === "da" ? "Rute" : "Rute",
+            language === "da" ? "Avgang" : "Avgang",
+            language === "da" ? "Ankomst" : "Ankomst",
+            language === "da" ? "Rejsetid" : "Reisetid",
+            language === "da" ? "Stop" : "Stopp",
+          ];
+          function makeRow(cells: string[]) {
+            return `<a:tr>${cells.map(cell => `<a:tc><a:txBody><a:p><a:r><a:t>${cell}</a:t></a:r></a:p></a:txBody></a:tc>`).join("")}</a:tr>`;
+          }
+          let newRowsXml = makeRow(headerRow);
+          const flightRows = buildFlightTableRows(flightData.flights, language);
+          flightRows.forEach(row => {
+            newRowsXml += makeRow(row);
+          });
+          // Replace all <a:tr>...</a:tr> in the table with newRowsXml
+          tblXml = tblXml.replace(/<a:tr>[\s\S]*?<\/a:tr>/g, "");
+          tblXml = tblXml.replace(/<\/a:tbl>/, `${newRowsXml}</a:tbl>`);
+          // Replace table in slideXml
+          slideXml = slideXml.replace(/<a:tbl>[\s\S]*?<\/a:tbl>/, tblXml);
+        } else {
+          // Fallback: Replace placeholder text with formatted flight info
+          let flightText = `${language === "da" ? "Rejseperiode" : "Reiseperiode"}: ${flightData.period}\n${language === "da" ? "Antal passagerer" : "Antall passasjerer"}: ${flightData.passengers}\n\n`;
+          flightData.flights.forEach((flight: any) => {
+            flightText += `${flight.title}:\n`;
+            flightText += `${language === "da" ? "Pris" : "Pris"}: ${flight.price} ${language === "da" ? "per person" : "per person"}\n\n`;
+            flightText += `${language === "da" ? "Udrejse" : "Utreise"}: ${flight.outbound.route}\n`;
+            flightText += `${language === "da" ? "Avgang" : "Avgang"}: ${flight.outbound.departure}\n`;
+            flightText += `${language === "da" ? "Ankomst" : "Ankomst"}: ${flight.outbound.arrival}\n`;
+            flightText += `${language === "da" ? "Rejsetid" : "Reisetid"}: ${flight.outbound.duration}\n`;
+            flightText += `${language === "da" ? "Stop" : "Stopp"}: ${flight.outbound.stops}\n`;
+            if (flight.inbound) {
+              flightText += `\n${language === "da" ? "Hjemrejse" : "Hjemreise"}: ${flight.inbound.route}\n`;
+              flightText += `${language === "da" ? "Avgang" : "Avgang"}: ${flight.inbound.departure}\n`;
+              flightText += `${language === "da" ? "Ankomst" : "Ankomst"}: ${flight.inbound.arrival}\n`;
+              flightText += `${language === "da" ? "Rejsetid" : "Reisetid"}: ${flight.inbound.duration}\n`;
+              flightText += `${language === "da" ? "Stop" : "Stopp"}: ${flight.inbound.stops}\n`;
+            }
+            flightText += `\n`;
+          });
+          slideXml = slideXml.replace(/FLYINFORMATION|Flyinformasjon|FLYINFORMASJON/g, flightText);
+        }
         merged.file(slidePath, slideXml);
-        console.log('Flyinformasjon slide updated with flight data');
         break;
       }
     }
