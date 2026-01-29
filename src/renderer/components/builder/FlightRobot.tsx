@@ -814,4 +814,32 @@ function saveToPowerPointSingle(flight: ProcessedFlight, title: string) {
   }
 }
 
+  return (
+    <div className="p-6 max-w-5xl mx-auto space-y-6">
+
+      <div>
+        <h1 className="text-2xl font-bold">{t.title}</h1>
+        <p className="text-muted-foreground">{t.subtitle}</p>
+      </div>
+
+      {/* TODO:
+         HER skal hele søkeskjemaet ditt inn igjen.
+         FlightRobot v5 har logikken —
+         vi kobler UI tilbake etterpå.
+      */}
+
+      {mainResults?.bestAndCheapest && (
+        <FlightResultCard
+          flight={mainResults.bestAndCheapest}
+          language={language}
+          translations={t}
+          formatTime={formatTime}
+          formatDate={formatDate}
+          formatDuration={formatDuration}
+        />
+      )}
+
+    </div>
+  );
 }
+
