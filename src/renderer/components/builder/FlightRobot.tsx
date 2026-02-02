@@ -523,6 +523,9 @@ export default function FlightRobot() {
   const [removeNights, setRemoveNights] = useState(false);
   const [removeNightsCount, setRemoveNightsCount] = useState(1);
 
+  // NEW: Children checkbox state
+  const [includeChildren, setIncludeChildren] = useState(false);
+
   // Date interval option
   const [useDateInterval, setUseDateInterval] = useState(false);
   const [earliestDeparture, setEarliestDeparture] = useState<Date | undefined>(undefined);
@@ -975,21 +978,6 @@ function saveToPowerPointSingle(flight: ProcessedFlight, title: string) {
                 </SelectContent>
               </Select>
             </div>
-
-            {/* Children */}
-            <div className="space-y-1">
-              <Label>{t.children}</Label>
-              <Select value={children} onValueChange={setChildren}>
-                <SelectTrigger className="bg-muted/30">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent className="bg-background z-50">
-                  {[0, 1, 2, 3, 4, 5, 6, 7, 8, 9].map((n) => (
-                    <SelectItem key={n} value={String(n)}>{n}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3 mt-2">
@@ -1129,6 +1117,28 @@ function saveToPowerPointSingle(flight: ProcessedFlight, title: string) {
               </Label>
             </div>
 
+            {/* NEW: Children Option */}
+            <div className="flex items-center gap-3">
+              <Checkbox
+                id="includeChildren"
+                checked={includeChildren}
+                onCheckedChange={(checked) => setIncludeChildren(checked === true)}
+              />
+              <Label htmlFor="includeChildren" className="flex items-center gap-2 cursor-pointer">
+                {t.children}
+                <Select value={children} onValueChange={setChildren}>
+                  <SelectTrigger className="w-16 h-8 bg-muted/30">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent className="bg-background z-50">
+                    {[1, 2, 3, 4, 5, 6, 7, 8, 9].map((n) => (
+                      <SelectItem key={n} value={String(n)}>{n}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </Label>
+            </div>
+
             {/* Date Interval Option */}
             <div className="col-span-1 md:col-span-2 flex flex-wrap items-center gap-3 pt-2 border-t border-border/30">
               <Checkbox
@@ -1140,13 +1150,20 @@ function saveToPowerPointSingle(flight: ProcessedFlight, title: string) {
                 {t.dateInterval}:
               </Label>
               <div className="flex flex-wrap items-center gap-2">
-                {/* Earliest departure */}
+                {/* Earliest departure - NEW: auto-set to departure month when opened */}
                 <Input
                   type="date"
                   value={earliestDeparture ? format(earliestDeparture, "yyyy-MM-dd") : ""}
                   onChange={(e) => {
                     const value = e.target.value;
                     setEarliestDeparture(value ? new Date(value) : undefined);
+                  }}
+                  onFocus={(e) => {
+                    // NEW: Auto-set month to departure date's month when first opened
+                    if (!earliestDeparture && departureDate) {
+                      e.target.value = format(departureDate, "yyyy-MM-dd");
+                      setEarliestDeparture(departureDate);
+                    }
                   }}
                   min={format(new Date(), "yyyy-MM-dd")}
                   className="w-[150px]"
@@ -1155,13 +1172,20 @@ function saveToPowerPointSingle(flight: ProcessedFlight, title: string) {
 
                 <span className="text-muted-foreground">→</span>
 
-                {/* Latest departure */}
+                {/* Latest departure - NEW: auto-set to return month when opened */}
                 <Input
                   type="date"
                   value={latestDeparture ? format(latestDeparture, "yyyy-MM-dd") : ""}
                   onChange={(e) => {
                     const value = e.target.value;
                     setLatestDeparture(value ? new Date(value) : undefined);
+                  }}
+                  onFocus={(e) => {
+                    // NEW: Auto-set month to return date's month when first opened
+                    if (!latestDeparture && returnDate) {
+                      e.target.value = format(returnDate, "yyyy-MM-dd");
+                      setLatestDeparture(returnDate);
+                    }
                   }}
                   min={
                     earliestDeparture
@@ -1247,7 +1271,7 @@ function saveToPowerPointSingle(flight: ProcessedFlight, title: string) {
                   formatDuration={formatDuration}
                   onSave={saveToPowerPointSingle}
                   title={t.bestAndCheapest}
-                  childrenCount={parseInt(children)}
+                  childrenCount={includeChildren ? parseInt(children) : 0}
                 />
               </div>
             </div>
@@ -1272,7 +1296,7 @@ function saveToPowerPointSingle(flight: ProcessedFlight, title: string) {
                 formatDuration={formatDuration}
                 onSave={saveToPowerPointSingle}
                 title={t.beste}
-                childrenCount={parseInt(children)}
+                childrenCount={includeChildren ? parseInt(children) : 0}
               />
             </div>
           )}
@@ -1296,7 +1320,7 @@ function saveToPowerPointSingle(flight: ProcessedFlight, title: string) {
                 formatDuration={formatDuration}
                 onSave={saveToPowerPointSingle}
                 title={t.cheapest}
-                childrenCount={parseInt(children)}
+                childrenCount={includeChildren ? parseInt(children) : 0}
               />
             </div>
           )}
@@ -1326,7 +1350,7 @@ function saveToPowerPointSingle(flight: ProcessedFlight, title: string) {
             formatDuration={formatDuration}
             onSave={saveToPowerPointSingle}
             title={t.cheaperFlexible}
-            childrenCount={parseInt(children)}
+            childrenCount={includeChildren ? parseInt(children) : 0}
           />
         </div>
       )}
@@ -1354,7 +1378,7 @@ function saveToPowerPointSingle(flight: ProcessedFlight, title: string) {
             formatDuration={formatDuration}
             onSave={saveToPowerPointSingle}
             title={t.cheaperExtended}
-            childrenCount={parseInt(children)}
+            childrenCount={includeChildren ? parseInt(children) : 0}
           />
         </div>
       )}
@@ -1382,7 +1406,7 @@ function saveToPowerPointSingle(flight: ProcessedFlight, title: string) {
             formatDuration={formatDuration}
             onSave={saveToPowerPointSingle}
             title={t.searchInInterval}
-            childrenCount={parseInt(children)}
+            childrenCount={includeChildren ? parseInt(children) : 0}
           />
         </div>
       )}
