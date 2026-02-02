@@ -11,6 +11,7 @@ export interface FlightSearchParams {
   adults: number;
   currencyCode?: string;
   max?: number;
+  language?: "no" | "da"; // For å velge riktig Farewise-region
 }
 
 export interface FlightSegment {
@@ -53,7 +54,7 @@ export async function searchFlights(
   params: FlightSearchParams
 ): Promise<FlightOffer[]> {
   // @ts-expect-error – exposed via preload
-  const result = await window.electron.ipcRenderer.invoke(
+  const result = await window.electron.invoke(
     "farewise:searchFlights",
     params
   );
@@ -62,5 +63,43 @@ export async function searchFlights(
     throw new Error(result?.error || "Farewise flight search failed");
   }
 
+  // Result.data er allerede array fra converter
   return Array.isArray(result.data) ? result.data : [];
 }
+
+// Airline codes to names mapping (common ones)
+export const airlineNames: Record<string, string> = {
+  KL: "KLM",
+  ET: "Ethiopian Airlines",
+  QR: "Qatar Airways",
+  EK: "Emirates",
+  TK: "Turkish Airlines",
+  LH: "Lufthansa",
+  AF: "Air France",
+  BA: "British Airways",
+  SK: "SAS",
+  DY: "Norwegian",
+  KQ: "Kenya Airways",
+  WB: "RwandAir",
+  PW: "Precision Air",
+};
+
+// Airport codes to city names
+export const airportNames: Record<string, string> = {
+  OSL: "Oslo",
+  CPH: "København",
+  ARN: "Stockholm",
+  JRO: "Kilimanjaro",
+  DAR: "Dar es Salaam",
+  ZNZ: "Zanzibar",
+  NBO: "Nairobi",
+  ADD: "Addis Ababa",
+  DOH: "Doha",
+  DXB: "Dubai",
+  IST: "Istanbul",
+  AMS: "Amsterdam",
+  FRA: "Frankfurt",
+  LHR: "London",
+  CDG: "Paris",
+};
+

@@ -32,23 +32,33 @@ app.commandLine.appendSwitch("disable-software-rasterizer");
    🔐 ENV
 -------------------------------------------------- */
 
-const AMADEUS_KEY = process.env.AMADEUS_KEY;
-const AMADEUS_SECRET = process.env.AMADEUS_SECRET;
-const AMADEUS_BASE = "https://test.api.amadeus.com";
+const FLIGHTROBOT_BASE_URL = process.env.FLIGHTROBOT_BASE_URL || "https://api.farewise.dk";
+const FLIGHTROBOT_AUTH_GUID = process.env.FLIGHTROBOT_AUTH_GUID;
+
+// Region-spesifikke innstillinger
+const FAREWISE_REGIONS = {
+  no: {
+    baseUrl: "https://api.farewise.dk",
+    customerId: 17179,
+    customerName: "Tanzania Tours ApS",
+  },
+  da: {
+    baseUrl: "https://api.farewise.dk",
+    customerId: 1280,
+    customerName: "Tanzania Tours ApS",
+  },
+};
 
 console.log("ENV CHECK", {
-  AMADEUS_KEY,
-  AMADEUS_SECRET_EXISTS: !!AMADEUS_SECRET
+  FLIGHTROBOT_BASE_URL,
+  FLIGHTROBOT_AUTH_GUID_EXISTS: !!FLIGHTROBOT_AUTH_GUID
 });
 
-let cachedToken = null;
-let tokenExpires = 0;
-
 /* --------------------------------------------------
-   🔁 RATE LIMIT (Amadeus)
+   🔁 RATE LIMIT (Farewise)
 -------------------------------------------------- */
 let lastRequest = 0;
-async function rateLimit(ms = 300) {
+async function rateLimit(ms = 500) {
   const now = Date.now();
   const diff = now - lastRequest;
   if (diff < ms) {
@@ -58,69 +68,175 @@ async function rateLimit(ms = 300) {
 }
 
 /* --------------------------------------------------
-   🔐 AUTH
+   ✈️ FAREWISE FLIGHT SEARCH
 -------------------------------------------------- */
 
-async function getAmadeusToken() {
-  if (cachedToken && Date.now() < tokenExpires) return cachedToken;
-
+async function searchFlightsMain(params) {
   await rateLimit();
 
-  const res = await fetch(`${AMADEUS_BASE}/v1/security/oauth2/token`, {
-    method: "POST",
-    headers: { "Content-Type": "application/x-www-form-urlencoded" },
-    body: new URLSearchParams({
-      grant_type: "client_credentials",
-      client_id: AMADEUS_KEY,
-      client_secret: AMADEUS_SECRET
-    })
+  const {
+    originLocationCode,
+    destinationLocationCode,
+    departureDate,
+    returnDate,
+    returnOriginCode,
+    adults = 1,
+    language = "no", // Default til norsk
+  } = params;
+
+  // Velg riktig region basert på språk
+  const region = FAREWISE_REGIONS[language] || FAREWISE_REGIONS.no;
+
+  // Bygg Farewise request body
+  const legs = [];
+  
+  // Outbound leg
+  legs.push({
+    departure: originLocationCode,
+    arrival: destinationLocationCode,
+    date: departureDate,
   });
 
-  const body = await res.text();
-  if (!res.ok) throw new Error(body);
-
-  const json = JSON.parse(body);
-  cachedToken = json.access_token;
-  tokenExpires = Date.now() + (json.expires_in - 60) * 1000;
-
-  return cachedToken;
-}
-
-/* --------------------------------------------------
-   ✈️ FLIGHT SEARCH
--------------------------------------------------- */
-
-async function searchFlightsMain(args) {
-  const token = await getAmadeusToken();
-
-  const url = new URL(`${AMADEUS_BASE}/v2/shopping/flight-offers`);
-  url.searchParams.set("originLocationCode", args.origin);
-  url.searchParams.set("destinationLocationCode", args.dest);
-  url.searchParams.set("departureDate", args.date);
-  url.searchParams.set("adults", String(args.adults || 2));
-  url.searchParams.set("currencyCode", "NOK");
-  url.searchParams.set("max", "50");
-
-  if (args.returnDate) {
-    url.searchParams.set("returnDate", args.returnDate);
+  // Return leg (open-jaw supported)
+  if (returnDate) {
+    legs.push({
+      departure: returnOriginCode || destinationLocationCode,
+      arrival: params.returnDestinationCode || originLocationCode,
+      date: returnDate,
+    });
   }
 
-  await rateLimit();
+  const requestBody = {
+    authorizationGuid: FLIGHTROBOT_AUTH_GUID,
+    customerId: region.customerId,
+    customerName: region.customerName,
+    legs,
+    dataSources: [],
+    passengers: {
+      adults: Number(adults),
+      children: [],
+    },
+    advancedSearchParams: {
+      publicFares: true,
+      negoFares: true,
+      itFares: true,
+      lowCostCarriers: true,
+      corporativeCodes: "",
+      carriers: "",
+      maxConnectionHours: 0,
+      excludeIntercityConnections: true,
+      combinationView: true,
+      filterLongerConnection: true,
+      useFastSearch: false,
+      allowMultiOnewaySearch: false,
+      sortByDeparture: true,
+      includingBaggage: true,
+    },
+    raw: false,
+    cabinClass: "Y",
+  };
 
-  const res = await fetch(url, {
-    headers: { Authorization: `Bearer ${token}` }
+  console.log(`Farewise ${language.toUpperCase()} API Request:`, JSON.stringify(requestBody, null, 2));
+
+  const res = await fetch(`${region.baseUrl}/v30/flight/recommendations/search`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json;charset=UTF-8",
+      "Accept": "application/json, text/plain, */*",
+    },
+    body: JSON.stringify(requestBody),
   });
 
-  const text = await res.text();
-  if (!res.ok) throw new Error(text);
+  if (!res.ok) {
+    const errorText = await res.text();
+    console.error(`Farewise ${language.toUpperCase()} API Error:`, res.status, errorText);
+    throw new Error(`Farewise API feil: ${res.status} - ${errorText}`);
+  }
 
-  return JSON.parse(text);
+  const result = await res.json();
+  console.log(`Farewise ${language.toUpperCase()} RAW RESPONSE:`, JSON.stringify(result, null, 2).substring(0, 2000));
+  console.log(`Farewise ${language.toUpperCase()} returned ${result?.recommendations?.length || 0} recommendations`);
+  
+  // Hvis ingen resultater, returner tom array
+  if (!result?.recommendations || result.recommendations.length === 0) {
+    console.warn("Farewise returned no recommendations. Full response:", result);
+    return { data: [] };
+  }
+  
+  // Konverter Farewise format til Amadeus-format (FlightRobot sitt format)
+  return convertFarewiseToAmadeus(result);
 }
 
 /* --------------------------------------------------
-   🔌 IPC
+   � FAREWISE → AMADEUS FORMAT CONVERTER
 -------------------------------------------------- */
 
+function convertFarewiseToAmadeus(farewiseData) {
+  // Farewise returnerer recommendations array
+  const recommendations = farewiseData?.recommendations || [];
+  
+  if (!Array.isArray(recommendations)) {
+    console.warn("Farewise response not in expected format:", farewiseData);
+    return { data: [] };
+  }
+
+  const amadeusOffers = recommendations.map((rec, index) => {
+    // Konverter Farewise itineraries til Amadeus segments
+    const itineraries = (rec.itineraries || []).map(itinerary => {
+      const segments = (itinerary.segments || []).map(seg => ({
+        departure: {
+          iataCode: seg.departureAirport?.iataCode || seg.departure || "",
+          at: seg.departureTime || seg.departureDateTime || "",
+        },
+        arrival: {
+          iataCode: seg.arrivalAirport?.iataCode || seg.arrival || "",
+          at: seg.arrivalTime || seg.arrivalDateTime || "",
+        },
+        carrierCode: seg.carrierCode || seg.airline || "",
+        number: String(seg.flightNumber || seg.number || ""),
+        duration: seg.duration || "PT0H",
+        numberOfStops: seg.stops || 0,
+      }));
+
+      return {
+        duration: itinerary.totalDuration || itinerary.duration || "PT0H",
+        segments,
+      };
+    });
+
+    return {
+      id: rec.id || `farewise-${index}`,
+      price: {
+        total: String(rec.price?.total || rec.totalPrice || 0),
+        currency: rec.price?.currency || rec.currency || "DKK",
+        grandTotal: String(rec.price?.grandTotal || rec.price?.total || rec.totalPrice || 0),
+      },
+      itineraries,
+      validatingAirlineCodes: rec.validatingCarriers || rec.airlines || [],
+      numberOfBookableSeats: rec.availableSeats || 9,
+    };
+  });
+
+  return { data: amadeusOffers };
+}
+
+/* --------------------------------------------------
+   �🔌 IPC
+-------------------------------------------------- */
+
+// Farewise IPC handler
+ipcMain.handle("farewise:searchFlights", async (_, params) => {
+  try {
+    const result = await searchFlightsMain(params);
+    // result er allerede {data: [...]} fra converter
+    return { ok: true, data: result.data };
+  } catch (err) {
+    console.error("Farewise search error:", err);
+    return { ok: false, error: String(err) };
+  }
+});
+
+// Legacy handler for kompatibilitet
 ipcMain.handle("flights:search", async (_, payload) => {
   try {
     const result = await searchFlightsMain(payload);

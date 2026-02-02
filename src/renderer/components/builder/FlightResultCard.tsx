@@ -2,7 +2,7 @@ import React, { useState } from "react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Plane, Copy, Check, Clock, ArrowRight, Users, Timer, ChevronDown, ChevronUp } from "lucide-react";
+import { Plane, Copy, Check, Clock, ArrowRight, Users, Timer, ChevronDown, ChevronUp, FileDown } from "lucide-react";
 import { toast } from "sonner";
 import { FlightOffer, airportNames } from "@/lib/amadeusClient";
 
@@ -49,6 +49,9 @@ interface FlightResultCardProps {
   formatTime: (iso: string) => string;
   formatDate: (iso: string) => string;
   formatDuration: (iso: string) => string;
+  onSave?: (flight: ProcessedFlight, title: string) => void;
+  title?: string;
+  childrenCount?: number;
 }
 
 export default function FlightResultCard({
@@ -58,6 +61,9 @@ export default function FlightResultCard({
   formatTime,
   formatDate,
   formatDuration,
+  onSave,
+  title = "",
+  childrenCount = 0,
 }: FlightResultCardProps) {
   const [copied, setCopied] = useState(false);
   const [showOutboundDetails, setShowOutboundDetails] = useState(false);
@@ -117,29 +123,95 @@ export default function FlightResultCard({
   const availableSeats = flight.rawOffer?.numberOfBookableSeats;
 
   const copyToClipboard = () => {
-    const outboundText = `${t.outbound}: ${flight.outbound.departure} → ${flight.outbound.arrival} | ${formatDate(flight.outbound.departureTime)} ${formatTime(flight.outbound.departureTime)} - ${formatTime(flight.outbound.arrivalTime)} | ${flight.outbound.airlines.join(", ")} | ${getStopsText(flight.outbound.stops)}`;
+    // Detaljert tabell med alle flysegmenter - fast kolonnestørrelse
+    const airline = flight.outbound.airlines[0] || "Flyreise";
     
-    let text = outboundText;
+    // Rund opp til nærmeste 50 kr
+    const roundedPrice = Math.ceil(flight.price / 50) * 50;
     
-    if (outboundLayovers.length > 0) {
-      const layoverTexts = outboundLayovers.map(l => `${l.airport} (${l.city}): ${l.arrivalTime}–${l.departureTime} (${l.duration})`);
-      text += ` | ${layoverText}: ${layoverTexts.join(", ")}`;
+    let text = `${airline}\n`;
+    text += `${'─'.repeat(90)}\n`;
+    
+    // Funksjon for å hente alle segmenter fra rawOffer
+    const getSegments = (itineraryIndex: number) => {
+      if (!flight.rawOffer?.itineraries?.[itineraryIndex]) return [];
+      return flight.rawOffer.itineraries[itineraryIndex].segments;
+    };
+    
+    const outboundSegments = getSegments(0);
+    const inboundSegments = getSegments(1);
+    
+    // UTREISE - alle segmenter med fast kolonnebredde
+    if (outboundSegments.length > 0) {
+      outboundSegments.forEach((seg) => {
+        const fromCity = airportNames[seg.departure.iataCode] || seg.departure.iataCode;
+        const toCity = airportNames[seg.arrival.iataCode] || seg.arrival.iataCode;
+        const date = formatDate(seg.departure.at);
+        const depTime = formatTime(seg.departure.at);
+        const arrTime = formatTime(seg.arrival.at);
+        
+        // Sjekk om ankomst er neste dag
+        const depDate = new Date(seg.departure.at);
+        const arrDate = new Date(seg.arrival.at);
+        const nextDay = arrDate.getDate() !== depDate.getDate() ? '+1' : '';
+        
+        // Fast kolonnebredde: Flyselskap(20) Dato(15) Fra(20) -(5) Til(20) Tider
+        const airlineCol = airline.padEnd(20, ' ');
+        const dateCol = date.padEnd(15, ' ');
+        const fromCol = fromCity.padEnd(20, ' ');
+        const separator = '  -  '; // 5 tegn
+        const toCol = toCity.padEnd(20, ' ');
+        const times = `${depTime} - ${arrTime}${nextDay}`;
+        
+        text += `${airlineCol}${dateCol}${fromCol}${separator}${toCol}${times}\n`;
+      });
     }
     
-    if (flight.inbound) {
-      const inboundText = `${t.inbound}: ${flight.inbound.departure} → ${flight.inbound.arrival} | ${formatDate(flight.inbound.departureTime)} ${formatTime(flight.inbound.departureTime)} - ${formatTime(flight.inbound.arrivalTime)} | ${flight.inbound.airlines.join(", ")} | ${getStopsText(flight.inbound.stops)}`;
-      text += `\n${inboundText}`;
+    // HJEMREISE - alle segmenter med fast kolonnebredde
+    if (inboundSegments.length > 0) {
+      inboundSegments.forEach((seg) => {
+        const fromCity = airportNames[seg.departure.iataCode] || seg.departure.iataCode;
+        const toCity = airportNames[seg.arrival.iataCode] || seg.arrival.iataCode;
+        const date = formatDate(seg.departure.at);
+        const depTime = formatTime(seg.departure.at);
+        const arrTime = formatTime(seg.arrival.at);
+        
+        // Sjekk om ankomst er neste dag
+        const depDate = new Date(seg.departure.at);
+        const arrDate = new Date(seg.arrival.at);
+        const nextDay = arrDate.getDate() !== depDate.getDate() ? '+1' : '';
+        
+        // Fast kolonnebredde: Flyselskap(20) Dato(15) Fra(20) -(5) Til(20) Tider
+        const airlineCol = airline.padEnd(20, ' ');
+        const dateCol = date.padEnd(15, ' ');
+        const fromCol = fromCity.padEnd(20, ' ');
+        const separator = '  -  '; // 5 tegn
+        const toCol = toCity.padEnd(20, ' ');
+        const times = `${depTime} - ${arrTime}${nextDay}`;
+        
+        text += `${airlineCol}${dateCol}${fromCol}${separator}${toCol}${times}\n`;
+      });
+    }
+    
+    text += `${'─'.repeat(90)}\n`;
+    
+    // Pris med avrunding og fast tekst
+    if (language === "no") {
+      text += `Pris: kr ${roundedPrice.toLocaleString('nb-NO')} per person +innenriksflyene og 800 kr i utstedelsesgebyr`;
       
-      if (inboundLayovers.length > 0) {
-        const layoverTexts = inboundLayovers.map(l => `${l.airport} (${l.city}): ${l.arrivalTime}–${l.departureTime} (${l.duration})`);
-        text += ` | ${layoverText}: ${layoverTexts.join(", ")}`;
+      // Barnepris (75% av voksenpris)
+      if (childrenCount > 0) {
+        const childPrice = Math.ceil((flight.price * 0.75) / 50) * 50;
+        text += `\nBarnepris (${childrenCount} barn): kr ${childPrice.toLocaleString('nb-NO')} per barn`;
       }
-    }
-    
-    text += `\n${t.price}: ${formatPrice(flight.price, flight.currency)} ${t.perPerson}`;
-    
-    if (availableSeats) {
-      text += ` (${availableSeats} ${seatsText})`;
+    } else {
+      text += `Pris: kr ${roundedPrice.toLocaleString('da-DK')} per person +indenrigsfly og 500 kr i udstedelsesgebyr`;
+      
+      // Barnepris (75% av voksenpris)
+      if (childrenCount > 0) {
+        const childPrice = Math.ceil((flight.price * 0.75) / 50) * 50;
+        text += `\nBørnepris (${childrenCount} børn): kr ${childPrice.toLocaleString('da-DK')} per barn`;
+      }
     }
     
     navigator.clipboard.writeText(text);
@@ -220,38 +292,51 @@ export default function FlightResultCard({
       {/* Expanded details - segments and layovers */}
       {isExpanded && layovers.length > 0 && (
         <div className="pt-3 pb-2 space-y-2 border-t border-border/30">
-          <div className="text-xs font-medium text-muted-foreground mb-2">
-            Flysegmenter: {leg.segments}
+          <div className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-2">
+            Mellomlandinger
           </div>
-          <div className="space-y-3">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
             {layovers.map((layover, idx) => {
               return (
                 <div 
                   key={idx}
-                  className="px-4 py-3 bg-amber-50 dark:bg-amber-950/20 border border-amber-200 dark:border-amber-800/30 rounded-md"
+                  className="p-3 bg-gradient-to-br from-muted/30 to-muted/50 border border-border/40 rounded-lg hover:border-primary/30 transition-colors"
                 >
-                  <div className="flex items-start gap-3">
-                    <div className="flex items-center justify-center w-7 h-7 bg-amber-500 rounded-full flex-shrink-0 mt-0.5">
-                      <Timer className="h-4 w-4 text-white" />
+                  {/* Header med nummer og by */}
+                  <div className="flex items-center gap-2 mb-2">
+                    <div className="flex items-center justify-center w-6 h-6 bg-primary text-primary-foreground rounded-full text-xs font-bold flex-shrink-0">
+                      {idx + 1}
                     </div>
-                    <div className="flex-1 space-y-1">
-                      <div className="font-semibold text-amber-900 dark:text-amber-100">
-                        {layover.airport} - {layover.city}
+                    <div className="font-semibold text-sm text-foreground">
+                      {layover.city}
+                    </div>
+                    <div className="text-xs text-muted-foreground">
+                      ({layover.airport})
+                    </div>
+                  </div>
+
+                  {/* Tider i grid */}
+                  <div className="space-y-1.5 text-xs">
+                    <div className="flex items-center justify-between">
+                      <span className="text-muted-foreground">Landing:</span>
+                      <div className="flex items-center gap-2">
+                        <span className="font-semibold text-foreground">{layover.arrivalTime}</span>
+                        <span className="text-[10px] text-muted-foreground">{layover.arrivalDate}</span>
                       </div>
-                      <div className="grid grid-cols-2 gap-2 text-xs">
-                        <div>
-                          <span className="text-amber-700 dark:text-amber-400 font-medium">Landing: </span>
-                          <span className="text-amber-900 dark:text-amber-200">{layover.arrivalDate} {layover.arrivalTime}</span>
-                        </div>
-                        <div>
-                          <span className="text-amber-700 dark:text-amber-400 font-medium">Avgang: </span>
-                          <span className="text-amber-900 dark:text-amber-200">{layover.departureDate} {layover.departureTime}</span>
-                        </div>
+                    </div>
+                    <div className="flex items-center justify-between">
+                      <span className="text-muted-foreground">Avgang:</span>
+                      <div className="flex items-center gap-2">
+                        <span className="font-semibold text-foreground">{layover.departureTime}</span>
+                        <span className="text-[10px] text-muted-foreground">{layover.departureDate}</span>
                       </div>
-                      <div className="text-xs">
-                        <span className="text-amber-700 dark:text-amber-400 font-medium">Ventetid: </span>
-                        <span className="text-amber-900 dark:text-amber-200 font-semibold">{layover.duration}</span>
+                    </div>
+                    <div className="flex items-center justify-between pt-1 border-t border-border/30">
+                      <div className="flex items-center gap-1">
+                        <Timer className="h-3 w-3 text-primary" />
+                        <span className="text-muted-foreground">Ventetid:</span>
                       </div>
+                      <span className="font-bold text-primary">{layover.duration}</span>
                     </div>
                   </div>
                 </div>
@@ -264,9 +349,9 @@ export default function FlightResultCard({
   );
 
   return (
-    <Card className={`border-border/50 ${flight.isRecommended ? "ring-2 ring-primary/30" : ""}`}>
+     <Card className="w-full overflow-hidden border-border/50">
       <CardContent className="pt-6">
-        <div className="flex flex-col lg:flex-row gap-6">
+        <div className="flex flex-col lg:flex-row items-start gap-6">
           {/* Flight Details */}
           <div className="flex-1 space-y-6">
             {/* Recommended Badge */}
@@ -298,6 +383,18 @@ export default function FlightResultCard({
                 {t.perPerson}
               </div>
               
+              {/* Child price */}
+              {childrenCount > 0 && (
+                <div className="mt-2">
+                  <div className="text-lg font-semibold text-foreground">
+                    {formatPrice(flight.price * 0.75, flight.currency)}
+                  </div>
+                  <div className="text-xs text-muted-foreground">
+                    {language === "no" ? `per barn (${childrenCount})` : `per barn (${childrenCount})`}
+                  </div>
+                </div>
+              )}
+              
               {/* Available seats */}
               {availableSeats && (
                 <div className="flex items-center justify-center lg:justify-end gap-1 mt-2 text-xs text-muted-foreground">
@@ -307,24 +404,37 @@ export default function FlightResultCard({
               )}
             </div>
 
-            <Button 
-              variant="outline" 
-              size="sm"
-              onClick={copyToClipboard}
-              className="mt-4 w-full lg:w-auto"
-            >
-              {copied ? (
-                <>
-                  <Check className="mr-1 h-3 w-3" />
-                  {t.copied}
-                </>
-              ) : (
-                <>
-                  <Copy className="mr-1 h-3 w-3" />
-                  {t.copy}
-                </>
+            <div className="mt-4 flex flex-col gap-2 w-full lg:w-auto">
+              <Button 
+                variant="outline" 
+                size="sm"
+                onClick={copyToClipboard}
+                className="w-full"
+              >
+                {copied ? (
+                  <>
+                    <Check className="mr-1 h-3 w-3" />
+                    {t.copied}
+                  </>
+                ) : (
+                  <>
+                    <Copy className="mr-1 h-3 w-3" />
+                    {t.copy}
+                  </>
+                )}
+              </Button>
+              {onSave && (
+                <Button 
+                  variant="secondary" 
+                  size="sm"
+                  onClick={() => onSave(flight, title)}
+                  className="w-full"
+                >
+                  <FileDown className="mr-1 h-3 w-3" />
+                  {language === "no" ? "Send til PowerPoint" : "Send til PowerPoint"}
+                </Button>
               )}
-            </Button>
+            </div>
           </div>
         </div>
       </CardContent>

@@ -23,6 +23,7 @@ import { Calendar } from "@/components/ui/calendar";
 
 import SectionDivider from "@/components/SectionDivider";
 import FlightResultCard from "./FlightResultCard";
+import { useTemplateStore } from "@/store/useTemplateStore";
 
 import {
   Plane,
@@ -34,6 +35,7 @@ import {
   TrendingDown,
   Trophy,
   FileDown,
+  RotateCcw,
 } from "lucide-react";
 
 import { toast } from "sonner";
@@ -50,7 +52,6 @@ import {
   searchFlights,
   FlightOffer,
   airlineNames,
-  airportNames,
 } from "@/lib/amadeusClient";
 import { useFlightInfo } from "@/contexts/FlightInfoContext";
 
@@ -124,7 +125,8 @@ const translations = {
     returnTo: "Retur til",
     departDate: "Avreisedato",
     returnDate: "Hjemreisedato",
-    passengers: "Passasjerer",
+    passengers: "Voksne",
+    children: "Barn (0-11 år)",
     passenger: "passasjer",
     passengersPlural: "passasjerer",
     search: "Søk flyreiser",
@@ -188,7 +190,8 @@ const translations = {
     returnTo: "Retur til",
     departDate: "Afrejsedato",
     returnDate: "Returdato",
-    passengers: "Passagerer",
+    passengers: "Voksne",
+    children: "Børn (0-11 år)",
     passenger: "passager",
     passengersPlural: "passagerer",
     search: "Søg flyrejser",
@@ -455,6 +458,13 @@ function categorizeFlights(flights: ProcessedFlight[], t: typeof translations.no
 // =============================================================================
 
 export default function FlightRobot() {
+  // Global state for slides (Zustand)
+  const { addFlightSlide, slides } = useTemplateStore();
+  // UX helpers: flight slide selection
+  const hasFlightSlide = Array.isArray(slides) && slides.some(slide => typeof slide === "object" && slide.type === "flight");
+  const selectedFlight = Array.isArray(slides)
+    ? (slides.find(slide => typeof slide === "object" && slide.type === "flight") as { data?: any })?.data
+    : undefined;
   const { language } = useLanguage();
   const t = translations[language] || translations.no;
 
@@ -472,6 +482,7 @@ export default function FlightRobot() {
   const [departureDateOpen, setDepartureDateOpen] = useState(false);
   const [returnDateOpen, setReturnDateOpen] = useState(false);
   const [passengers, setPassengers] = useState("1");
+  const [children, setChildren] = useState("0");
   const [isSearching, setIsSearching] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -692,18 +703,28 @@ function saveToPowerPointSingle(flight: ProcessedFlight, title: string) {
     pax: number,
     currency: string
   ): Promise<FlightOffer[]> {
+    const isOpenJaw = retFrom !== dest || retTo !== dep;
+    
     const response = await searchFlights({
       originLocationCode: dep,
       destinationLocationCode: dest,
       departureDate: depDate,
       returnDate: retDate,
-      returnOriginCode: retFrom, // For open-jaw: fly to dest, return from retFrom
-      returnDestinationCode: retTo, // For open-jaw: return to retTo (e.g., OSL or CPH)
+      returnOriginCode: isOpenJaw ? retFrom : undefined,
+      returnDestinationCode: isOpenJaw ? retTo : undefined,
       adults: pax,
       currencyCode: currency,
       max: 50,
+      language, // Send språk til Farewise API
     });
-    return response.data || [];
+    
+    // Håndter både Amadeus {data: [...]} og Farewise [...] format
+    if (Array.isArray(response)) {
+      return response; // Farewise format
+    } else if (response && Array.isArray((response as any).data)) {
+      return (response as any).data; // Amadeus format
+    }
+    return [];
   }
 
   // Main search handler
@@ -921,7 +942,7 @@ function saveToPowerPointSingle(flight: ProcessedFlight, title: string) {
                   setDeparture(e.target.value.toUpperCase().slice(0, 3))
                 }
                 placeholder={t.iataPlaceholder}
-                className="uppercase"
+                className="uppercase bg-muted/30"
                 maxLength={3}
               />
             </div>
@@ -935,20 +956,35 @@ function saveToPowerPointSingle(flight: ProcessedFlight, title: string) {
                   setDestination(e.target.value.toUpperCase().slice(0, 3))
                 }
                 placeholder={t.iataPlaceholder}
-                className="uppercase"
+                className="uppercase bg-muted/30"
                 maxLength={3}
               />
             </div>
 
-            {/* Passengers */}
+            {/* Adults */}
             <div className="space-y-1">
               <Label>{t.passengers}</Label>
               <Select value={passengers} onValueChange={setPassengers}>
-                <SelectTrigger className="bg-background">
+                <SelectTrigger className="bg-muted/30">
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent className="bg-background z-50">
                   {[1, 2, 3, 4, 5, 6, 7, 8, 9].map((n) => (
+                    <SelectItem key={n} value={String(n)}>{n}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
+            {/* Children */}
+            <div className="space-y-1">
+              <Label>{t.children}</Label>
+              <Select value={children} onValueChange={setChildren}>
+                <SelectTrigger className="bg-muted/30">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent className="bg-background z-50">
+                  {[0, 1, 2, 3, 4, 5, 6, 7, 8, 9].map((n) => (
                     <SelectItem key={n} value={String(n)}>{n}</SelectItem>
                   ))}
                 </SelectContent>
@@ -967,7 +1003,7 @@ function saveToPowerPointSingle(flight: ProcessedFlight, title: string) {
                   setReturnFrom(e.target.value.toUpperCase().slice(0, 3))
                 }
                 placeholder={t.iataPlaceholder}
-                className="uppercase"
+                className="uppercase bg-muted/30"
                 maxLength={3}
               />
             </div>
@@ -979,7 +1015,7 @@ function saveToPowerPointSingle(flight: ProcessedFlight, title: string) {
                 value={returnTo}
                 onChange={(e) => setReturnTo(e.target.value.toUpperCase().slice(0, 3))}
                 placeholder={t.iataPlaceholder}
-                className="uppercase"
+                className="uppercase bg-muted/30"
                 maxLength={3}
               />
             </div>
@@ -993,7 +1029,7 @@ function saveToPowerPointSingle(flight: ProcessedFlight, title: string) {
               <input
                 id="departure-date"
                 type="date"
-                className="w-full border rounded px-2 py-1 bg-background text-foreground"
+                className="w-full border rounded px-2 py-1 bg-muted/30 text-foreground"
                 value={departureDate ? format(departureDate, 'yyyy-MM-dd') : ''}
                 min={format(today, 'yyyy-MM-dd')}
                 max={format(maxDate, 'yyyy-MM-dd')}
@@ -1010,7 +1046,7 @@ function saveToPowerPointSingle(flight: ProcessedFlight, title: string) {
               <input
                 id="return-date"
                 type="date"
-                className="w-full border rounded px-2 py-1 bg-background text-foreground"
+                className="w-full border rounded px-2 py-1 bg-muted/30 text-foreground"
                 value={returnDate ? format(returnDate, 'yyyy-MM-dd') : ''}
                 min={departureDate ? format(departureDate, 'yyyy-MM-dd') : format(today, 'yyyy-MM-dd')}
                 max={format(maxDate, 'yyyy-MM-dd')}
@@ -1034,7 +1070,7 @@ function saveToPowerPointSingle(flight: ProcessedFlight, title: string) {
               <Label htmlFor="flexibleDates" className="flex items-center gap-2 cursor-pointer">
                 {t.flexibleDates}
                 <Select value={String(flexibleNights)} onValueChange={(v) => setFlexibleNights(parseInt(v))}>
-                  <SelectTrigger className="w-16 h-8 bg-background">
+                  <SelectTrigger className="w-16 h-8 bg-muted/30">
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent className="bg-background z-50">
@@ -1057,7 +1093,7 @@ function saveToPowerPointSingle(flight: ProcessedFlight, title: string) {
               <Label htmlFor="addNights" className="flex items-center gap-2 cursor-pointer">
                 {t.addNights}
                 <Select value={String(addNightsCount)} onValueChange={(v) => setAddNightsCount(parseInt(v))}>
-                  <SelectTrigger className="w-16 h-8 bg-background">
+                  <SelectTrigger className="w-16 h-8 bg-muted/30">
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent className="bg-background z-50">
@@ -1080,7 +1116,7 @@ function saveToPowerPointSingle(flight: ProcessedFlight, title: string) {
               <Label htmlFor="removeNights" className="flex items-center gap-2 cursor-pointer">
                 {t.removeNights}
                 <Select value={String(removeNightsCount)} onValueChange={(v) => setRemoveNightsCount(parseInt(v))}>
-                  <SelectTrigger className="w-16 h-8 bg-background">
+                  <SelectTrigger className="w-16 h-8 bg-muted/30">
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent className="bg-background z-50">
@@ -1159,28 +1195,18 @@ function saveToPowerPointSingle(flight: ProcessedFlight, title: string) {
                 )}
               </Button>
 
-              {/* PowerPoint Export Button - alltid synlig når det finnes resultater */}
+              {/* Nullstill-knapp */}
               {(mainResults.bestAndCheapest || bestQualityResult || cheapestExtendedResult || flexibleResult || extendedStayResult || dateIntervalResult) && (
                 <Button
-                  onClick={saveToPowerPoint}
-                  variant="outline"
+                  onClick={handleReset}
+                  variant="destructive"
                   className="w-full"
                   size="lg"
                 >
-                  <FileDown className="mr-2 h-4 w-4" />
-                  {language === "no" ? "Lagre til presentasjon" : "Gem til præsentation"}
+                  <RotateCcw className="mr-2 h-4 w-4" />
+                  {language === "no" ? "Nullstill alle resultater" : "Nulstil alle resultater"}
                 </Button>
               )}
-
-              {/* Nullstill-knapp */}
-              <Button
-                onClick={handleReset}
-                variant="destructive"
-                className="w-full"
-                size="lg"
-              >
-                {language === "no" ? "Nullstill alle resultater" : "Nulstil alle resultater"}
-              </Button>
             </div>
           </div> {/* slutten på Flexible Options */}
         </CardContent>
@@ -1219,6 +1245,9 @@ function saveToPowerPointSingle(flight: ProcessedFlight, title: string) {
                   formatTime={formatTime}
                   formatDate={formatDate}
                   formatDuration={formatDuration}
+                  onSave={saveToPowerPointSingle}
+                  title={t.bestAndCheapest}
+                  childrenCount={parseInt(children)}
                 />
               </div>
             </div>
@@ -1234,25 +1263,17 @@ function saveToPowerPointSingle(flight: ProcessedFlight, title: string) {
                   <p className="text-xs text-muted-foreground">{t.bestQualityDesc || "Best overall flight based on duration and connections"}</p>
                 </div>
               </div>
-              <div className="relative">
-                <FlightResultCard
-                  flight={bestQualityResult}
-                  language={language}
-                  translations={t}
-                  formatTime={formatTime}
-                  formatDate={formatDate}
-                  formatDuration={formatDuration}
-                />
-                <Button
-                  variant="outline"
-                  size="sm"
-                  className="absolute top-2 right-2 z-10"
-                  onClick={() => saveToPowerPointSingle(bestQualityResult, t.beste)}
-                >
-                  <FileDown className="mr-1 h-4 w-4" />
-                  {language === "no" ? "Send til PowerPoint" : "Send til PowerPoint"}
-                </Button>
-              </div>
+              <FlightResultCard
+                flight={bestQualityResult}
+                language={language}
+                translations={t}
+                formatTime={formatTime}
+                formatDate={formatDate}
+                formatDuration={formatDuration}
+                onSave={saveToPowerPointSingle}
+                title={t.beste}
+                childrenCount={parseInt(children)}
+              />
             </div>
           )}
 
@@ -1266,25 +1287,17 @@ function saveToPowerPointSingle(flight: ProcessedFlight, title: string) {
                   <p className="text-xs text-muted-foreground">{t.cheapestWithFlexibility || "Cheapest option up to 25 hours"}</p>
                 </div>
               </div>
-              <div className="relative">
-                <FlightResultCard
-                  flight={cheapestExtendedResult}
-                  language={language}
-                  translations={t}
-                  formatTime={formatTime}
-                  formatDate={formatDate}
-                  formatDuration={formatDuration}
-                />
-                <Button
-                  variant="outline"
-                  size="sm"
-                  className="absolute top-2 right-2 z-10"
-                  onClick={() => saveToPowerPointSingle(cheapestExtendedResult, t.cheapest)}
-                >
-                  <FileDown className="mr-1 h-4 w-4" />
-                  {language === "no" ? "Send til PowerPoint" : "Send til PowerPoint"}
-                </Button>
-              </div>
+              <FlightResultCard
+                flight={cheapestExtendedResult}
+                language={language}
+                translations={t}
+                formatTime={formatTime}
+                formatDate={formatDate}
+                formatDuration={formatDuration}
+                onSave={saveToPowerPointSingle}
+                title={t.cheapest}
+                childrenCount={parseInt(children)}
+              />
             </div>
           )}
         </div>
@@ -1294,35 +1307,27 @@ function saveToPowerPointSingle(flight: ProcessedFlight, title: string) {
       {flexibleResult && (
         <div className="space-y-4">
           <div className="flex items-center gap-2">
-            <Calendar className="h-5 w-5 text-green-500" />
+            <CalendarIcon className="h-5 w-5 text-primary" />
             <div>
               <h3 className="font-semibold text-foreground">{t.cheaperFlexible}</h3>
               {flexibleResult.searchDate && (
                 <p className="text-xs text-muted-foreground">
-                  {formatDate(flexibleResult.searchDate + 'T00:00:00')}
+                  Avreise: {format(new Date(flexibleResult.searchDate), "dd.MM.yyyy")}
                 </p>
               )}
             </div>
           </div>
-          <div className="relative">
-            <FlightResultCard
-              flight={flexibleResult}
-              language={language}
-              translations={t}
-              formatTime={formatTime}
-              formatDate={formatDate}
-              formatDuration={formatDuration}
-            />
-            <Button
-              variant="outline"
-              size="sm"
-              className="absolute top-2 right-2 z-10"
-              onClick={() => saveToPowerPointSingle(flexibleResult, t.cheaperFlexible)}
-            >
-              <FileDown className="mr-1 h-4 w-4" />
-              {language === "no" ? "Send til PowerPoint" : "Send til PowerPoint"}
-            </Button>
-          </div>
+          <FlightResultCard
+            flight={flexibleResult}
+            language={language}
+            translations={t}
+            formatTime={formatTime}
+            formatDate={formatDate}
+            formatDuration={formatDuration}
+            onSave={saveToPowerPointSingle}
+            title={t.cheaperFlexible}
+            childrenCount={parseInt(children)}
+          />
         </div>
       )}
 
@@ -1330,32 +1335,27 @@ function saveToPowerPointSingle(flight: ProcessedFlight, title: string) {
       {extendedStayResult && (
         <div className="space-y-4">
           <div className="flex items-center gap-2">
-            <TrendingDown className="h-5 w-5 text-green-500" />
+            <TrendingDown className="h-5 w-5 text-primary" />
             <div>
               <h3 className="font-semibold text-foreground">
                 {t.cheaperExtended} {Math.abs(extendedStayResult.nightsDiff || 0)} {(extendedStayResult.nightsDiff || 0) > 0 ? t.extraNights : t.fewerNights}
               </h3>
+              <p className="text-xs text-muted-foreground">
+                {(extendedStayResult.nightsDiff || 0) > 0 ? "Lengre opphold" : "Kortere opphold"}
+              </p>
             </div>
           </div>
-          <div className="relative">
-            <FlightResultCard
-              flight={extendedStayResult}
-              language={language}
-              translations={t}
-              formatTime={formatTime}
-              formatDate={formatDate}
-              formatDuration={formatDuration}
-            />
-            <Button
-              variant="outline"
-              size="sm"
-              className="absolute top-2 right-2 z-10"
-              onClick={() => saveToPowerPointSingle(extendedStayResult, t.cheaperExtended)}
-            >
-              <FileDown className="mr-1 h-4 w-4" />
-              {language === "no" ? "Send til PowerPoint" : "Send til PowerPoint"}
-            </Button>
-          </div>
+          <FlightResultCard
+            flight={extendedStayResult}
+            language={language}
+            translations={t}
+            formatTime={formatTime}
+            formatDate={formatDate}
+            formatDuration={formatDuration}
+            onSave={saveToPowerPointSingle}
+            title={t.cheaperExtended}
+            childrenCount={parseInt(children)}
+          />
         </div>
       )}
 
@@ -1363,35 +1363,27 @@ function saveToPowerPointSingle(flight: ProcessedFlight, title: string) {
       {dateIntervalResult && (
         <div className="space-y-4">
           <div className="flex items-center gap-2">
-            <CalendarIcon className="h-5 w-5 text-green-500" />
+            <CalendarIcon className="h-5 w-5 text-primary" />
             <div>
               <h3 className="font-semibold text-foreground">{t.searchInInterval}</h3>
               {dateIntervalResult.searchDate && (
                 <p className="text-xs text-muted-foreground">
-                  {formatDate(dateIntervalResult.searchDate + 'T00:00:00')}
+                  Avreise: {format(new Date(dateIntervalResult.searchDate), "dd.MM.yyyy")}
                 </p>
               )}
             </div>
           </div>
-          <div className="relative">
-            <FlightResultCard
-              flight={dateIntervalResult}
-              language={language}
-              translations={t}
-              formatTime={formatTime}
-              formatDate={formatDate}
-              formatDuration={formatDuration}
-            />
-            <Button
-              variant="outline"
-              size="sm"
-              className="absolute top-2 right-2 z-10"
-              onClick={() => saveToPowerPointSingle(dateIntervalResult, t.searchInInterval)}
-            >
-              <FileDown className="mr-1 h-4 w-4" />
-              {language === "no" ? "Send til PowerPoint" : "Send til PowerPoint"}
-            </Button>
-          </div>
+          <FlightResultCard
+            flight={dateIntervalResult}
+            language={language}
+            translations={t}
+            formatTime={formatTime}
+            formatDate={formatDate}
+            formatDuration={formatDuration}
+            onSave={saveToPowerPointSingle}
+            title={t.searchInInterval}
+            childrenCount={parseInt(children)}
+          />
         </div>
       )}
 
