@@ -96,8 +96,16 @@ async function loginToFarewise(language = "no") {
   // Extract cookies from response
   const setCookie = res.headers.raw()['set-cookie'];
   if (setCookie) {
-    farewiseCookies = setCookie.join('; ');
-    console.log("✅ Login successful, cookies received");
+    // Parse cookies: kun ta navn=verdi delen, ikke expires/path/etc
+    const cookiePairs = setCookie.map(cookie => {
+      const mainPart = cookie.split(';')[0]; // Ta kun "name=value" delen
+      return mainPart;
+    });
+    farewiseCookies = cookiePairs.join('; ');
+    console.log("✅ Login successful, cookies received:");
+    console.log("   Cookies:", farewiseCookies.substring(0, 200) + "...");
+  } else {
+    console.warn("⚠️ No cookies received from login!");
   }
 
   return await res.json();
@@ -141,7 +149,7 @@ async function searchFlightsMain(params) {
     await loginToFarewise(language);
   }
 
-  // Bygg Farewise request body
+  // Bygg Farewise request body - bruker strukturen som ga oss 73 resultater
   const legs = [];
   
   // Outbound leg - convert date to timezone format (+01 for Europe/Oslo)
@@ -202,8 +210,12 @@ async function searchFlightsMain(params) {
     headers: {
       "Content-Type": "application/json;charset=UTF-8",
       "Accept": "application/json, text/plain, */*",
+      "Accept-Language": "da-DK,da;q=0.9,en-US;q=0.8,en;q=0.7",
+      "Referer": `https://www.farewise.${language}/nd/search`,
+      "Origin": `https://www.farewise.${language}`,
       "Cookie": farewiseCookies || "",
     },
+    credentials: "include",
     body: JSON.stringify(requestBody),
   });
 
@@ -249,36 +261,65 @@ function convertFarewiseToAmadeus(farewiseData) {
     // Farewise har options[0].legs[] istedenfor itineraries[]
     const firstOption = rec.options?.[0];
     if (!firstOption || !firstOption.legs) {
-      console.warn(`⚠️ Recommendation ${rec.id} missing options or legs`);
+      console.warn(`⚠️ Recommendation ${rec.id} missing options or legs. Has options: ${!!rec.options}, Has legs: ${!!rec.options?.[0]?.legs}`);
       return null;
     }
 
     // Convert Farewise legs to Amadeus itineraries
-    const itineraries = firstOption.legs.map(leg => {
-      const segments = (leg.segments || []).map(seg => ({
-        departure: {
-          iataCode: seg.departure?.code || "",
-          at: seg.departure?.date || "",
-        },
-        arrival: {
-          iataCode: seg.arrival?.code || "",
-          at: seg.arrival?.date || "",
-        },
-        carrierCode: seg.marketingCarrier || "",
-        number: String(seg.number || ""),
-        duration: seg.duration || "PT0H",
-      }));
+    const itineraries = firstOption.legs.map((leg, legIndex) => {
+      // Farewise har leg.routes[0].segments[] istedenfor leg.segments[]
+      const route = leg.routes?.[0];
+      if (!route || !route.segments || route.segments.length === 0) {
+        console.warn(`⚠️ Leg ${legIndex} in ${rec.id} has no route or segments`);
+        return null;
+      }
 
-      // Calculate total duration from segments
-      const totalMinutes = segments.reduce((total, seg) => {
-        const match = seg.duration.match(/PT(\d+)H(\d+)M/);
-        if (match) {
-          return total + parseInt(match[1]) * 60 + parseInt(match[2]);
+      const segments = route.segments.map((seg, segIndex) => {
+        // Convert Farewise duration "06:30" to ISO 8601 "PT6H30M"
+        let duration = "PT0H";
+        if (seg.elapsedFlyingTime && seg.elapsedFlyingTime.includes(':')) {
+          const [hours, minutes] = seg.elapsedFlyingTime.split(':');
+          duration = `PT${parseInt(hours)}H${parseInt(minutes)}M`;
+        } else if (seg.departureDate && seg.arrivalDate) {
+          // Beregn duration fra datoer hvis elapsedFlyingTime mangler
+          const depDate = new Date(seg.departureDate);
+          const arrDate = new Date(seg.arrivalDate);
+          const diffMs = arrDate - depDate;
+          const diffMinutes = Math.floor(diffMs / 60000);
+          const hours = Math.floor(diffMinutes / 60);
+          const minutes = diffMinutes % 60;
+          duration = `PT${hours}H${minutes}M`;
         }
-        return total;
-      }, 0);
-      const hours = Math.floor(totalMinutes / 60);
-      const minutes = totalMinutes % 60;
+
+        return {
+          departure: {
+            iataCode: seg.departure?.code || "",
+            at: seg.departureDate || "",
+          },
+          arrival: {
+            iataCode: seg.arrival?.code || "",
+            at: seg.arrivalDate || "",
+          },
+          carrierCode: seg.marketingCarrier?.code || "",
+          number: String(seg.flightNumber || ""),
+          duration: duration,
+        };
+      });
+
+      // Calculate TOTAL duration from first departure to last arrival (inkluderer mellomlanding!)
+      if (segments.length > 0) {
+        const firstDeparture = new Date(segments[0].departure.at);
+        const lastArrival = new Date(segments[segments.length - 1].arrival.at);
+        const totalMs = lastArrival - firstDeparture;
+        const totalMinutes = Math.floor(totalMs / 60000);
+        const hours = Math.floor(totalMinutes / 60);
+        const minutes = totalMinutes % 60;
+        
+        return {
+          duration: `PT${hours}H${minutes}M`,
+          segments,
+        };
+      }
 
       return {
         duration: `PT${hours}H${minutes}M`,
