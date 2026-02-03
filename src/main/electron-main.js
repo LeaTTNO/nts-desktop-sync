@@ -2,7 +2,7 @@
 // 📦 IMPORTS
 // ──────────────────────────────────────────────
 
-import { app, BrowserWindow, ipcMain, shell } from "electron";
+import { app, BrowserWindow, ipcMain, shell, screen } from "electron";
 import path from "path";
 import { fileURLToPath } from "url";
 import fs from "fs";
@@ -362,9 +362,16 @@ function initAutoUpdate() {
 -------------------------------------------------- */
 
 function createWindow() {
+  const { height } = screen.getPrimaryDisplay().workAreaSize;
+
   const win = new BrowserWindow({
-    width: 1600,
-    height: 1000,
+    width: 1200,              // start-bredde
+    height: height,           // full høyde ved oppstart
+
+    resizable: true,          // bruker kan endre både bredde og høyde
+    maximizable: true,        // tillatt
+    center: true,
+
     icon: path.join(__dirname, "../../build/icon.ico"),
     webPreferences: {
       preload: path.join(__dirname, "preload.js"),
