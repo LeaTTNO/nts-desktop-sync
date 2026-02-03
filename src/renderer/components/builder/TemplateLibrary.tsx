@@ -287,19 +287,31 @@ export default function TemplateLibrary() {
                             className="w-36 h-7 text-sm"
                             autoFocus
                           />
-                          <Button size="icon" variant="ghost" className="h-7 w-7 p-0" onClick={e => { e.stopPropagation(); handleSaveCategoryName(cat.id); }} title="Lagre">
+                          <span 
+                            className="inline-flex items-center justify-center h-7 w-7 rounded-md hover:bg-accent hover:text-accent-foreground cursor-pointer" 
+                            onClick={e => { e.stopPropagation(); handleSaveCategoryName(cat.id); }} 
+                            title="Lagre"
+                          >
                             <Save className="h-4 w-4 text-green-600" />
-                          </Button>
-                          <Button size="icon" variant="ghost" className="h-7 w-7 p-0" onClick={e => { e.stopPropagation(); setEditingCategoryId(null); }} title="Avbryt">
+                          </span>
+                          <span 
+                            className="inline-flex items-center justify-center h-7 w-7 rounded-md hover:bg-accent hover:text-accent-foreground cursor-pointer" 
+                            onClick={e => { e.stopPropagation(); setEditingCategoryId(null); }} 
+                            title="Avbryt"
+                          >
                             ✕
-                          </Button>
+                          </span>
                         </>
                       ) : (
                         <>
                           <span className="font-medium text-sm">{cat.name}</span>
-                          <Button size="icon" variant="ghost" className="h-7 w-7 p-0" onClick={e => { e.stopPropagation(); handleEditCategory(cat.id, cat.name); }} title="Endre navn">
+                          <span 
+                            className="inline-flex items-center justify-center h-7 w-7 rounded-md hover:bg-accent hover:text-accent-foreground cursor-pointer" 
+                            onClick={e => { e.stopPropagation(); handleEditCategory(cat.id, cat.name); }} 
+                            title="Endre navn"
+                          >
                             <Edit2 className="h-4 w-4 text-blue-600" />
-                          </Button>
+                          </span>
                           {isPersonalCategory && (
                             <span className="text-xs px-1.5 py-0.5 bg-blue-100 text-blue-700 rounded">
                               Personlig

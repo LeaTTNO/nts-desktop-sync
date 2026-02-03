@@ -208,17 +208,51 @@ export default function TravelProgramBuilder({ language = 'no' }: TravelProgramB
     setIsGenerating(true);
 
     try {
-      const modules = selectedTemplateIds
-        .map((id) => templates.find((t) => t.id === id))
-        .filter(Boolean)
-        .map((t) => ({
-          id: t!.id,
-          name: t!.name,
-          blob: t!.blob,
-          fileName: t!.fileName,
-        }));
+      // Basefil er alltid først i listen
+      const baseTemplate = templates.find(t => t.id === baseProgramId);
+      if (!baseTemplate || !baseTemplate.blob) {
+        toast.error("Basefil ikke funnet");
+        return;
+      }
 
-        
+      // Hent alle valgte moduler (unntatt basefil)
+      const moduleTemplates = selectedTemplateIds
+        .filter(id => id !== baseProgramId)
+        .map((id) => templates.find((t) => t.id === id))
+        .filter(Boolean) as typeof templates;
+
+      // Konverter blobs til ArrayBuffers
+      const baseBuffer = await baseTemplate.blob.arrayBuffer();
+      const moduleBuffers = await Promise.all(
+        moduleTemplates.map(async (t) => ({
+          name: t.name,
+          buffer: await t.blob.arrayBuffer(),
+        }))
+      );
+
+      // Hent flyinformasjon fra localStorage hvis tilgjengelig
+      const flightDataStr = localStorage.getItem('flyinformasjon-data');
+      const flightReady = localStorage.getItem('flyinformasjon-ready');
+      const flightData = flightDataStr && flightReady === 'true' ? JSON.parse(flightDataStr) : null;
+
+      // Kall Electron API for å bygge PowerPoint
+      if (!window.electronAPI?.generatePpt) {
+        throw new Error('generatePpt API ikke tilgjengelig');
+      }
+
+      const result = await window.electronAPI.generatePpt({
+        base: baseBuffer,
+        modules: moduleBuffers,
+        language: userLanguage,
+        departureDate: departureDate || null,
+        flightData,
+      });
+
+      if (result && result.ok) {
+        toast.success(`PowerPoint åpnet med ${moduleTemplates.length + 1} slides`);
+      } else {
+        toast.error("Kunne ikke generere PowerPoint");
+      }
     } catch (error) {
       console.error("Error generating PowerPoint:", error);
       toast.error("Feil ved generering av PowerPoint");
@@ -371,7 +405,7 @@ export default function TravelProgramBuilder({ language = 'no' }: TravelProgramB
             </Label>
           </div>
         )}
-        {(hideCheckbox || checked) && categoryTemplates.length > 0 && (
+        {(hideCheckbox || checked) && (hideCheckbox || categoryTemplates.length > 0) && (
           <Popover open={isOpen} onOpenChange={setIsOpen} modal={false}>
             <PopoverTrigger asChild>
               <Button

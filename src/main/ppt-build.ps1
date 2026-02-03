@@ -23,7 +23,7 @@ foreach ($modulePath in $ModulePaths) {
     if (-not (Test-Path $modulePath)) { continue }
 
     if (-not $firstModuleOpened) {
-        # 🔒 Første modul = hovedpresentasjon
+        # 🔒 Første modul = hovedpresentasjon (basefil)
         $presentation = $ppApp.Presentations.Open(
             $modulePath,
             $true,   # ReadOnly
@@ -33,7 +33,7 @@ foreach ($modulePath in $ModulePaths) {
         $firstModuleOpened = $true
     }
     else {
-        # 🔒 Alle andre moduler kopieres inn
+        # 🔒 Sett inn moduler FØR de siste 2 slidene (bevarer layout)
         $modulePres = $ppApp.Presentations.Open(
             $modulePath,
             $true,
@@ -41,8 +41,16 @@ foreach ($modulePath in $ModulePaths) {
             $false
         )
 
-        $modulePres.Slides.Range().Copy()
-        $presentation.Slides.Paste()
+        # Beregn hvor vi skal sette inn (før de siste 2 slidene)
+        $totalSlides = $presentation.Slides.Count
+        $insertPosition = [Math]::Max(1, $totalSlides - 1)  # Før nest-siste slide
+
+        # Kopier alle slides fra modulen
+        foreach ($slide in $modulePres.Slides) {
+            $slide.Copy()
+            $presentation.Slides.Paste($insertPosition)
+            $insertPosition++
+        }
 
         $modulePres.Close()
     }

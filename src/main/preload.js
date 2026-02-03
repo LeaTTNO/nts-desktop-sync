@@ -6,6 +6,7 @@ const allowedInvokes = [
   "onedrive:import-templates",
   "shell:open-path",
   "flights:search",
+  "farewise:searchFlights",
   "onedrive:auto-sync",
   "onedrive:sync-now"
 ];

@@ -1,3 +1,9 @@
+/**
+ * ⚠️ LOCKED FILE
+ * Farewise integration is working.
+ * DO NOT modify searchFlightsApi, date handling, or open-jaw logic.
+ * UI changes must NOT touch search logic.
+ */
 // Minimal type for FlightInfo to satisfy TypeScript
 import type { FlightInfo } from "../../contexts/FlightInfoContext";
 import React, { useState, useEffect } from "react";
@@ -24,6 +30,7 @@ import { Calendar } from "@/components/ui/calendar";
 import SectionDivider from "@/components/SectionDivider";
 import FlightResultCard from "./FlightResultCard";
 import { useTemplateStore } from "@/store/useTemplateStore";
+import { useFlightStore } from "@/store/useFlightStore";
 
 import {
   Plane,
@@ -52,7 +59,7 @@ import {
   searchFlights,
   FlightOffer,
   airlineNames,
-} from "@/lib/amadeusClient";
+} from "@/lib/flightRobotClient";
 import { useFlightInfo } from "@/contexts/FlightInfoContext";
 
 // =============================================================================
@@ -342,10 +349,20 @@ function processFlightOffers(
   searchInfo?: { date: string; nightsDiff: number }
 ): ProcessedFlight[] {
   return offers.map((offer): ProcessedFlight => {
-    const outboundItinerary = offer.itineraries[0];
-    const inboundItinerary = offer.itineraries[1];
+    const outboundItinerary = offer.itineraries?.[0];
+    const inboundItinerary = offer.itineraries?.[1];
+
+    // Skip offers with missing data
+    if (!outboundItinerary) {
+      console.warn('⚠️ Skipping offer with missing outbound itinerary:', offer.id);
+      return null as any; // Will be filtered out
+    }
 
     const processItinerary = (itinerary: typeof outboundItinerary) => {
+      if (!itinerary?.segments || itinerary.segments.length === 0) {
+        return null;
+      }
+
       const firstSeg = itinerary.segments[0];
       const lastSeg = itinerary.segments[itinerary.segments.length - 1];
       const airlines = [...new Set(itinerary.segments.map(s => s.carrierCode))];
@@ -360,23 +377,31 @@ function processFlightOffers(
         arrival: lastSeg.arrival.iataCode,
         departureTime: firstSeg.departure.at,
         arrivalTime: lastSeg.arrival.at,
-        duration: itinerary.duration,
+        duration: itinerary.duration || "PT0H0M",
         stops,
         airlines: airlines.map(code => airlineNames[code] || code),
         segments: segmentDetails,
       };
     };
 
-    const outDuration = getTotalMinutes(outboundItinerary.duration);
-    const inDuration = inboundItinerary ? getTotalMinutes(inboundItinerary.duration) : 0;
+    const outbound = processItinerary(outboundItinerary);
+    const inbound = inboundItinerary ? processItinerary(inboundItinerary) : undefined;
+
+    if (!outbound) {
+      console.warn('⚠️ Skipping offer with invalid outbound data:', offer.id);
+      return null as any;
+    }
+
+    const outDuration = getTotalMinutes(outbound.duration);
+    const inDuration = inbound ? getTotalMinutes(inbound.duration) : 0;
 
     // Max duration of single leg (not sum) for filtering
     const maxSingleLegDuration = Math.max(outDuration, inDuration);
 
     return {
       id: offer.id,
-      outbound: processItinerary(outboundItinerary),
-      inbound: inboundItinerary ? processItinerary(inboundItinerary) : undefined,
+      outbound,
+      inbound,
       price: parseFloat(offer.price.grandTotal),
       currency: offer.price.currency,
       isRecommended: false,
@@ -386,7 +411,7 @@ function processFlightOffers(
       searchDate: searchInfo?.date,
       nightsDiff: searchInfo?.nightsDiff,
     };
-  });
+  }).filter(Boolean); // Remove null entries
 }
 
 /**
@@ -413,12 +438,17 @@ function categorizeFlights(flights: ProcessedFlight[], t: typeof translations.no
   bestQuality: ProcessedFlight | null;
   cheapestExtended: ProcessedFlight | null;
 } {
+  console.log(`🔍 CATEGORIZE: Received ${flights.length} total flights`);
+  
   // HARD FILTER: Never show flights over 25 hours
   const validFlights = flights.filter(f =>
     f.totalDurationMinutes <= MAX_EXTENDED_DURATION_HOURS * 60
   );
 
+  console.log(`✅ Valid flights (≤25h): ${validFlights.length}`);
+  
   if (validFlights.length === 0) {
+    console.warn('⚠️ NO flights under 25 hours - showing nothing');
     return { bestAndCheapest: null, bestQuality: null, cheapestExtended: null };
   }
 
@@ -426,6 +456,10 @@ function categorizeFlights(flights: ProcessedFlight[], t: typeof translations.no
   const strictFlights = validFlights.filter(f =>
     f.totalDurationMinutes <= MAX_STRICT_DURATION_HOURS * 60 && !f.hasNightFlight
   );
+
+  console.log(`✅ Strict flights (≤22h, no night): ${strictFlights.length}`);
+  console.log(`🌙 Flights with night departures/arrivals: ${validFlights.filter(f => f.hasNightFlight).length}`);
+  console.log(`⏱️ Flights over 22h (but under 25h): ${validFlights.filter(f => f.totalDurationMinutes > MAX_STRICT_DURATION_HOURS * 60).length}`);
 
   // Score strict flights (lower = better: prioritize duration, then connections, then price)
   const scoredStrict = strictFlights
@@ -513,7 +547,6 @@ export default function FlightRobot() {
   // Use date-fns locale for formatting, and DayPicker locale for Calendar
   const dateFnsLocale = language === "da" ? daFns : nbFns;
   const dayPickerLocale: Partial<DayPickerLocale> = language === "da" ? daPicker : nbPicker;
-  const [hasSearched, setHasSearched] = useState(false);
 
   // Flexible options
   const [flexibleDates, setFlexibleDates] = useState(false);
@@ -533,14 +566,25 @@ export default function FlightRobot() {
   const [earliestDateOpen, setEarliestDateOpen] = useState(false);
   const [latestDateOpen, setLatestDateOpen] = useState(false);
 
-  // Results
+  // Results - nå fra Zustand store med auto-persist
   const { savedFlights, addFlight, clearFlights } = useFlightInfo();
-  const [mainResults, setMainResults] = useState<MainResults>({ bestAndCheapest: null, cheapest: null });
-  const [bestQualityResult, setBestQualityResult] = useState<ProcessedFlight | null>(null);
-  const [cheapestExtendedResult, setCheapestExtendedResult] = useState<ProcessedFlight | null>(null);
-  const [flexibleResult, setFlexibleResult] = useState<ProcessedFlight | null>(null);
-  const [extendedStayResult, setExtendedStayResult] = useState<ProcessedFlight | null>(null);
-  const [dateIntervalResult, setDateIntervalResult] = useState<ProcessedFlight | null>(null);
+  const {
+    mainResults,
+    bestQualityResult,
+    cheapestExtendedResult,
+    flexibleResult,
+    extendedStayResult,
+    dateIntervalResult,
+    setMainResults,
+    setBestQualityResult,
+    setCheapestExtendedResult,
+    setFlexibleResult,
+    setExtendedStayResult,
+    setDateIntervalResult,
+    setHasSearched,
+    resetAll: resetFlightStore,
+  } = useFlightStore();
+  const hasSearched = useFlightStore(state => state.hasSearched);
 
   // Hjelpefunksjon for å konvertere ProcessedFlight til FlightInfo
   function toFlightInfo(flight: ProcessedFlight, title: string): FlightInfo {
@@ -574,12 +618,7 @@ export default function FlightRobot() {
   // Nullstill-knapp
   function handleReset() {
     clearFlights();
-    setMainResults({ bestAndCheapest: null, cheapest: null });
-    setBestQualityResult(null);
-    setCheapestExtendedResult(null);
-    setFlexibleResult(null);
-    setExtendedStayResult(null);
-    setDateIntervalResult(null);
+    resetFlightStore();
   }
 
   // Update departure and return when language changes
@@ -613,6 +652,37 @@ export default function FlightRobot() {
 // This will be used to populate placeholders in the "Flyinformation" template slide
 function saveToPowerPointSingle(flight: ProcessedFlight, title: string) {
     try {
+      // Extract segments from rawOffer
+      const segments: any[] = [];
+      
+      if (flight.rawOffer?.itineraries?.[0]?.segments) {
+        flight.rawOffer.itineraries[0].segments.forEach((seg: any) => {
+          const depDate = new Date(seg.departure.at);
+          const arrDate = new Date(seg.arrival.at);
+          segments.push({
+            date: format(depDate, 'dd.MM.yyyy'),
+            from: seg.departure.iataCode,
+            to: seg.arrival.iataCode,
+            time: `${formatTime(seg.departure.at)}–${formatTime(seg.arrival.at)}`,
+            airline: seg.carrierCode || seg.operating?.carrierCode || 'N/A'
+          });
+        });
+      }
+      
+      if (flight.rawOffer?.itineraries?.[1]?.segments) {
+        flight.rawOffer.itineraries[1].segments.forEach((seg: any) => {
+          const depDate = new Date(seg.departure.at);
+          const arrDate = new Date(seg.arrival.at);
+          segments.push({
+            date: format(depDate, 'dd.MM.yyyy'),
+            from: seg.departure.iataCode,
+            to: seg.arrival.iataCode,
+            time: `${formatTime(seg.departure.at)}–${formatTime(seg.arrival.at)}`,
+            airline: seg.carrierCode || seg.operating?.carrierCode || 'N/A'
+          });
+        });
+      }
+
       const flightData: any = {
         period: departureDateStr && returnDateStr ? `${format(new Date(departureDateStr), "dd.MM.yyyy")} - ${format(new Date(returnDateStr), "dd.MM.yyyy")}` : '',
         passengers: passengers,
@@ -621,20 +691,7 @@ function saveToPowerPointSingle(flight: ProcessedFlight, title: string) {
       flightData.flights.push({
         title,
         price: `${flight.price} ${flight.currency}`,
-        outbound: {
-          route: `${flight.outbound.departure} → ${flight.outbound.arrival}`,
-          departure: `${formatTime(flight.outbound.departureTime)} (${formatDate(flight.outbound.departureTime)})`,
-          arrival: `${formatTime(flight.outbound.arrivalTime)} (${formatDate(flight.outbound.arrivalTime)})`,
-          duration: formatDuration(flight.outbound.duration),
-          stops: flight.outbound.stops === 0 ? 'Direkte' : `${flight.outbound.stops}`
-        },
-        inbound: flight.inbound ? {
-          route: `${flight.inbound.departure} → ${flight.inbound.arrival}`,
-          departure: `${formatTime(flight.inbound.departureTime)} (${formatDate(flight.inbound.departureTime)})`,
-          arrival: `${formatTime(flight.inbound.arrivalTime)} (${formatDate(flight.inbound.arrivalTime)})`,
-          duration: formatDuration(flight.inbound.duration),
-          stops: flight.inbound.stops === 0 ? 'Direkte' : `${flight.inbound.stops}`
-        } : null
+        segments
       });
       localStorage.setItem('flyinformasjon-data', JSON.stringify(flightData));
       localStorage.setItem('flyinformasjon-ready', 'true');
@@ -747,8 +804,11 @@ function saveToPowerPointSingle(flight: ProcessedFlight, title: string) {
 
     try {
       // 1. MAIN SEARCH - Always runs, always shows 3 categories
+      console.log('🔍 SEARCH START:', { departure, destination, returnFrom, returnTo, departureDateStr, returnDateStr, pax, currency });
       const mainOffers = await searchFlightsApi(departure, destination, returnFrom, returnTo, departureDateStr, returnDateStr, pax, currency);
+      console.log('📡 API RESPONSE:', mainOffers.length, 'offers received');
       const processedFlights = processFlightOffers(mainOffers);
+      console.log('⚙️ PROCESSED:', processedFlights.length, 'flights after processing');
       const categories = categorizeFlights(processedFlights, t);
 
       // Set all 3 mandatory categories
@@ -761,16 +821,6 @@ function saveToPowerPointSingle(flight: ProcessedFlight, title: string) {
       if (flexibleResult) addFlight(toFlightInfo(flexibleResult, t.cheaperFlexible));
       if (extendedStayResult) addFlight(toFlightInfo(extendedStayResult, t.cheaperExtended));
       if (dateIntervalResult) addFlight(toFlightInfo(dateIntervalResult, t.searchInInterval));
-  // Nullstill-knapp
-  function handleReset() {
-    clearFlights();
-    setMainResults({ bestAndCheapest: null, cheapest: null });
-    setBestQualityResult(null);
-    setCheapestExtendedResult(null);
-    setFlexibleResult(null);
-    setExtendedStayResult(null);
-    setDateIntervalResult(null);
-  }
 
       const basePrice = categories.bestAndCheapest?.price || Infinity;
 
@@ -1272,6 +1322,7 @@ function saveToPowerPointSingle(flight: ProcessedFlight, title: string) {
                   onSave={saveToPowerPointSingle}
                   title={t.bestAndCheapest}
                   childrenCount={includeChildren ? parseInt(children) : 0}
+                  hasNightFlight={mainResults.bestAndCheapest.hasNightFlight}
                 />
               </div>
             </div>
@@ -1297,6 +1348,7 @@ function saveToPowerPointSingle(flight: ProcessedFlight, title: string) {
                 onSave={saveToPowerPointSingle}
                 title={t.beste}
                 childrenCount={includeChildren ? parseInt(children) : 0}
+                hasNightFlight={bestQualityResult.hasNightFlight}
               />
             </div>
           )}
@@ -1321,6 +1373,7 @@ function saveToPowerPointSingle(flight: ProcessedFlight, title: string) {
                 onSave={saveToPowerPointSingle}
                 title={t.cheapest}
                 childrenCount={includeChildren ? parseInt(children) : 0}
+                hasNightFlight={cheapestExtendedResult.hasNightFlight}
               />
             </div>
           )}
@@ -1351,6 +1404,7 @@ function saveToPowerPointSingle(flight: ProcessedFlight, title: string) {
             onSave={saveToPowerPointSingle}
             title={t.cheaperFlexible}
             childrenCount={includeChildren ? parseInt(children) : 0}
+            hasNightFlight={flexibleResult.hasNightFlight}
           />
         </div>
       )}
@@ -1379,6 +1433,7 @@ function saveToPowerPointSingle(flight: ProcessedFlight, title: string) {
             onSave={saveToPowerPointSingle}
             title={t.cheaperExtended}
             childrenCount={includeChildren ? parseInt(children) : 0}
+            hasNightFlight={extendedStayResult.hasNightFlight}
           />
         </div>
       )}
@@ -1407,6 +1462,7 @@ function saveToPowerPointSingle(flight: ProcessedFlight, title: string) {
             onSave={saveToPowerPointSingle}
             title={t.searchInInterval}
             childrenCount={includeChildren ? parseInt(children) : 0}
+            hasNightFlight={dateIntervalResult.hasNightFlight}
           />
         </div>
       )}

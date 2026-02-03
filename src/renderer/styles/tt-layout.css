@@ -27,8 +27,9 @@
   max-width: 1400px;
   padding: 0 24px;
   display: flex;
-  align-items: flex-start;
+  align-items: center;
   justify-content: space-between;
+  height: 95px;
 }
 
 /* LOGO */
@@ -36,25 +37,22 @@
   display: flex;
   align-items: center;
   height: 140px;
+  flex-shrink: 0;
 }
 
 .tt-header-right {
   display: flex;
   flex-direction: column;
-  align-items: flex-end;
+  align-items: center;
   margin-left: auto;
   min-width: 120px;
-}
-
-.tt-logginn-wrap {
-  display: flex;
-  flex-direction: column;
-  align-items: flex-end;
-  gap: 0.5rem;
+  gap: 8px;
 }
 
 .tt-lang-below {
-  margin-top: 8px;
+  display: flex;
+  justify-content: center;
+  transform: scale(0.85);
 }
 .tt-logo {
   height: 140px;
@@ -63,29 +61,26 @@
 /* NAV LINKS */
 .tt-nav-links {
   display: flex;
-  gap: 12px;
+  gap: 32px;
   font-family: "Montserrat", sans-serif;
-  font-size: 13px;
+  font-size: 14px;
   font-weight: 600;
   text-transform: uppercase;
   align-items: center;
+  position: absolute;
+  left: 50%;
+  transform: translateX(-50%);
 }
-
 
 .tt-nav-links a {
   color: white;
   text-decoration: none;
-  padding: 10px 26px;
-  border-radius: 30px;
-  border: 1px solid rgba(255,255,255,0.8);
-  background-color: rgba(255,255,255,0.25);
   cursor: pointer;
-  backdrop-filter: blur(4px);
-  transition: all 0.2s;
+  transition: opacity 0.2s;
 }
 
 .tt-nav-links a:hover {
-  background-color: rgba(255,255,255,0.4);
+  opacity: 0.7;
 }
 
 /* FLOATING TABS */

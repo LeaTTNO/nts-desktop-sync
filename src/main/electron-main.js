@@ -32,19 +32,21 @@ app.commandLine.appendSwitch("disable-software-rasterizer");
    🔐 ENV
 -------------------------------------------------- */
 
-const FLIGHTROBOT_BASE_URL = process.env.FLIGHTROBOT_BASE_URL || "https://api.farewise.dk";
+const FLIGHTROBOT_BASE_URL = process.env.FLIGHTROBOT_BASE_URL || "https://www.farewise.no";
 const FLIGHTROBOT_AUTH_GUID = process.env.FLIGHTROBOT_AUTH_GUID;
 
 // Region-spesifikke innstillinger
 const FAREWISE_REGIONS = {
   no: {
     baseUrl: "https://api.farewise.dk",
+    currency: "NOK",
     customerId: 17179,
     customerName: "Tanzania Tours ApS",
   },
   da: {
     baseUrl: "https://api.farewise.dk",
-    customerId: 1280,
+    currency: "DKK",
+    customerId: 17179,
     customerName: "Tanzania Tours ApS",
   },
 };
@@ -55,7 +57,54 @@ console.log("ENV CHECK", {
 });
 
 /* --------------------------------------------------
-   🔁 RATE LIMIT (Farewise)
+   � FAREWISE LOGIN
+-------------------------------------------------- */
+const FAREWISE_USERNAME = "tan6170";
+const FAREWISE_PASSWORD = "PongweBH!";
+let farewiseCookies = null;
+
+async function loginToFarewise(language = "no") {
+  const region = FAREWISE_REGIONS[language] || FAREWISE_REGIONS.no;
+  const loginUrl = language === "no" 
+    ? "https://www.farewise.no/api/accountApi/login"
+    : "https://www.farewise.dk/api/accountApi/login";
+
+  console.log(`🔐 Logging in to Farewise (${language.toUpperCase()})...`);
+
+  const res = await fetch(loginUrl, {
+    method: "POST",
+    headers: {
+      "Accept": "application/json, text/plain, */*",
+      "Accept-Language": "da-DK,da;q=0.9,en-US;q=0.8,en;q=0.7",
+      "Content-Type": "application/json;charset=UTF-8",
+      "Referer": language === "no" ? "https://www.farewise.no/nd/login" : "https://www.farewise.dk/nd/login",
+      "Origin": language === "no" ? "https://www.farewise.no" : "https://www.farewise.dk",
+    },
+    credentials: "include",
+    body: JSON.stringify({
+      username: FAREWISE_USERNAME,
+      password: FAREWISE_PASSWORD,
+    }),
+  });
+
+  if (!res.ok) {
+    const errorText = await res.text();
+    console.error(`❌ Login failed: ${res.status}`, errorText.substring(0, 500));
+    throw new Error(`Login failed: ${res.status} - ${errorText.substring(0, 200)}`);
+  }
+
+  // Extract cookies from response
+  const setCookie = res.headers.raw()['set-cookie'];
+  if (setCookie) {
+    farewiseCookies = setCookie.join('; ');
+    console.log("✅ Login successful, cookies received");
+  }
+
+  return await res.json();
+}
+
+/* --------------------------------------------------
+   �🔁 RATE LIMIT (Farewise)
 -------------------------------------------------- */
 let lastRequest = 0;
 async function rateLimit(ms = 500) {
@@ -87,14 +136,19 @@ async function searchFlightsMain(params) {
   // Velg riktig region basert på språk
   const region = FAREWISE_REGIONS[language] || FAREWISE_REGIONS.no;
 
+  // Login hvis vi ikke har cookies
+  if (!farewiseCookies) {
+    await loginToFarewise(language);
+  }
+
   // Bygg Farewise request body
   const legs = [];
   
-  // Outbound leg
+  // Outbound leg - convert date to timezone format (+01 for Europe/Oslo)
   legs.push({
     departure: originLocationCode,
     arrival: destinationLocationCode,
-    date: departureDate,
+    date: departureDate.includes('T') ? departureDate : `${departureDate}T00:00:00+01`,
   });
 
   // Return leg (open-jaw supported)
@@ -102,7 +156,7 @@ async function searchFlightsMain(params) {
     legs.push({
       departure: returnOriginCode || destinationLocationCode,
       arrival: params.returnDestinationCode || originLocationCode,
-      date: returnDate,
+      date: returnDate.includes('T') ? returnDate : `${returnDate}T00:00:00+01`,
     });
   }
 
@@ -138,11 +192,17 @@ async function searchFlightsMain(params) {
 
   console.log(`Farewise ${language.toUpperCase()} API Request:`, JSON.stringify(requestBody, null, 2));
 
-  const res = await fetch(`${region.baseUrl}/v30/flight/recommendations/search`, {
+  // Bruk riktig endpoint basert på region
+  const apiUrl = language === "no"
+    ? "https://www.farewise.no/api/recommendations/search"
+    : "https://www.farewise.dk/api/recommendations/search";
+
+  const res = await fetch(apiUrl, {
     method: "POST",
     headers: {
       "Content-Type": "application/json;charset=UTF-8",
       "Accept": "application/json, text/plain, */*",
+      "Cookie": farewiseCookies || "",
     },
     body: JSON.stringify(requestBody),
   });
@@ -159,7 +219,12 @@ async function searchFlightsMain(params) {
   
   // Hvis ingen resultater, returner tom array
   if (!result?.recommendations || result.recommendations.length === 0) {
-    console.warn("Farewise returned no recommendations. Full response:", result);
+    console.warn("⚠️ Farewise returned no recommendations.");
+    console.warn("🔍 This may mean:");
+    console.warn("  1. customerId does not have access to flight search");
+    console.warn("  2. Route/dates have no availability");
+    console.warn("  3. Search parameters are invalid");
+    console.warn("Full response:", result);
     return { data: [] };
   }
   
@@ -181,42 +246,63 @@ function convertFarewiseToAmadeus(farewiseData) {
   }
 
   const amadeusOffers = recommendations.map((rec, index) => {
-    // Konverter Farewise itineraries til Amadeus segments
-    const itineraries = (rec.itineraries || []).map(itinerary => {
-      const segments = (itinerary.segments || []).map(seg => ({
+    // Farewise har options[0].legs[] istedenfor itineraries[]
+    const firstOption = rec.options?.[0];
+    if (!firstOption || !firstOption.legs) {
+      console.warn(`⚠️ Recommendation ${rec.id} missing options or legs`);
+      return null;
+    }
+
+    // Convert Farewise legs to Amadeus itineraries
+    const itineraries = firstOption.legs.map(leg => {
+      const segments = (leg.segments || []).map(seg => ({
         departure: {
-          iataCode: seg.departureAirport?.iataCode || seg.departure || "",
-          at: seg.departureTime || seg.departureDateTime || "",
+          iataCode: seg.departure?.code || "",
+          at: seg.departure?.date || "",
         },
         arrival: {
-          iataCode: seg.arrivalAirport?.iataCode || seg.arrival || "",
-          at: seg.arrivalTime || seg.arrivalDateTime || "",
+          iataCode: seg.arrival?.code || "",
+          at: seg.arrival?.date || "",
         },
-        carrierCode: seg.carrierCode || seg.airline || "",
-        number: String(seg.flightNumber || seg.number || ""),
+        carrierCode: seg.marketingCarrier || "",
+        number: String(seg.number || ""),
         duration: seg.duration || "PT0H",
-        numberOfStops: seg.stops || 0,
       }));
 
+      // Calculate total duration from segments
+      const totalMinutes = segments.reduce((total, seg) => {
+        const match = seg.duration.match(/PT(\d+)H(\d+)M/);
+        if (match) {
+          return total + parseInt(match[1]) * 60 + parseInt(match[2]);
+        }
+        return total;
+      }, 0);
+      const hours = Math.floor(totalMinutes / 60);
+      const minutes = totalMinutes % 60;
+
       return {
-        duration: itinerary.totalDuration || itinerary.duration || "PT0H",
+        duration: `PT${hours}H${minutes}M`,
         segments,
       };
     });
 
+    // Get price from recommendation
+    const priceTotal = firstOption.total || rec.total || 0;
+
     return {
       id: rec.id || `farewise-${index}`,
       price: {
-        total: String(rec.price?.total || rec.totalPrice || 0),
-        currency: rec.price?.currency || rec.currency || "DKK",
-        grandTotal: String(rec.price?.grandTotal || rec.price?.total || rec.totalPrice || 0),
+        total: String(priceTotal),
+        currency: rec.currency || "NOK",
+        grandTotal: String(priceTotal),
       },
       itineraries,
-      validatingAirlineCodes: rec.validatingCarriers || rec.airlines || [],
-      numberOfBookableSeats: rec.availableSeats || 9,
+      validatingAirlineCodes: [rec.carrier?.code || ""],
+      numberOfBookableSeats: 9,
     };
-  });
+  }).filter(Boolean); // Remove nulls
 
+  console.log(`✅ Converted ${amadeusOffers.length} Farewise offers to Amadeus format`);
   return { data: amadeusOffers };
 }
 
@@ -279,7 +365,7 @@ ipcMain.handle("ppt:open-temp", async (_, { data, fileName }) => {
  * - LAGRER IKKE (bruker lagrer selv)
  */
 ipcMain.handle("ppt:build-in-open-powerpoint", async (_, payload) => {
-  const { basePath, modulePaths, departureDate } = payload;
+  const { basePath, modulePaths, departureDate, language, flightData } = payload;
 
   return new Promise((resolve, reject) => {
     const scriptPath = path.join(__dirname, "ppt-build.ps1");
@@ -299,10 +385,10 @@ ipcMain.handle("ppt:build-in-open-powerpoint", async (_, payload) => {
           console.error("PowerPoint build error:", stderr || error);
           reject(stderr || error.message);
         } else {
-          // Kjør DG/DTO-parvis etter at PowerPoint er bygget
+          // Kjør DG/DTO-parvis og flyinformasjon etter at PowerPoint er bygget
           try {
             const ole = require('win32ole');
-            const { replaceDgDtoPairwise } = require('./ppt-dg-dto.js');
+            const { replaceDgDtoPairwise, insertFlightInformation } = require('./ppt-dg-dto.js');
             const pptApp = ole.client.Dispatch('PowerPoint.Application');
             // Finn åpen presentasjon basert på basePath
             let pres = null;
@@ -315,6 +401,10 @@ ipcMain.handle("ppt:build-in-open-powerpoint", async (_, payload) => {
             }
             if (!pres) throw new Error('Fant ikke åpen presentasjon for DG/DTO');
             replaceDgDtoPairwise(pres, departureDate || null);
+            // Sett inn flyinformasjon hvis tilgjengelig
+            if (flightData && flightData.flights && flightData.flights.length > 0) {
+              insertFlightInformation(pres, flightData, language || 'no');
+            }
             resolve({ ok: true });
           } catch (err) {
             reject('DG/DTO-feil: ' + err.message);
@@ -372,7 +462,7 @@ function createWindow() {
     maximizable: true,        // tillatt
     center: true,
 
-    icon: path.join(__dirname, "../../build/icon.ico"),
+    icon: path.join(__dirname, "../../public/logo-white.ico"),
     webPreferences: {
       preload: path.join(__dirname, "preload.js"),
       contextIsolation: true,

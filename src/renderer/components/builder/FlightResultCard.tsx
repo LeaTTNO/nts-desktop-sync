@@ -4,7 +4,7 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Plane, Copy, Check, Clock, ArrowRight, Users, Timer, ChevronDown, ChevronUp, FileDown } from "lucide-react";
 import { toast } from "sonner";
-import { FlightOffer, airportNames } from "@/lib/amadeusClient";
+import { FlightOffer, airportNames } from "@/lib/flightRobotClient";
 
 interface FlightLeg {
   departure: string;
@@ -52,6 +52,7 @@ interface FlightResultCardProps {
   onSave?: (flight: ProcessedFlight, title: string) => void;
   title?: string;
   childrenCount?: number;
+  hasNightFlight?: boolean;
 }
 
 export default function FlightResultCard({
@@ -64,6 +65,7 @@ export default function FlightResultCard({
   onSave,
   title = "",
   childrenCount = 0,
+  hasNightFlight = false,
 }: FlightResultCardProps) {
   const [copied, setCopied] = useState(false);
   const [showOutboundDetails, setShowOutboundDetails] = useState(false);
@@ -122,17 +124,17 @@ export default function FlightResultCard({
   const inboundLayovers = getLayoverData(1);
   const availableSeats = flight.rawOffer?.numberOfBookableSeats;
 
-  const copyToClipboard = () => {
-    // Detaljert tabell med alle flysegmenter - fast kolonnestørrelse
+  const copyToClipboard = async () => {
     const airline = flight.outbound.airlines[0] || "Flyreise";
-    
-    // Rund opp til nærmeste 50 kr
     const roundedPrice = Math.ceil(flight.price / 50) * 50;
     
-    let text = `${airline}\n`;
-    text += `${'─'.repeat(90)}\n`;
+    const formatShortDate = (isoDateTime: string): string => {
+      const date = new Date(isoDateTime);
+      const day = String(date.getDate()).padStart(2, '0');
+      const monthShort = date.toLocaleDateString(language === 'da' ? 'da-DK' : 'nb-NO', { month: 'short' });
+      return `${day}.${monthShort}`;
+    };
     
-    // Funksjon for å hente alle segmenter fra rawOffer
     const getSegments = (itineraryIndex: number) => {
       if (!flight.rawOffer?.itineraries?.[itineraryIndex]) return [];
       return flight.rawOffer.itineraries[itineraryIndex].segments;
@@ -141,239 +143,246 @@ export default function FlightResultCard({
     const outboundSegments = getSegments(0);
     const inboundSegments = getSegments(1);
     
-    // UTREISE - alle segmenter med fast kolonnebredde
+    // Build HTML table
+    let htmlTable = `<table border="1" cellpadding="6" cellspacing="0" style="border-collapse: collapse; font-family: Arial, sans-serif; font-size: 12px;">
+  <thead>
+    <tr style="background-color: #f0f0f0;">
+      <th style="text-align: left; padding: 8px;">Flyselskap</th>
+      <th style="text-align: left; padding: 8px;">Dato</th>
+      <th style="text-align: left; padding: 8px;">Rute</th>
+      <th style="text-align: left; padding: 8px;">Tid</th>
+    </tr>
+  </thead>
+  <tbody>`;
+    
+    // UTREISE - Each segment as a row
     if (outboundSegments.length > 0) {
       outboundSegments.forEach((seg) => {
         const fromCity = airportNames[seg.departure.iataCode] || seg.departure.iataCode;
         const toCity = airportNames[seg.arrival.iataCode] || seg.arrival.iataCode;
-        const date = formatDate(seg.departure.at);
+        const date = formatShortDate(seg.departure.at);
         const depTime = formatTime(seg.departure.at);
         const arrTime = formatTime(seg.arrival.at);
         
-        // Sjekk om ankomst er neste dag
         const depDate = new Date(seg.departure.at);
         const arrDate = new Date(seg.arrival.at);
-        const nextDay = arrDate.getDate() !== depDate.getDate() ? '+1' : '';
+        const nextDay = arrDate.getDate() !== depDate.getDate() ? ' +1' : '';
         
-        // Fast kolonnebredde: Flyselskap(20) Dato(15) Fra(20) -(5) Til(20) Tider
-        const airlineCol = airline.padEnd(20, ' ');
-        const dateCol = date.padEnd(15, ' ');
-        const fromCol = fromCity.padEnd(20, ' ');
-        const separator = '  -  '; // 5 tegn
-        const toCol = toCity.padEnd(20, ' ');
-        const times = `${depTime} - ${arrTime}${nextDay}`;
-        
-        text += `${airlineCol}${dateCol}${fromCol}${separator}${toCol}${times}\n`;
+        htmlTable += `
+    <tr>
+      <td style="padding: 6px;">${airline}</td>
+      <td style="padding: 6px;">${date}</td>
+      <td style="padding: 6px;">${fromCity} → ${toCity}</td>
+      <td style="padding: 6px;">${depTime} – ${arrTime}${nextDay}</td>
+    </tr>`;
       });
     }
     
-    // HJEMREISE - alle segmenter med fast kolonnebredde
+    // HJEMREISE - Each segment as a row
     if (inboundSegments.length > 0) {
       inboundSegments.forEach((seg) => {
         const fromCity = airportNames[seg.departure.iataCode] || seg.departure.iataCode;
         const toCity = airportNames[seg.arrival.iataCode] || seg.arrival.iataCode;
-        const date = formatDate(seg.departure.at);
+        const date = formatShortDate(seg.departure.at);
         const depTime = formatTime(seg.departure.at);
         const arrTime = formatTime(seg.arrival.at);
         
-        // Sjekk om ankomst er neste dag
         const depDate = new Date(seg.departure.at);
         const arrDate = new Date(seg.arrival.at);
-        const nextDay = arrDate.getDate() !== depDate.getDate() ? '+1' : '';
+        const nextDay = arrDate.getDate() !== depDate.getDate() ? ' +1' : '';
         
-        // Fast kolonnebredde: Flyselskap(20) Dato(15) Fra(20) -(5) Til(20) Tider
-        const airlineCol = airline.padEnd(20, ' ');
-        const dateCol = date.padEnd(15, ' ');
-        const fromCol = fromCity.padEnd(20, ' ');
-        const separator = '  -  '; // 5 tegn
-        const toCol = toCity.padEnd(20, ' ');
-        const times = `${depTime} - ${arrTime}${nextDay}`;
-        
-        text += `${airlineCol}${dateCol}${fromCol}${separator}${toCol}${times}\n`;
+        htmlTable += `
+    <tr>
+      <td style="padding: 6px;">${airline}</td>
+      <td style="padding: 6px;">${date}</td>
+      <td style="padding: 6px;">${fromCity} → ${toCity}</td>
+      <td style="padding: 6px;">${depTime} – ${arrTime}${nextDay}</td>
+    </tr>`;
       });
     }
     
-    text += `${'─'.repeat(90)}\n`;
+    htmlTable += `
+  </tbody>
+</table>`;
     
-    // Pris med avrunding og fast tekst
+    // Add price below table
+    let priceText = '';
     if (language === "no") {
-      text += `Pris: kr ${roundedPrice.toLocaleString('nb-NO')} per person +innenriksflyene og 800 kr i utstedelsesgebyr`;
+      priceText = `<p style="margin-top: 16px; font-family: Arial, sans-serif; font-size: 12px;">Pris: kr ${roundedPrice.toLocaleString('nb-NO')} per person<br>(Innenriksfly + kr 800 utstedelsesgebyr)</p>`;
       
-      // Barnepris (75% av voksenpris)
       if (childrenCount > 0) {
         const childPrice = Math.ceil((flight.price * 0.75) / 50) * 50;
-        text += `\nBarnepris (${childrenCount} barn): kr ${childPrice.toLocaleString('nb-NO')} per barn`;
+        priceText += `<p style="font-family: Arial, sans-serif; font-size: 12px;">Barnepris (${childrenCount} barn): kr ${childPrice.toLocaleString('nb-NO')} per barn</p>`;
       }
     } else {
-      text += `Pris: kr ${roundedPrice.toLocaleString('da-DK')} per person +indenrigsfly og 500 kr i udstedelsesgebyr`;
+      priceText = `<p style="margin-top: 16px; font-family: Arial, sans-serif; font-size: 12px;">Pris: kr ${roundedPrice.toLocaleString('da-DK')} per person<br>(Indenrigsfly + kr 500 udstedelsesgebyr)</p>`;
       
-      // Barnepris (75% av voksenpris)
       if (childrenCount > 0) {
         const childPrice = Math.ceil((flight.price * 0.75) / 50) * 50;
-        text += `\nBørnepris (${childrenCount} børn): kr ${childPrice.toLocaleString('da-DK')} per barn`;
+        priceText += `<p style="font-family: Arial, sans-serif; font-size: 12px;">Børnepris (${childrenCount} børn): kr ${childPrice.toLocaleString('da-DK')} per barn</p>`;
       }
     }
     
-    navigator.clipboard.writeText(text);
-    setCopied(true);
-    toast.success(t.copied);
+    const fullHtml = htmlTable + priceText;
+    
+    // Copy as HTML to clipboard
+    try {
+      await navigator.clipboard.write([
+        new ClipboardItem({
+          'text/html': new Blob([fullHtml], { type: 'text/html' }),
+        })
+      ]);
+      setCopied(true);
+      toast.success(t.copied);
+    } catch (err) {
+      console.error('Failed to copy HTML:', err);
+      toast.error('Kunne ikke kopiere');
+    }
     setTimeout(() => setCopied(false), 2000);
   };
 
-  const renderLeg = (leg: FlightLeg, label: string, layovers: Array<{airport: string, city: string, arrivalTime: string, departureTime: string, duration: string, arrivalDate: string, departureDate: string}>, isExpanded: boolean, toggleExpanded: () => void) => (
-    <div className="space-y-2">
-      <div className="flex items-center gap-2">
-        <span className="text-xs font-semibold text-primary uppercase tracking-wider">
-          {label}
-        </span>
-        <span className="text-xs text-muted-foreground">
-          {formatDate(leg.departureTime)}
-        </span>
-      </div>
-      
-      <div className="flex items-center gap-4">
-        {/* Departure */}
-        <div className="text-center min-w-[60px]">
-          <div className="text-lg font-bold">{formatTime(leg.departureTime)}</div>
-          <div className="text-sm font-medium">{leg.departure}</div>
+  const renderLeg = (leg: FlightLeg, label: string, layovers: Array<{airport: string, city: string, arrivalTime: string, departureTime: string, duration: string, arrivalDate: string, departureDate: string}>, isExpanded: boolean, toggleExpanded: () => void, itineraryIndex: number) => {
+    const getSegments = (idx: number) => {
+      if (!flight.rawOffer?.itineraries?.[idx]) return [];
+      return flight.rawOffer.itineraries[idx].segments;
+    };
+
+    const segments = getSegments(itineraryIndex);
+    const hasLayovers = layovers.length > 0;
+    const connectionCities = layovers.map(l => l.city).join(", ");
+
+    return (
+      <div className="space-y-3">
+        <div className="space-y-2">
+          <div className="text-xs font-semibold text-primary uppercase tracking-wider">
+            {label}
+          </div>
+          
+          <div className="space-y-1">
+            <div className="flex items-center gap-3 flex-wrap">
+              <div className="flex items-center gap-2 text-xl font-bold">
+                <span>{leg.departure}</span>
+                <ArrowRight className="h-5 w-5 text-primary" />
+                <span>{leg.arrival}</span>
+              </div>
+              
+              <div className="font-medium text-sm text-muted-foreground">
+                {formatDate(leg.departureTime)} · {formatTime(leg.departureTime)} – {formatTime(leg.arrivalTime)}
+              </div>
+              
+              {hasLayovers && (
+                <div className="text-sm text-muted-foreground">
+                  via {connectionCities}
+                </div>
+              )}
+              
+              <div className="flex items-center gap-1 text-xs text-muted-foreground">
+                <Clock className="h-3 w-3" />
+                {formatDuration(leg.duration)}
+              </div>
+            </div>
+            
+            <div className="text-xs text-muted-foreground">
+              {leg.airlines.join(" · ")}
+            </div>
+          </div>
         </div>
 
-        {/* Flight Path */}
-        <div className="flex-1 flex flex-col items-center gap-1">
-          <div className="text-xs text-muted-foreground flex items-center gap-1">
-            <Clock className="h-3 w-3" />
-            {formatDuration(leg.duration)}
-          </div>
-          <div className="w-full flex items-center gap-1">
-            <div className="h-px flex-1 bg-border" />
-            <Plane className="h-3 w-3 text-primary" />
-            <ArrowRight className="h-3 w-3 text-muted-foreground" />
-            <div className="h-px flex-1 bg-border" />
-          </div>
-          <div className="text-xs text-muted-foreground">
-            {getStopsText(leg.stops)}
-          </div>
-        </div>
+        {hasLayovers && (
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={toggleExpanded}
+            className="text-xs h-7 gap-1 px-2 -mt-1"
+          >
+            {isExpanded ? (
+              <>
+                <ChevronUp className="h-3 w-3" />
+                {t.hideDetails}
+              </>
+            ) : (
+              <>
+                <ChevronDown className="h-3 w-3" />
+                {t.showDetails}
+              </>
+            )}
+          </Button>
+        )}
 
-        {/* Arrival */}
-        <div className="text-center min-w-[60px]">
-          <div className="text-lg font-bold">{formatTime(leg.arrivalTime)}</div>
-          <div className="text-sm font-medium">{leg.arrival}</div>
-        </div>
-      </div>
-
-      {/* Airlines - always show */}
-      <div className="text-xs text-muted-foreground">
-        {leg.airlines.join(" · ")}
-      </div>
-
-      {/* Toggle details button - only show if there are layovers */}
-      {layovers.length > 0 && (
-        <Button
-          variant="ghost"
-          size="sm"
-          onClick={toggleExpanded}
-          className="w-full text-xs h-7 gap-1"
-        >
-          {isExpanded ? (
-            <>
-              <ChevronUp className="h-3 w-3" />
-              {t.hideDetails}
-            </>
-          ) : (
-            <>
-              <ChevronDown className="h-3 w-3" />
-              {t.showDetails}
-            </>
-          )}
-        </Button>
-      )}
-
-      {/* Expanded details - segments and layovers */}
-      {isExpanded && layovers.length > 0 && (
-        <div className="pt-3 pb-2 space-y-2 border-t border-border/30">
-          <div className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-2">
-            Mellomlandinger
-          </div>
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-            {layovers.map((layover, idx) => {
+        {isExpanded && segments.length > 0 && (
+          <div className="ml-4 pl-3 border-l-2 border-muted/40 space-y-2 pt-1">
+            {segments.map((seg, idx) => {
+              const fromCode = seg.departure.iataCode;
+              const toCode = seg.arrival.iataCode;
+              const fromCity = airportNames[fromCode] || fromCode;
+              const toCity = airportNames[toCode] || toCode;
+              const depTime = formatTime(seg.departure.at);
+              const arrTime = formatTime(seg.arrival.at);
+              const segDate = formatDate(seg.departure.at);
+              
+              const depDate = new Date(seg.departure.at);
+              const arrDate = new Date(seg.arrival.at);
+              const nextDay = arrDate.getDate() !== depDate.getDate() ? ' (+1)' : '';
+              
               return (
-                <div 
-                  key={idx}
-                  className="p-3 bg-gradient-to-br from-muted/30 to-muted/50 border border-border/40 rounded-lg hover:border-primary/30 transition-colors"
-                >
-                  {/* Header med nummer og by */}
-                  <div className="flex items-center gap-2 mb-2">
-                    <div className="flex items-center justify-center w-6 h-6 bg-primary text-primary-foreground rounded-full text-xs font-bold flex-shrink-0">
-                      {idx + 1}
-                    </div>
-                    <div className="font-semibold text-sm text-foreground">
-                      {layover.city}
-                    </div>
-                    <div className="text-xs text-muted-foreground">
-                      ({layover.airport})
-                    </div>
+                <div key={idx} className="text-sm">
+                  <div className="flex items-center gap-2 text-muted-foreground">
+                    <span className="font-medium text-foreground/90">
+                      {fromCity} ({fromCode})
+                    </span>
+                    <span>–</span>
+                    <span className="font-medium text-foreground/90">
+                      {toCity} ({toCode})
+                    </span>
                   </div>
-
-                  {/* Tider i grid */}
-                  <div className="space-y-1.5 text-xs">
-                    <div className="flex items-center justify-between">
-                      <span className="text-muted-foreground">Landing:</span>
-                      <div className="flex items-center gap-2">
-                        <span className="font-semibold text-foreground">{layover.arrivalTime}</span>
-                        <span className="text-[10px] text-muted-foreground">{layover.arrivalDate}</span>
-                      </div>
-                    </div>
-                    <div className="flex items-center justify-between">
-                      <span className="text-muted-foreground">Avgang:</span>
-                      <div className="flex items-center gap-2">
-                        <span className="font-semibold text-foreground">{layover.departureTime}</span>
-                        <span className="text-[10px] text-muted-foreground">{layover.departureDate}</span>
-                      </div>
-                    </div>
-                    <div className="flex items-center justify-between pt-1 border-t border-border/30">
-                      <div className="flex items-center gap-1">
-                        <Timer className="h-3 w-3 text-primary" />
-                        <span className="text-muted-foreground">Ventetid:</span>
-                      </div>
-                      <span className="font-bold text-primary">{layover.duration}</span>
-                    </div>
+                  <div className="text-xs font-mono text-muted-foreground mt-0.5">
+                    {segDate} · {depTime} – {arrTime}{nextDay}
                   </div>
+                  
+                  {idx < segments.length - 1 && layovers[idx] && (
+                    <div className="flex items-center gap-1.5 mt-1 text-[11px] text-muted-foreground/70">
+                      <Timer className="h-3 w-3" />
+                      <span>
+                        {layoverText} {layovers[idx].duration}
+                      </span>
+                    </div>
+                  )}
                 </div>
               );
             })}
           </div>
-        </div>
-      )}
-    </div>
-  );
+        )}
+      </div>
+    );
+  };
 
   return (
      <Card className="w-full overflow-hidden border-border/50">
       <CardContent className="pt-6">
         <div className="flex flex-col lg:flex-row items-start gap-6">
-          {/* Flight Details */}
           <div className="flex-1 space-y-6">
-            {/* Recommended Badge */}
             {flight.isRecommended && (
               <Badge variant="default" className="bg-primary/10 text-primary border-primary/20">
                 ⭐ {flight.recommendReason || t.recommended}
               </Badge>
             )}
+            
+            {hasNightFlight && (
+              <Badge variant="destructive" className="bg-orange-100 text-orange-800 border-orange-300">
+                ⚠️ {language === "no" ? "NB: Avgang/ankomst om natten (00:00-05:55)" : "NB: Afgang/ankomst om natten (00:00-05:55)"}
+              </Badge>
+            )}
 
-            {/* Outbound */}
-            {renderLeg(flight.outbound, t.outbound, outboundLayovers, showOutboundDetails, () => setShowOutboundDetails(!showOutboundDetails))}
+            {renderLeg(flight.outbound, t.outbound, outboundLayovers, showOutboundDetails, () => setShowOutboundDetails(!showOutboundDetails), 0)}
 
-            {/* Inbound */}
             {flight.inbound && (
               <>
                 <div className="border-t border-border/50" />
-                {renderLeg(flight.inbound, t.inbound, inboundLayovers, showInboundDetails, () => setShowInboundDetails(!showInboundDetails))}
+                {renderLeg(flight.inbound, t.inbound, inboundLayovers, showInboundDetails, () => setShowInboundDetails(!showInboundDetails), 1)}
               </>
             )}
           </div>
 
-          {/* Price & Actions */}
           <div className="lg:border-l lg:pl-6 lg:min-w-[180px] flex flex-col justify-between">
             <div className="text-center lg:text-right">
               <div className="text-2xl font-bold text-primary">
@@ -383,7 +392,6 @@ export default function FlightResultCard({
                 {t.perPerson}
               </div>
               
-              {/* Child price */}
               {childrenCount > 0 && (
                 <div className="mt-2">
                   <div className="text-lg font-semibold text-foreground">
@@ -395,7 +403,6 @@ export default function FlightResultCard({
                 </div>
               )}
               
-              {/* Available seats */}
               {availableSeats && (
                 <div className="flex items-center justify-center lg:justify-end gap-1 mt-2 text-xs text-muted-foreground">
                   <Users className="h-3 w-3" />

@@ -1,5 +1,5 @@
 // Context for sharing flight information between FlightRobot and TravelProgramBuilder
-import React, { createContext, useContext, useState, ReactNode } from 'react';
+import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
 
 export interface FlightInfo {
   id: string;
@@ -34,8 +34,28 @@ interface FlightInfoContextType {
 
 const FlightInfoContext = createContext<FlightInfoContextType | undefined>(undefined);
 
+const STORAGE_KEY = 'saved-flights';
+
 export const FlightInfoProvider = ({ children }: { children: ReactNode }) => {
-  const [savedFlights, setSavedFlights] = useState<FlightInfo[]>([]);
+  // Initialize from localStorage
+  const [savedFlights, setSavedFlights] = useState<FlightInfo[]>(() => {
+    try {
+      const stored = localStorage.getItem(STORAGE_KEY);
+      return stored ? JSON.parse(stored) : [];
+    } catch (error) {
+      console.error('Failed to load saved flights:', error);
+      return [];
+    }
+  });
+
+  // Persist to localStorage whenever savedFlights changes
+  useEffect(() => {
+    try {
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(savedFlights));
+    } catch (error) {
+      console.error('Failed to save flights:', error);
+    }
+  }, [savedFlights]);
 
   const addFlight = (flight: FlightInfo) => {
     setSavedFlights(prev => {
@@ -51,6 +71,7 @@ export const FlightInfoProvider = ({ children }: { children: ReactNode }) => {
 
   const clearFlights = () => {
     setSavedFlights([]);
+    localStorage.removeItem(STORAGE_KEY);
   };
 
   return (

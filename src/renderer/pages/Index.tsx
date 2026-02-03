@@ -12,6 +12,8 @@ import "../styles/tt-layout.css";
 
 import logoWhite from "@/assets/logo-white.png";
 import giraffeBg from "@/assets/savana.jpg";
+import flyrobottBg from "@/assets/flyrobott.jpg";
+import malBibBg from "@/assets/mal-bib.jpg";
 import giraffeHead from "@/assets/Giraffe-head.png";
 import titleDivider from "@/assets/title-divider.png";
 
@@ -30,11 +32,19 @@ export default function Index() {
     }
   };
 
+  const getBackgroundImage = () => {
+    switch (activeTab) {
+      case "builder": return giraffeBg;
+      case "flight": return flyrobottBg;
+      case "library": return malBibBg;
+    }
+  };
+
   return (
     <FlightInfoProvider>
       <div
         className="layout-root"
-        style={{ backgroundImage: `url(${giraffeBg})` }}
+        style={{ backgroundImage: `url(${getBackgroundImage()})` }}
       >
 
         {/* TOP BAR */}
@@ -51,14 +61,12 @@ export default function Index() {
             </nav>
 
             <div className="tt-header-right">
-              <div className="tt-logginn-wrap">
-                <UserMenu />
-                <div className="tt-lang-below">
-                  <LanguageToggle
-                    language={language}
-                    onLanguageChange={setLanguage}
-                  />
-                </div>
+              <UserMenu />
+              <div className="tt-lang-below">
+                <LanguageToggle
+                  language={language}
+                  onLanguageChange={setLanguage}
+                />
               </div>
             </div>
           </div>
@@ -114,11 +122,15 @@ export default function Index() {
               </div>
 
               <div className="tt-content-card">
-                {activeTab === "builder" && (
+                <div style={{ display: activeTab === "builder" ? "block" : "none" }}>
                   <TravelProgramBuilder language={language} />
-                )}
-                {activeTab === "flight" && <FlightRobot />}
-                {activeTab === "library" && <TemplateLibrary />}
+                </div>
+                <div style={{ display: activeTab === "flight" ? "block" : "none" }}>
+                  <FlightRobot />
+                </div>
+                <div style={{ display: activeTab === "library" ? "block" : "none" }}>
+                  <TemplateLibrary />
+                </div>
               </div>
 
             </div>
