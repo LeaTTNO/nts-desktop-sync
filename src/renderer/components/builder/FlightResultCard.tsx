@@ -75,12 +75,8 @@ export default function FlightResultCard({
   const layoverText = language === "da" ? "ventetid" : "ventetid";
 
   const formatPrice = (price: number, currency: string) => {
-    return new Intl.NumberFormat(language === "da" ? "da-DK" : "nb-NO", {
-      style: "currency",
-      currency,
-      minimumFractionDigits: 0,
-      maximumFractionDigits: 0,
-    }).format(price);
+    const formattedNumber = Math.round(price).toLocaleString(language === "da" ? "da-DK" : "nb-NO");
+    return `${formattedNumber} ${currency}`;
   };
 
   const getStopsText = (stops: number) => {
@@ -335,18 +331,19 @@ export default function FlightResultCard({
                       {toCity} ({toCode})
                     </span>
                   </div>
-                  <div className="text-xs font-mono text-muted-foreground mt-0.5">
+                  <div className="text-sm font-semibold text-foreground mt-1">
                     {segDate} · {depTime} – {arrTime}{nextDay}
                   </div>
                   
                   {idx < segments.length - 1 && layovers[idx] && (
-                    <div className="flex items-center gap-1.5 mt-1 text-[11px] text-muted-foreground/70">
-                      <Timer className="h-3 w-3" />
+                    <div className="flex items-center gap-2 mt-2 text-base font-bold text-foreground">
+                      <Timer className="h-4 w-4" />
                       <span>
-                        {layoverText} {layovers[idx].duration}
+                        {layoverText}: {layovers[idx].arrivalTime} – {layovers[idx].departureTime} ({layovers[idx].duration})
                       </span>
                     </div>
                   )}
+                
                 </div>
               );
             })}

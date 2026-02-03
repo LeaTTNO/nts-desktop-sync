@@ -241,14 +241,14 @@ async function searchFlightsMain(params) {
   }
   
   // Konverter Farewise format til Amadeus-format (FlightRobot sitt format)
-  return convertFarewiseToAmadeus(result);
+  return convertFarewiseToAmadeus(result, region.currency);
 }
 
 /* --------------------------------------------------
    � FAREWISE → AMADEUS FORMAT CONVERTER
 -------------------------------------------------- */
 
-function convertFarewiseToAmadeus(farewiseData) {
+function convertFarewiseToAmadeus(farewiseData, currency = "NOK") {
   // Farewise returnerer recommendations array
   const recommendations = farewiseData?.recommendations || [];
   
@@ -334,7 +334,7 @@ function convertFarewiseToAmadeus(farewiseData) {
       id: rec.id || `farewise-${index}`,
       price: {
         total: String(priceTotal),
-        currency: rec.currency || "NOK",
+        currency: currency, // NOK for norsk, DKK for dansk
         grandTotal: String(priceTotal),
       },
       itineraries,

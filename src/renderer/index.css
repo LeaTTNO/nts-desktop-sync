@@ -332,3 +332,56 @@ body {
 
 /* Removed aggressive z-index overrides - let components control their own stacking */
 /* Calendar popovers in FlightRobot now use z-50 which is below result cards */
+
+/* =========================================
+   CALENDAR TABLE LAYOUT FIX
+   ========================================= */
+
+/* DayPicker renders real <table> elements. Override any global CSS that breaks table layout */
+.rdp {
+  font-family: system-ui, -apple-system, BlinkMacSystemFont, sans-serif;
+  letter-spacing: normal !important;
+  font-feature-settings: normal !important;
+  font-variant: normal !important;
+  font-stretch: normal !important;
+}
+
+.rdp table {
+  display: table !important;
+  table-layout: auto !important;
+  border-collapse: collapse !important;
+  width: 100% !important;
+}
+
+.rdp thead {
+  display: table-header-group !important;
+}
+
+.rdp tbody {
+  display: table-row-group !important;
+}
+
+.rdp tr {
+  display: table-row !important;
+}
+
+.rdp th,
+.rdp td {
+  display: table-cell !important;
+  white-space: nowrap !important;
+  width: auto !important;
+  max-width: none !important;
+  min-width: 0 !important;
+}
+
+.rdp th {
+  text-align: center !important;
+}
+
+/* Outside days (dates from other months) should be light gray */
+.rdp-outside button,
+.rdp-outside .rdp-day_button,
+td[data-outside="true"] button {
+  color: hsl(var(--muted-foreground)) !important;
+  opacity: 0.4 !important;
+}

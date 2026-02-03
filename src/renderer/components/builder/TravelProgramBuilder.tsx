@@ -12,6 +12,10 @@ import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue, SelectGroup, SelectLabel } from "@/components/ui/select";
 import { Input } from "@/components/ui/input";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { Calendar } from "@/components/ui/calendar";
+import { CalendarIcon } from "lucide-react";
+import { format } from "date-fns";
+import { nb, da } from "date-fns/locale";
 import { GripVertical, X, FileDown, RotateCcw, Loader2, ChevronDown, ArrowLeft, Check } from "lucide-react";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
@@ -100,6 +104,7 @@ export default function TravelProgramBuilder({ language = 'no' }: TravelProgramB
   ========================= */
 
   const [departureDate, setDepartureDate] = useState("");
+  const [departureDateInput, setDepartureDateInput] = useState("");
   const [baseProgramId, setBaseProgramId] = useState<string | null>(null);
   const [manualBaseOverride, setManualBaseOverride] = useState<string | null>(null);
   const [firstNightId, setFirstNightId] = useState<string | null>(null);
@@ -169,6 +174,34 @@ export default function TravelProgramBuilder({ language = 'no' }: TravelProgramB
   /* =========================
      HELPERS
   ========================= */
+
+  // Parse DDMM format (e.g., "0510" -> "05.10.2026")
+  function parseDDMM(input: string): Date | null {
+    // Remove any non-digits
+    const digits = input.replace(/\D/g, "");
+    
+    if (digits.length !== 4) return null;
+    
+    const day = parseInt(digits.substring(0, 2), 10);
+    const month = parseInt(digits.substring(2, 4), 10);
+    
+    // Validate day and month
+    if (day < 1 || day > 31 || month < 1 || month > 12) return null;
+    
+    // Use current year as base
+    const now = new Date();
+    const currentYear = now.getFullYear();
+    const currentMonth = now.getMonth() + 1;
+    const currentDay = now.getDate();
+    
+    // If the month has passed or is current month but day has passed, use next year
+    let year = currentYear;
+    if (month < currentMonth || (month === currentMonth && day < currentDay)) {
+      year = currentYear + 1;
+    }
+    
+    return new Date(year, month - 1, day);
+  }
 
   function replaceTemplate(oldId: string | null, newId: string | null) {
     if (oldId) removeSelectedTemplate(oldId);
@@ -741,13 +774,62 @@ export default function TravelProgramBuilder({ language = 'no' }: TravelProgramB
         {/* 2. Utreisedato */}
         <div className="space-y-2">
           <Label htmlFor="departure-date">Utreisedato (valgfritt)</Label>
-          <Input
-            id="departure-date"
-            type="date"
-            value={departureDate}
-            onChange={(e) => setDepartureDate(e.target.value)}
-            className="bg-gray-50"
-          />
+          <div className="flex gap-2">
+            <Input
+              id="departure-date"
+              type="text"
+              placeholder={userLanguage === 'da' ? 'Indtast DDMM (f.eks. 0510)' : 'Skriv DDMM (f.eks. 0510)'}
+              value={departureDateInput}
+              onChange={(e) => setDepartureDateInput(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") {
+                  const parsed = parseDDMM(departureDateInput);
+                  if (parsed) {
+                    setDepartureDate(format(parsed, "yyyy-MM-dd"));
+                    setDepartureDateInput(format(parsed, "dd.MM.yyyy", { locale: userLanguage === 'da' ? da : nb }));
+                  }
+                }
+              }}
+              onBlur={() => {
+                if (departureDateInput) {
+                  const parsed = parseDDMM(departureDateInput);
+                  if (parsed) {
+                    setDepartureDate(format(parsed, "yyyy-MM-dd"));
+                    setDepartureDateInput(format(parsed, "dd.MM.yyyy", { locale: userLanguage === 'da' ? da : nb }));
+                  }
+                }
+              }}
+              className="bg-gray-50 flex-1"
+            />
+            <Popover>
+              <PopoverTrigger asChild>
+                <Button
+                  variant="outline"
+                  className={cn(
+                    "bg-gray-50 px-3",
+                    !departureDate && "text-muted-foreground"
+                  )}
+                >
+                  <CalendarIcon className="h-4 w-4" />
+                </Button>
+              </PopoverTrigger>
+              <PopoverContent className="w-auto p-0" align="start">
+                <Calendar
+                  mode="single"
+                  selected={departureDate ? new Date(departureDate) : undefined}
+                  onSelect={(date) => {
+                    if (date) {
+                      setDepartureDate(format(date, "yyyy-MM-dd"));
+                      setDepartureDateInput(format(date, "dd.MM.yyyy", { locale: userLanguage === 'da' ? da : nb }));
+                    }
+                  }}
+                  locale={userLanguage === 'da' ? da : nb}
+                  disabled={(date) => date < new Date(new Date().setHours(0, 0, 0, 0))}
+                  initialFocus
+                />
+              </PopoverContent>
+            </Popover>
+          </div>
         </div>
 
         {/* 3. Arusha første natt */}

@@ -93,7 +93,8 @@ interface ProcessedFlight {
   isRecommended: boolean;
   recommendReason?: string;
   rawOffer: FlightOffer;
-  totalDurationMinutes: number;
+  totalDurationMinutes: number; // Max single leg duration (for filtering)
+  combinedDurationMinutes?: number; // Combined out+in duration (for scoring)
   hasNightFlight: boolean;
   searchDate?: string;
   nightsDiff?: number;
@@ -187,6 +188,10 @@ const translations = {
     iataPlaceholder: "IATA (f.eks. OSL)",
     showDetails: "Vis detaljer",
     hideDetails: "Skjul detaljer",
+    noFlightsFound: "Ingen flyreiser funnet som oppfyller kriteriene",
+    noFlightsMainCriteria: "Ingen flyreiser innenfor hovedkriterier (max 22t, ingen nattfly 00:00-05:55)",
+    onlyLongerFlights: "Det finnes kun flyreiser med lengre reisetid (over 25 timer)",
+    tryExtendingSearch: "Prøv å utvide søket eller endre datoene",
   },
   da: {
     title: "FLYROBOT",
@@ -252,6 +257,10 @@ const translations = {
     iataPlaceholder: "IATA (f.eks. CPH)",
     showDetails: "Vis detaljer",
     hideDetails: "Skjul detaljer",
+    noFlightsFound: "Ingen flyrejser fundet som opfylder kriterierne",
+    noFlightsMainCriteria: "Ingen flyrejser inden for hovedkriterier (max 22t, ingen natfly 00:00-05:55)",
+    onlyLongerFlights: "Der findes kun flyrejser med længere rejsetid (over 25 timer)",
+    tryExtendingSearch: "Prøv at udvide søgningen eller ændre datoerne",
   },
 };
 
@@ -395,8 +404,10 @@ function processFlightOffers(
     const outDuration = getTotalMinutes(outbound.duration);
     const inDuration = inbound ? getTotalMinutes(inbound.duration) : 0;
 
-    // Max duration of single leg (not sum) for filtering
+    // Max duration of single leg for filtering (keep ≤22h or ≤25h check)
     const maxSingleLegDuration = Math.max(outDuration, inDuration);
+    // Combined total duration for scoring (prioritize shortest total journey)
+    const combinedDuration = outDuration + inDuration;
 
     return {
       id: offer.id,
@@ -406,7 +417,8 @@ function processFlightOffers(
       currency: offer.price.currency,
       isRecommended: false,
       rawOffer: offer,
-      totalDurationMinutes: maxSingleLegDuration, // Use max single leg, not sum
+      totalDurationMinutes: maxSingleLegDuration, // Max single leg for filtering
+      combinedDurationMinutes: combinedDuration, // Total out+in for scoring
       hasNightFlight: hasProblematicNightFlight(offer),
       searchDate: searchInfo?.date,
       nightsDiff: searchInfo?.nightsDiff,
@@ -416,10 +428,11 @@ function processFlightOffers(
 
 /**
  * Calculate a quality score for flights (lower is better)
- * Prioritizes: 1) Duration, 2) Connections, 3) Price
+ * Prioritizes: 1) Combined total duration (out+in), 2) Connections, 3) Price
  */
 function calculateFlightScore(flight: ProcessedFlight): number {
-  const durationScore = flight.totalDurationMinutes; // Raw minutes
+  // Use COMBINED duration (outbound + inbound) to prioritize shortest total journey
+  const durationScore = flight.combinedDurationMinutes || flight.totalDurationMinutes; // Raw minutes
   const stopsScore = (flight.outbound.stops + (flight.inbound?.stops || 0)) * 120; // 2 hours penalty per stop
   const priceScore = flight.price * 0.1; // Price has lower weight
   return durationScore + stopsScore + priceScore;
@@ -461,10 +474,19 @@ function categorizeFlights(flights: ProcessedFlight[], t: typeof translations.no
   console.log(`🌙 Flights with night departures/arrivals: ${validFlights.filter(f => f.hasNightFlight).length}`);
   console.log(`⏱️ Flights over 22h (but under 25h): ${validFlights.filter(f => f.totalDurationMinutes > MAX_STRICT_DURATION_HOURS * 60).length}`);
 
-  // Score strict flights (lower = better: prioritize duration, then connections, then price)
+  // Score strict flights with special handling for similar prices
   const scoredStrict = strictFlights
     .map(f => ({ ...f, score: calculateFlightScore(f) }))
-    .sort((a, b) => a.score - b.score);
+    .sort((a, b) => {
+      // If prices are within 300 kr, prioritize by combined duration
+      if (Math.abs(a.price - b.price) <= 300) {
+        const aDuration = a.combinedDurationMinutes || a.totalDurationMinutes;
+        const bDuration = b.combinedDurationMinutes || b.totalDurationMinutes;
+        return aDuration - bDuration;
+      }
+      // Otherwise use normal score (duration + stops + price)
+      return a.score - b.score;
+    });
 
   // RESULT 1: Best and cheapest (combines best score with lowest price among strict)
   const bestAndCheapest = scoredStrict[0] ? { ...scoredStrict[0], isRecommended: true } : null;
@@ -476,8 +498,16 @@ function categorizeFlights(flights: ProcessedFlight[], t: typeof translations.no
     bestQuality = scoredStrict.find(f => f.id !== bestAndCheapest?.id) || null;
   }
 
-  // RESULT 3: Cheapest extended (≤25h, allows night flights) - can be the same as #1 if no extended flights
-  const sortedByPrice = [...validFlights].sort((a, b) => a.price - b.price);
+  // RESULT 3: Cheapest extended (≤25h, allows night flights) - prioritize duration when prices similar
+  const sortedByPrice = [...validFlights].sort((a, b) => {
+    // If prices are within 300 kr, prioritize by combined duration
+    if (Math.abs(a.price - b.price) <= 300) {
+      const aDuration = a.combinedDurationMinutes || a.totalDurationMinutes;
+      const bDuration = b.combinedDurationMinutes || b.totalDurationMinutes;
+      return aDuration - bDuration;
+    }
+    return a.price - b.price;
+  });
   const cheapestExtended = sortedByPrice[0] ? sortedByPrice[0] : null;
 
   return {
@@ -515,6 +545,8 @@ export default function FlightRobot() {
   const [returnDate, setReturnDate] = useState<Date | undefined>(undefined);
   const [departureDateOpen, setDepartureDateOpen] = useState(false);
   const [returnDateOpen, setReturnDateOpen] = useState(false);
+  const [departureDateInput, setDepartureDateInput] = useState("");
+  const [returnDateInput, setReturnDateInput] = useState("");
   const [passengers, setPassengers] = useState("1");
   const [children, setChildren] = useState("0");
   const [isSearching, setIsSearching] = useState(false);
@@ -539,6 +571,39 @@ export default function FlightRobot() {
   const formatDateForApi = (date: Date | undefined): string => {
     if (!date) return "";
     return format(date, "yyyy-MM-dd");
+  };
+
+  // Parse DDMM format (e.g., "0510" → Date object for 05.10.2026)
+  const parseDDMM = (input: string): Date | null => {
+    // Remove any non-digits
+    const digits = input.replace(/\D/g, '');
+    if (digits.length !== 4) return null;
+    
+    const day = parseInt(digits.substring(0, 2));
+    const month = parseInt(digits.substring(2, 4));
+    
+    // Validate
+    if (day < 1 || day > 31 || month < 1 || month > 12) return null;
+    
+    // Use current year or next year if month has passed
+    const now = new Date();
+    const currentYear = now.getFullYear();
+    const currentMonth = now.getMonth() + 1;
+    
+    // If the month has already passed this year, use next year
+    let year = currentYear;
+    if (month < currentMonth || (month === currentMonth && day < now.getDate())) {
+      year = currentYear + 1;
+    }
+    
+    const date = new Date(year, month - 1, day);
+    
+    // Validate the date is valid
+    if (date.getDate() !== day || date.getMonth() !== month - 1) {
+      return null;
+    }
+    
+    return date;
   };
 
   const departureDateStr = formatDateForApi(departureDate);
@@ -1064,35 +1129,110 @@ function saveToPowerPointSingle(flight: ProcessedFlight, title: string) {
             {/* Departure Date */}
             <div className="space-y-1">
               <Label htmlFor="departure-date">{t.departDate}</Label>
-              <input
-                id="departure-date"
-                type="date"
-                className="w-full border rounded px-2 py-1 bg-muted/30 text-foreground"
-                value={departureDate ? format(departureDate, 'yyyy-MM-dd') : ''}
-                min={format(today, 'yyyy-MM-dd')}
-                max={format(maxDate, 'yyyy-MM-dd')}
-                onChange={e => {
-                  const val = e.target.value;
-                  setDepartureDate(val ? new Date(val) : undefined);
-                }}
-              />
+              <div className="flex gap-2">
+                <Input
+                  id="departure-date"
+                  placeholder="DDMM (f.eks. 0510)"
+                  value={departureDateInput}
+                  onChange={(e) => setDepartureDateInput(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') {
+                      const parsed = parseDDMM(departureDateInput);
+                      if (parsed) {
+                        setDepartureDate(parsed);
+                        setDepartureDateInput(format(parsed, 'dd.MM.yyyy'));
+                      }
+                    }
+                  }}
+                  onBlur={() => {
+                    const parsed = parseDDMM(departureDateInput);
+                    if (parsed) {
+                      setDepartureDate(parsed);
+                      setDepartureDateInput(format(parsed, 'dd.MM.yyyy'));
+                    } else if (departureDate) {
+                      setDepartureDateInput(format(departureDate, 'dd.MM.yyyy'));
+                    }
+                  }}
+                  className="bg-muted/30 flex-1"
+                />
+                <Popover open={departureDateOpen} onOpenChange={setDepartureDateOpen}>
+                  <PopoverTrigger asChild>
+                    <Button variant="outline" size="icon" className="bg-muted/30">
+                      <CalendarIcon className="h-4 w-4" />
+                    </Button>
+                  </PopoverTrigger>
+                  <PopoverContent className="w-auto p-0" align="start">
+                    <Calendar
+                      mode="single"
+                      selected={departureDate}
+                      onSelect={(date) => {
+                        setDepartureDate(date);
+                        setDepartureDateInput(date ? format(date, 'dd.MM.yyyy') : '');
+                        setDepartureDateOpen(false);
+                      }}
+                      disabled={(date) => date < today || date > maxDate}
+                      initialFocus
+                      locale={dayPickerLocale}
+                    />
+                  </PopoverContent>
+                </Popover>
+              </div>
             </div>
 
             {/* Return Date */}
             <div className="space-y-1">
               <Label htmlFor="return-date">{t.returnDate}</Label>
-              <input
-                id="return-date"
-                type="date"
-                className="w-full border rounded px-2 py-1 bg-muted/30 text-foreground"
-                value={returnDate ? format(returnDate, 'yyyy-MM-dd') : ''}
-                min={departureDate ? format(departureDate, 'yyyy-MM-dd') : format(today, 'yyyy-MM-dd')}
-                max={format(maxDate, 'yyyy-MM-dd')}
-                onChange={e => {
-                  const val = e.target.value;
-                  setReturnDate(val ? new Date(val) : undefined);
-                }}
-              />
+              <div className="flex gap-2">
+                <Input
+                  id="return-date"
+                  placeholder="DDMM (f.eks. 1510)"
+                  value={returnDateInput}
+                  onChange={(e) => setReturnDateInput(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') {
+                      const parsed = parseDDMM(returnDateInput);
+                      if (parsed) {
+                        setReturnDate(parsed);
+                        setReturnDateInput(format(parsed, 'dd.MM.yyyy'));
+                      }
+                    }
+                  }}
+                  onBlur={() => {
+                    const parsed = parseDDMM(returnDateInput);
+                    if (parsed) {
+                      setReturnDate(parsed);
+                      setReturnDateInput(format(parsed, 'dd.MM.yyyy'));
+                    } else if (returnDate) {
+                      setReturnDateInput(format(returnDate, 'dd.MM.yyyy'));
+                    }
+                  }}
+                  className="bg-muted/30 flex-1"
+                />
+                <Popover open={returnDateOpen} onOpenChange={setReturnDateOpen}>
+                  <PopoverTrigger asChild>
+                    <Button variant="outline" size="icon" className="bg-muted/30">
+                      <CalendarIcon className="h-4 w-4" />
+                    </Button>
+                  </PopoverTrigger>
+                  <PopoverContent className="w-auto p-0" align="start">
+                    <Calendar
+                      mode="single"
+                      selected={returnDate}
+                      onSelect={(date) => {
+                        setReturnDate(date);
+                        setReturnDateInput(date ? format(date, 'dd.MM.yyyy') : '');
+                        setReturnDateOpen(false);
+                      }}
+                      disabled={(date) => {
+                        const minDate = departureDate || today;
+                        return date < minDate || date > maxDate;
+                      }}
+                      initialFocus
+                      locale={dayPickerLocale}
+                    />
+                  </PopoverContent>
+                </Popover>
+              </div>
             </div>
           </div>
 
@@ -1468,9 +1608,25 @@ function saveToPowerPointSingle(flight: ProcessedFlight, title: string) {
       )}
 
       {hasSearched && !mainResults.bestAndCheapest && !bestQualityResult && !cheapestExtendedResult && !isSearching && !error && (
-        <Card className="border-border/50">
-          <CardContent className="pt-6 text-center text-muted-foreground">
-            {t.noResults}
+        <Card className="border-border/50 bg-muted/20">
+          <CardContent className="pt-6">
+            <div className="space-y-3">
+              <div className="flex items-start gap-3">
+                <AlertCircle className="h-6 w-6 text-amber-500 flex-shrink-0 mt-0.5" />
+                <div className="space-y-2">
+                  <h3 className="font-semibold text-foreground text-lg">{t.noFlightsFound}</h3>
+                  <p className="text-sm text-muted-foreground">
+                    {t.noFlightsMainCriteria}
+                  </p>
+                  <p className="text-sm text-muted-foreground">
+                    {t.onlyLongerFlights}
+                  </p>
+                  <p className="text-sm font-medium text-foreground mt-3">
+                    💡 {t.tryExtendingSearch}
+                  </p>
+                </div>
+              </div>
+            </div>
           </CardContent>
         </Card>
       )}
