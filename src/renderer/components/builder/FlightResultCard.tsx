@@ -249,47 +249,35 @@ export default function FlightResultCard({
 
     return (
       <div className="space-y-3">
-        <div className="space-y-2">
-          <div className="text-xs font-semibold text-primary uppercase tracking-wider">
-            {label}
+        {/* 1️⃣ Flyselskap */}
+        <div className="text-lg font-bold text-neutral-900 leading-tight mb-1">{leg.airlines[0]}</div>
+
+        {/* 2️⃣ Rute og tider */}
+        <div className="space-y-1">
+          <div className="flex items-center gap-2 text-xl font-semibold text-primary">
+            <span>{leg.departure}</span>
+            <ArrowRight className="h-5 w-5 text-primary" />
+            <span>{leg.arrival}</span>
           </div>
-          
-          <div className="space-y-1">
-            <div className="flex items-center gap-3 flex-wrap">
-              <div className="flex items-center gap-2 text-xl font-bold">
-                <span>{leg.departure}</span>
-                <ArrowRight className="h-5 w-5 text-primary" />
-                <span>{leg.arrival}</span>
-              </div>
-              
-              <div className="font-medium text-sm text-muted-foreground">
-                {formatDate(leg.departureTime)} · {formatTime(leg.departureTime)} – {formatTime(leg.arrivalTime)}
-              </div>
-              
-              {hasLayovers && (
-                <div className="text-sm text-muted-foreground">
-                  via {connectionCities}
-                </div>
-              )}
-              
-              <div className="flex items-center gap-1 text-xs text-muted-foreground">
-                <Clock className="h-3 w-3" />
-                {formatDuration(leg.duration)}
-              </div>
-            </div>
-            
-            <div className="text-xs text-muted-foreground">
-              {leg.airlines.join(" · ")}
-            </div>
+          <div className="flex flex-col text-base font-medium text-neutral-800">
+            <span>{formatDate(leg.departureTime)} · {formatTime(leg.departureTime)} – {formatTime(leg.arrivalTime)}</span>
+            {hasLayovers && (
+              <span className="text-sm text-muted-foreground">via {connectionCities}</span>
+            )}
+            <span className="flex items-center gap-1 text-sm text-muted-foreground">
+              <Clock className="h-3 w-3" />
+              {formatDuration(leg.duration)}
+            </span>
           </div>
         </div>
 
+        {/* 3️⃣ Sekundær: ventetid og segment-detaljer */}
         {hasLayovers && (
           <Button
             variant="ghost"
             size="sm"
             onClick={toggleExpanded}
-            className="text-xs h-7 gap-1 px-2 -mt-1"
+            className="text-xs h-7 gap-1 px-2 -mt-1 text-gray-500"
           >
             {isExpanded ? (
               <>
@@ -315,35 +303,31 @@ export default function FlightResultCard({
               const depTime = formatTime(seg.departure.at);
               const arrTime = formatTime(seg.arrival.at);
               const segDate = formatDate(seg.departure.at);
-              
               const depDate = new Date(seg.departure.at);
               const arrDate = new Date(seg.arrival.at);
               const nextDay = arrDate.getDate() !== depDate.getDate() ? ' (+1)' : '';
-              
               return (
-                <div key={idx} className="text-sm">
-                  <div className="flex items-center gap-2 text-muted-foreground">
-                    <span className="font-medium text-foreground/90">
+                <div key={idx} className="text-xs text-gray-500">
+                  <div className="flex items-center gap-2">
+                    <span className="font-medium">
                       {fromCity} ({fromCode})
                     </span>
                     <span>–</span>
-                    <span className="font-medium text-foreground/90">
+                    <span className="font-medium">
                       {toCity} ({toCode})
                     </span>
                   </div>
-                  <div className="text-sm font-semibold text-foreground mt-1">
+                  <div className="text-xs font-normal mt-1">
                     {segDate} · {depTime} – {arrTime}{nextDay}
                   </div>
-                  
                   {idx < segments.length - 1 && layovers[idx] && (
-                    <div className="flex items-center gap-2 mt-2 text-base font-bold text-foreground">
+                    <div className="flex items-center gap-2 mt-2 text-xs font-normal text-gray-400">
                       <Timer className="h-4 w-4" />
                       <span>
                         {layoverText}: {layovers[idx].arrivalTime} – {layovers[idx].departureTime} ({layovers[idx].duration})
                       </span>
                     </div>
                   )}
-                
                 </div>
               );
             })}
