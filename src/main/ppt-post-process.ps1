@@ -212,8 +212,10 @@ if ($FlightDataJson -and $FlightDataJson -ne "") {
             foreach ($slide in $presentation.Slides) {
                 foreach ($shape in $slide.Shapes) {
                     if ($shape.HasTextFrame -and $shape.TextFrame.HasText) {
-                        if ($shape.TextFrame.TextRange.Text -match "FLYINFORMATION") {
+                        $text = $shape.TextFrame.TextRange.Text
+                        if ($text -match "FLYINFORMATION" -or $text -match "Flyinformation" -or $text -match "Flyinformasjon" -or $text -match "FLYINFORMASJON") {
                             $flightSlide = $slide
+                            Write-Host "Found flight slide with text: $text"
                             break
                         }
                     }
@@ -234,30 +236,66 @@ if ($FlightDataJson -and $FlightDataJson -ne "") {
                 }
                 
                 if ($flightTable) {
-                    Write-Host "Found flight table"
+                    Write-Host "Found flight table with $($flightTable.Rows.Count) rows and $($flightTable.Columns.Count) columns"
                     
                     # Get first flight (we're using segments structure)
                     $flight = $flightData.flights[0]
                     
                     if ($flight.segments -and $flight.segments.Count -gt 0) {
-                        # Clear existing data rows (keep header row)
+                        Write-Host "Processing $($flight.segments.Count) flight segments"
+                        
+                        # Find template row (contains {{}} placeholders or is empty/minimal)
+                        $templateRowIndex = -1
+                        $startRow = 2  # Start from row 2 (skip header)
+                        
+                        for ($r = $startRow; $r -le $flightTable.Rows.Count; $r++) {
+                            $firstCell = $flightTable.Cell($r, 1).Shape.TextFrame.TextRange.Text
+                            # If row contains placeholders or is nearly empty, use as template
+                            if ($firstCell -match "{{" -or $firstCell.Trim().Length -le 2) {
+                                $templateRowIndex = $r
+                                Write-Host "Found template row at index: $templateRowIndex"
+                                break
+                            }
+                        }
+                        
+                        # If no template found, use row 2
+                        if ($templateRowIndex -eq -1) {
+                            if ($flightTable.Rows.Count -ge 2) {
+                                $templateRowIndex = 2
+                                Write-Host "Using row 2 as template (no placeholder found)"
+                            } else {
+                                Write-Warning "Table has no data rows to use as template"
+                                continue
+                            }
+                        }
+                        
+                        # Clear existing data rows EXCEPT header (row 1)
                         $currentRows = $flightTable.Rows.Count
                         if ($currentRows -gt 1) {
                             for ($i = $currentRows; $i -gt 1; $i--) {
                                 $flightTable.Rows.Item($i).Delete()
+                                Write-Host "Deleted row $i"
                             }
                         }
                         
                         # Add rows for each segment
+                        $segmentIndex = 0
                         foreach ($segment in $flight.segments) {
+                            $segmentIndex++
                             $newRow = $flightTable.Rows.Add()
                             
+                            Write-Host "Adding segment $segmentIndex : $($segment.from) -> $($segment.to)"
+                            
                             # Columns: date, from, to, time, airline
-                            $newRow.Cells.Item(1).Shape.TextFrame.TextRange.Text = $segment.date
-                            $newRow.Cells.Item(2).Shape.TextFrame.TextRange.Text = $segment.from
-                            $newRow.Cells.Item(3).Shape.TextFrame.TextRange.Text = $segment.to
-                            $newRow.Cells.Item(4).Shape.TextFrame.TextRange.Text = $segment.time
-                            $newRow.Cells.Item(5).Shape.TextFrame.TextRange.Text = $segment.airline
+                            if ($flightTable.Columns.Count -ge 5) {
+                                $newRow.Cells.Item(1).Shape.TextFrame.TextRange.Text = $segment.date
+                                $newRow.Cells.Item(2).Shape.TextFrame.TextRange.Text = $segment.from
+                                $newRow.Cells.Item(3).Shape.TextFrame.TextRange.Text = $segment.to
+                                $newRow.Cells.Item(4).Shape.TextFrame.TextRange.Text = $segment.time
+                                $newRow.Cells.Item(5).Shape.TextFrame.TextRange.Text = $segment.airline
+                            } else {
+                                Write-Warning "Table has only $($flightTable.Columns.Count) columns, expected 5"
+                            }
                         }
                         
                         Write-Host "Flight table populated with $($flight.segments.Count) segments"

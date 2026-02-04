@@ -1,3 +1,26 @@
+/**
+ * ⚠️ IMPORTANT – DO NOT MODIFY LAYOUT ⚠️
+ *
+ * This Calendar component is intentionally locked.
+ * The current structure fixes multiple layout issues caused by:
+ * - shadcn Calendar wrapper
+ * - duplicate DayPicker captions
+ * - Radix Popover width inheritance
+ * - global Tailwind / table styles
+ *
+ * DO NOT:
+ * - change DayPicker structure (caption, nav, months)
+ * - add Tailwind layout classes (flex/grid) around DayPicker
+ * - reintroduce shadcn Calendar wrapper
+ * - add CSS using global selectors (table, th, td)
+ *
+ * ONLY allowed changes:
+ * - colors
+ * - spacing inside day cells
+ * - icons (Chevron)
+ *
+ * If layout breaks again, check for duplicate captions or wrapper components.
+ */
 import * as React from "react";
 import { DayPicker } from "react-day-picker";
 import { ChevronLeft, ChevronRight } from "lucide-react";

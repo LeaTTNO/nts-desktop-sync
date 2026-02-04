@@ -67,7 +67,6 @@ export default function TravelProgramBuilder({ language = 'no' }: TravelProgramB
   const LAST_NIGHT_CATEGORY = getCategoryNameById(categories, "last_safari_night");
   const ZANZIBAR_MAIN = getCategoryNameById(categories, "zanzibar_hotel_1");
   const ZANZIBAR_STONE_TOWN = getCategoryNameById(categories, "zanzibar_stone_town");
-  const ZANZIBAR_STONE = getCategoryNameById(categories, "stone_town_hotel");
   const ZANZIBAR_HOTEL_2 = getCategoryNameById(categories, "zanzibar_hotel_2");
   const KILIMANJARO = getCategoryNameById(categories, "kilimanjaro");
   const ARUSHA_SLIDES = getCategoryNameById(categories, "arusha_activities_slides");
@@ -122,8 +121,6 @@ export default function TravelProgramBuilder({ language = 'no' }: TravelProgramB
   const [zanzibarMainId, setZanzibarMainId] = useState<string | null>(null);
   const [zanzibarStoneTown, setZanzibarStoneTown] = useState(false);
   const [zanzibarStoneTownId, setZanzibarStoneTownId] = useState<string | null>(null);
-  const [zanzibarStone, setZanzibarStone] = useState(false);
-  const [zanzibarStoneId, setZanzibarStoneId] = useState<string | null>(null);
   const [zanzibarHotel2, setZanzibarHotel2] = useState(false);
   const [zanzibarHotel2Id, setZanzibarHotel2Id] = useState<string | null>(null);
   const [kilimanjaro, setKilimanjaro] = useState(false);
@@ -166,7 +163,7 @@ export default function TravelProgramBuilder({ language = 'no' }: TravelProgramB
 
     // Bestem hvilke destinasjoner som er valgt
     const hasSafari = !!safariTemplateId;
-    const hasZanzibar = zanzibarMain || zanzibarStone || zanzibarHotel2;
+    const hasZanzibar = zanzibarMain || zanzibarHotel2;
     const hasKilimanjaro = kilimanjaro;
 
     // Beregn riktig basefil-navn (uten bruker-prefix siden filene ligger i brukerspesifikke mapper)
@@ -189,7 +186,7 @@ export default function TravelProgramBuilder({ language = 'no' }: TravelProgramB
       setBaseProgramId(matchingTemplate.id);
       addSelectedTemplate(matchingTemplate.id);
     }
-  }, [safariTemplateId, zanzibarMain, zanzibarStone, zanzibarHotel2, kilimanjaro, userLanguage, userPrefix, manualBaseOverride, baseProgramId, addSelectedTemplate, removeSelectedTemplate]);
+  }, [safariTemplateId, zanzibarMain, zanzibarHotel2, kilimanjaro, userLanguage, userPrefix, manualBaseOverride, baseProgramId, addSelectedTemplate, removeSelectedTemplate]);
 
   /* =========================
      HELPERS
@@ -326,8 +323,6 @@ export default function TravelProgramBuilder({ language = 'no' }: TravelProgramB
     setSafariTemplateId(null);
     setZanzibarMain(false);
     setZanzibarMainId(null);
-    setZanzibarStone(false);
-    setZanzibarStoneId(null);
     setZanzibarHotel2(false);
     setZanzibarHotel2Id(null);
     setKilimanjaro(false);
@@ -427,7 +422,7 @@ export default function TravelProgramBuilder({ language = 'no' }: TravelProgramB
     
     const categoryTemplates = getFilteredTemplatesByCategoryName(category).filter(t => t.visibleInBuilder);
     // Zanzibar-hotell: to-trinns dropdown
-    const isZanzibarHotel = [ZANZIBAR_MAIN, ZANZIBAR_HOTEL_2, ZANZIBAR_STONE, ZANZIBAR_STONE_TOWN].includes(category);
+    const isZanzibarHotel = [ZANZIBAR_MAIN, ZANZIBAR_HOTEL_2, ZANZIBAR_STONE_TOWN].includes(category);
     const groupedTemplates = isZanzibarHotel ? groupTemplatesByHotel(categoryTemplates) : (groupByHotel ? groupTemplatesByHotel(categoryTemplates) : null);
     const hotelNames = groupedTemplates ? Object.keys(groupedTemplates).sort() : [];
     
@@ -971,18 +966,6 @@ export default function TravelProgramBuilder({ language = 'no' }: TravelProgramB
           
           {/* Første rad tilleggsmoduler */}
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            {/* Stone Town Hotel */}
-            <CheckboxWithDropdown
-              id="zanzibar-stone"
-              label="Stone Town Hotel"
-              checked={zanzibarStone}
-              onCheckedChange={setZanzibarStone}
-              category={ZANZIBAR_STONE}
-              selectedId={zanzibarStoneId}
-              onSelectChange={setZanzibarStoneId}
-              groupByHotel
-            />
-
             {/* Zanzibar Hotel 2 */}
             <CheckboxWithDropdown
               id="zanzibar-hotel-2"
@@ -994,10 +977,7 @@ export default function TravelProgramBuilder({ language = 'no' }: TravelProgramB
               onSelectChange={setZanzibarHotel2Id}
               groupByHotel
             />
-          </div>
 
-          {/* Andre rad tilleggsmoduler */}
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             {/* Kilimanjaro */}
             <CheckboxWithDropdown
               id="kilimanjaro"
@@ -1008,7 +988,10 @@ export default function TravelProgramBuilder({ language = 'no' }: TravelProgramB
               selectedId={kilimanjaroId}
               onSelectChange={setKilimanjaroId}
             />
+          </div>
 
+          {/* Andre rad tilleggsmoduler */}
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             {/* Aktiviteter Arusha - Slides */}
             <CheckboxWithDropdown
               id="arusha-slides"

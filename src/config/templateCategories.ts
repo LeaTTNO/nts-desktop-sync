@@ -73,7 +73,6 @@ const baseCategoryStructure = [
   { id: "last_safari_night", key: "last_safari", kind: "dropdown" as const, order: 20 },
   { id: "zanzibar_hotel_1", key: "zanzibar_1", kind: "dropdown" as const, order: 30 },
   { id: "zanzibar_stone_town", key: "zanzibar_stone_town", kind: "dropdown" as const, order: 35 },
-  { id: "stone_town_hotel", key: "stone_town", kind: "optional" as const, order: 40 },
   { id: "zanzibar_hotel_2", key: "zanzibar_2", kind: "optional" as const, order: 50 },
   { id: "kilimanjaro", key: "kilimanjaro", kind: "optional" as const, order: 60 },
   { id: "arusha_activities_slides", key: "arusha_activities", kind: "optional" as const, order: 70 },

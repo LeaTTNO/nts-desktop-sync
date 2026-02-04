@@ -23,7 +23,6 @@ export const defaultCategories: TemplateCategory[] = [
   { id: "last_safari_night", name: "Siste natt safari", kind: "dropdown", order: 20, isDefault: true },
   { id: "zanzibar_hotel_1", name: "Zanzibar hotell 1", kind: "dropdown", order: 30, isDefault: true },
   { id: "zanzibar_stone_town", name: "Zanzibar & Stone Town", kind: "dropdown", order: 35, isDefault: true },
-  { id: "stone_town_hotel", name: "Stone Town Hotel", kind: "optional", order: 40, isDefault: true },
   { id: "zanzibar_hotel_2", name: "Zanzibar hotell 2", kind: "optional", order: 50, isDefault: true },
   { id: "kilimanjaro", name: "Kilimanjaro", kind: "optional", order: 60, isDefault: true },
   { id: "arusha_activities_slides", name: "Aktiviteter Arusha - Slides", kind: "optional", order: 70, isDefault: true },

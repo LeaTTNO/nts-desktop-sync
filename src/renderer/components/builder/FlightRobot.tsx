@@ -1218,6 +1218,7 @@ function saveToPowerPointSingle(flight: ProcessedFlight, title: string) {
                     <Calendar
                       mode="single"
                       selected={returnDate}
+                      month={departureDate || returnDate}
                       onSelect={(date) => {
                         setReturnDate(date);
                         setReturnDateInput(date ? format(date, 'dd.MM.yyyy') : '');

@@ -7,4 +7,8 @@ export const STANDARD_ORDER: Record<string, number> = {
   "zanzibar hotel 1": 6,
   "zanzibar hotel 2": 7,
   "stone town hotel": 8,
+  "aktiviteter arusha": 9,
+  "diverse fastland": 10,
+  "flyinformasjon": 98,
+  "ekstra slides": 99,
 };
