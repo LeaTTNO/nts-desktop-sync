@@ -1,58 +1,87 @@
 import * as React from "react";
-import { ChevronLeft, ChevronRight } from "lucide-react";
 import { DayPicker } from "react-day-picker";
-
+import { ChevronLeft, ChevronRight } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { buttonVariants } from "@/components/ui/button";
+
+import "react-day-picker/dist/style.css";
 
 export type CalendarProps = React.ComponentProps<typeof DayPicker>;
 
-function Calendar({ className, classNames, showOutsideDays = true, ...props }: CalendarProps) {
+function Calendar({ className, locale, ...props }: CalendarProps) {
+  const [internalMonth, setInternalMonth] = React.useState(props.month || new Date());
+  const displayMonth = props.month || internalMonth;
+
+  const handlePreviousMonth = () => {
+    const newMonth = new Date(displayMonth);
+    newMonth.setMonth(newMonth.getMonth() - 1);
+    setInternalMonth(newMonth);
+    props.onMonthChange?.(newMonth);
+  };
+
+  const handleNextMonth = () => {
+    const newMonth = new Date(displayMonth);
+    newMonth.setMonth(newMonth.getMonth() + 1);
+    setInternalMonth(newMonth);
+    props.onMonthChange?.(newMonth);
+  };
+
+  // Format month/year using locale if provided
+  const formatMonthYear = () => {
+    // Check if locale has the date-fns structure
+    if (locale && typeof locale === 'object' && 'localize' in locale && locale.localize) {
+      const monthIndex = displayMonth.getMonth();
+      const year = displayMonth.getFullYear();
+      const monthName = (locale.localize as any).month(monthIndex, { width: 'wide' });
+      return `${monthName} ${year}`;
+    }
+    return displayMonth.toLocaleDateString("nb-NO", {
+      month: "long",
+      year: "numeric",
+    });
+  };
+
   return (
-    <DayPicker
-      showOutsideDays={showOutsideDays}
-      className={cn("p-2", className)}
-      classNames={{
-        months: "flex flex-col sm:flex-row space-y-4 sm:space-x-4 sm:space-y-0",
-        month: "space-y-4",
-        caption: "flex justify-between pt-1 items-center px-1",
-        caption_label: "text-sm font-medium",
-        nav: "flex gap-1",
-        nav_button: cn(
-          buttonVariants({ variant: "outline" }),
-          "h-7 w-7 bg-transparent p-0 opacity-50 hover:opacity-100",
-        ),
-        nav_button_previous: "",
-        nav_button_next: "",
-        table: "w-full border-collapse",
-        head_row: "",
-        head_cell: "text-muted-foreground w-9 font-normal text-[0.8rem]",
-        row: "mt-2",
-        cell: "h-9 w-9 text-center text-sm p-0 relative [&:has([aria-selected].day-range-end)]:rounded-r-md [&:has([aria-selected].day-outside)]:bg-accent/50 [&:has([aria-selected])]:bg-accent first:[&:has([aria-selected])]:rounded-l-md focus-within:relative focus-within:z-20",
-        day: "h-9 w-9 p-0 font-normal",
-        day_button: cn(
-          buttonVariants({ variant: "ghost" }),
-          "h-9 w-9 p-0 font-normal aria-selected:opacity-100"
-        ),
-        day_range_end: "day-range-end",
-        day_selected:
-          "bg-primary text-primary-foreground hover:bg-primary hover:text-primary-foreground focus:bg-primary focus:text-primary-foreground",
-        day_today: "bg-accent text-accent-foreground",
-        day_outside:
-          "day-outside text-muted-foreground opacity-50 aria-selected:bg-accent/50 aria-selected:text-muted-foreground aria-selected:opacity-30",
-        day_disabled: "text-muted-foreground opacity-50",
-        day_range_middle: "aria-selected:bg-accent aria-selected:text-accent-foreground",
-        day_hidden: "invisible",
-        ...classNames,
-      }}
-      components={{
-        IconLeft: ({ ..._props }) => <ChevronLeft className="h-4 w-4" />,
-        IconRight: ({ ..._props }) => <ChevronRight className="h-4 w-4" />,
-      }}
-      {...props}
-    />
+    <div className="p-3">
+      <div className="flex items-center justify-between px-2 pb-2">
+        <button
+          onClick={handlePreviousMonth}
+          className="h-7 w-7 bg-transparent p-0 opacity-50 hover:opacity-100"
+          type="button"
+          aria-label="Previous month"
+        >
+          <ChevronLeft className="h-4 w-4" />
+        </button>
+
+        <span className="text-sm font-medium">
+          {formatMonthYear()}
+        </span>
+
+        <button
+          onClick={handleNextMonth}
+          className="h-7 w-7 bg-transparent p-0 opacity-50 hover:opacity-100"
+          type="button"
+          aria-label="Next month"
+        >
+          <ChevronRight className="h-4 w-4" />
+        </button>
+      </div>
+
+      <DayPicker
+        className={className}
+        locale={locale}
+        month={displayMonth}
+        onMonthChange={(newMonth) => {
+          setInternalMonth(newMonth);
+          props.onMonthChange?.(newMonth);
+        }}
+        showOutsideDays
+        hideNavigation
+        {...props}
+      />
+    </div>
   );
 }
+
 Calendar.displayName = "Calendar";
 
 export { Calendar };

@@ -385,3 +385,8 @@ td[data-outside="true"] button {
   color: hsl(var(--muted-foreground)) !important;
   opacity: 0.4 !important;
 }
+
+/* Hide DayPicker default caption when using custom header */
+.rdp-month_caption {
+  display: none !important;
+}
