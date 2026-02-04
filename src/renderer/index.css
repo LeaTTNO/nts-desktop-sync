@@ -390,3 +390,21 @@ td[data-outside="true"] button {
 .rdp-month_caption {
   display: none !important;
 }
+
+/* Make calendar dates smaller and more compact */
+.rdp-day_button,
+.rdp button {
+  font-size: 0.75rem !important; /* 12px */
+  height: 1.75rem !important; /* 28px */
+  width: 1.75rem !important;
+  padding: 0 !important;
+}
+
+.rdp th {
+  font-size: 0.6875rem !important; /* 11px for weekday labels */
+  padding: 0.125rem !important;
+}
+
+.rdp table {
+  margin: 0 !important;
+}

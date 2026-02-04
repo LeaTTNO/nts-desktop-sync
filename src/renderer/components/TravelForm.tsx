@@ -137,6 +137,7 @@ export const TravelForm = ({ language }: TravelFormProps) => {
                   onSelect={handleDateChange}
                   locale={language === 'da' ? da : nb}
                   fromDate={new Date()}
+                  defaultMonth={formData.departureDate ? new Date(formData.departureDate) : new Date()}
                   className="bg-white rounded-lg shadow border"
                 />
                 {/* Skjult input for form-validasjon */}

@@ -1161,7 +1161,7 @@ function saveToPowerPointSingle(flight: ProcessedFlight, title: string) {
                       <CalendarIcon className="h-4 w-4" />
                     </Button>
                   </PopoverTrigger>
-                  <PopoverContent className="w-auto p-0" align="start">
+                  <PopoverContent className="w-auto p-0" side="bottom" align="start" avoidCollisions={false}>
                     <Calendar
                       mode="single"
                       selected={departureDate}
@@ -1214,7 +1214,7 @@ function saveToPowerPointSingle(flight: ProcessedFlight, title: string) {
                       <CalendarIcon className="h-4 w-4" />
                     </Button>
                   </PopoverTrigger>
-                  <PopoverContent className="w-auto p-0" align="start">
+                  <PopoverContent className="w-auto p-0" side="bottom" align="start" avoidCollisions={false}>
                     <Calendar
                       mode="single"
                       selected={returnDate}

@@ -8,7 +8,17 @@ import "react-day-picker/dist/style.css";
 export type CalendarProps = React.ComponentProps<typeof DayPicker>;
 
 function Calendar({ className, locale, ...props }: CalendarProps) {
-  const [internalMonth, setInternalMonth] = React.useState(props.month || new Date());
+  // Use defaultMonth, selected date, or current date as initial month
+  const getInitialMonth = () => {
+    if (props.defaultMonth) return props.defaultMonth;
+    // Type-safe access to selected
+    const selected = 'selected' in props ? props.selected : undefined;
+    if (selected && selected instanceof Date) return selected;
+    if (props.month) return props.month;
+    return new Date();
+  };
+  
+  const [internalMonth, setInternalMonth] = React.useState(getInitialMonth());
   const displayMonth = props.month || internalMonth;
 
   const handlePreviousMonth = () => {
@@ -41,28 +51,28 @@ function Calendar({ className, locale, ...props }: CalendarProps) {
   };
 
   return (
-    <div className="p-3">
-      <div className="flex items-center justify-between px-2 pb-2">
+    <div className="p-2">
+      <div className="flex items-center justify-between px-1 pb-1">
         <button
           onClick={handlePreviousMonth}
-          className="h-7 w-7 bg-transparent p-0 opacity-50 hover:opacity-100"
+          className="h-6 w-6 bg-transparent p-0 opacity-50 hover:opacity-100"
           type="button"
           aria-label="Previous month"
         >
-          <ChevronLeft className="h-4 w-4" />
+          <ChevronLeft className="h-3.5 w-3.5" />
         </button>
 
-        <span className="text-sm font-medium">
+        <span className="text-xs font-medium">
           {formatMonthYear()}
         </span>
 
         <button
           onClick={handleNextMonth}
-          className="h-7 w-7 bg-transparent p-0 opacity-50 hover:opacity-100"
+          className="h-6 w-6 bg-transparent p-0 opacity-50 hover:opacity-100"
           type="button"
           aria-label="Next month"
         >
-          <ChevronRight className="h-4 w-4" />
+          <ChevronRight className="h-3.5 w-3.5" />
         </button>
       </div>
 
@@ -75,6 +85,7 @@ function Calendar({ className, locale, ...props }: CalendarProps) {
           props.onMonthChange?.(newMonth);
         }}
         showOutsideDays
+        fixedWeeks
         hideNavigation
         {...props}
       />

@@ -848,6 +848,7 @@ export default function TravelProgramBuilder({ language = 'no' }: TravelProgramB
                   }}
                   locale={userLanguage === 'da' ? da : nb}
                   disabled={(date) => date < new Date(new Date().setHours(0, 0, 0, 0))}
+                  defaultMonth={departureDate ? new Date(departureDate) : new Date()}
                   initialFocus
                 />
               </PopoverContent>
