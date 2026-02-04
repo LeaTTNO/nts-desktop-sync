@@ -32,7 +32,7 @@ import {
   AccordionItem,
   AccordionTrigger,
 } from "@/components/ui/accordion";
-import { Upload, Trash2, Eye, EyeOff, Plus, Edit2, FolderPlus, RefreshCw, Save } from "lucide-react";
+import { Upload, Trash2, Eye, EyeOff, Plus, Edit2, FolderPlus, RefreshCw, Save, CheckSquare, Square } from "lucide-react";
 import { toast } from "sonner";
 
 export default function TemplateLibrary() {
@@ -43,6 +43,9 @@ export default function TemplateLibrary() {
   const [isSyncing, setIsSyncing] = useState(false);
   const [editingCategoryId, setEditingCategoryId] = useState<string | null>(null);
   const [editingCategoryName, setEditingCategoryName] = useState<string>("");
+  const [hiddenCategories, setHiddenCategories] = useState<string[]>([]);
+  // State for innebygde kategoriers synlighet og checkbox for admin
+  const [builtInCategorySettings, setBuiltInCategorySettings] = useState<Record<string, { isVisible?: boolean; hasCheckbox?: boolean }>>({});
 
   const { user, userEmail, userLanguage, isAdmin: userIsAdmin } = useAuth();
   const userPrefix = userEmail ? getUserPrefix(userEmail) : undefined;
@@ -75,17 +78,14 @@ export default function TemplateLibrary() {
       toast.error("Kategorinavn kan ikke være tomt");
       return;
     }
-    // Update user category if it exists, otherwise update default category
     const userCat = userCategories.find(c => c.id === catId);
     if (userCat) {
-      updateUserCategory(catId, editingCategoryName.trim());
+      updateUserCategory(catId!, { name: editingCategoryName.trim() });
     } else {
-      // Update default category name in Zustand store
       const idx = uploadableCategories.findIndex(c => c.id === catId);
       if (idx !== -1) {
         uploadableCategories[idx].name = editingCategoryName.trim();
       }
-      // Also update in allCategories for immediate frontend update
       const idxAll = allCategories.findIndex(c => c.id === catId);
       if (idxAll !== -1) {
         allCategories[idxAll].name = editingCategoryName.trim();
@@ -94,8 +94,66 @@ export default function TemplateLibrary() {
     toast.success("Kategorinavn oppdatert");
     setEditingCategoryId(null);
     setEditingCategoryName("");
-    // Force reload to reflect changes everywhere
     loadFromDB();
+  };
+
+  const handleToggleCategoryCheckbox = (catId: string) => {
+    const userCat = userCategories.find(c => c.id === catId);
+    if (userCat) {
+      updateUserCategory(catId, { hasCheckbox: !userCat.hasCheckbox });
+      toast.success(userCat.hasCheckbox ? "Vises alltid" : "Vises med checkbox");
+    } else if (userIsAdmin) {
+      // For innebygde kategorier - kun admin kan endre
+      const currentHasCheckbox = builtInCategorySettings[catId]?.hasCheckbox ?? true;
+      setBuiltInCategorySettings(prev => ({
+        ...prev,
+        [catId]: { ...prev[catId], hasCheckbox: !currentHasCheckbox }
+      }));
+      toast.success(currentHasCheckbox ? "Vises alltid" : "Vises med checkbox");
+    } else {
+      toast.error("Checkbox kan kun endres for egendefinerte kategorier");
+    }
+  };
+
+  const handleToggleCategoryVisibility = (catId: string) => {
+    const userCat = userCategories.find(c => c.id === catId);
+    if (userCat) {
+      updateUserCategory(catId, { isVisible: !userCat.isVisible });
+      toast.success(userCat.isVisible ? "Kategori skjult i frontend" : "Kategori synlig i frontend");
+    } else if (userIsAdmin) {
+      // For innebygde kategorier - kun admin kan endre
+      const currentIsVisible = builtInCategorySettings[catId]?.isVisible ?? true;
+      setBuiltInCategorySettings(prev => ({
+        ...prev,
+        [catId]: { ...prev[catId], isVisible: !currentIsVisible }
+      }));
+      toast.success(currentIsVisible ? "Kategori skjult i frontend" : "Kategori synlig i frontend");
+    } else {
+      toast.error("Synlighet kan kun endres for egendefinerte kategorier");
+    }
+  };
+
+  const handleDeleteCategory = (catId: string) => {
+    const category = allCategories.find(c => c.id === catId);
+    if (!category) return;
+    
+    const userCat = userCategories.find(c => c.id === catId);
+    if (userCat) {
+      if (confirm(`Er du sikker på at du vil slette kategorien "${category.name}"?`)) {
+        deleteUserCategory(catId);
+        toast.success("Kategori slettet");
+        setEditingCategoryId(null);
+      }
+    } else {
+      // For innebygde kategorier - fjern alle maler og skjul kategorien
+      if (confirm(`Er du sikker på at du vil slette kategorien "${category.name}" og alle malene i den?`)) {
+        const templatesToDelete = templates.filter(t => t.category === catId);
+        templatesToDelete.forEach(t => deleteTemplate(t.id));
+        setHiddenCategories(prev => [...prev, catId]);
+        toast.success(`Kategori "${category.name}" og ${templatesToDelete.length} mal(er) slettet`);
+        setEditingCategoryId(null);
+      }
+    }
   };
 
   useEffect(() => {
@@ -125,8 +183,10 @@ export default function TemplateLibrary() {
       kind: "dropdown" as const,
       order: uc.order,
       isUserCategory: true,
+      isVisible: uc.isVisible ?? true, // Default to true if not set
+      hasCheckbox: uc.hasCheckbox ?? true, // Default to true if not set
     }))
-  ].sort((a, b) => a.order - b.order);
+  ].filter(cat => !hiddenCategories.includes(cat.id)).sort((a, b) => a.order - b.order);
   
   // Filtrer templates basert på bruker
   const filteredTemplates = userIsAdmin 
@@ -244,36 +304,38 @@ export default function TemplateLibrary() {
           value={openCategories}
           onValueChange={setOpenCategories}
         >
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-2 mb-4">
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-2 mb-4 items-start">
           {allCategories.map((cat) => {
-            let list = filteredTemplates.filter((t) => t.category === cat.name);
+              let list = filteredTemplates.filter((t) => t.category === cat.name);
 
-            // Safari-sortering: tall først numerisk, så resten alfabetisk, så de uten tall til sist
-            if (cat.name.toLowerCase().includes('safari')) {
-              const withNumber = list.filter(t => /^\d+/.test(t.name));
-              const withoutNumber = list.filter(t => !/^\d+/.test(t.name));
-              withNumber.sort((a, b) => {
-                const numA = parseInt(a.name.match(/^\d+/)?.[0] || '0', 10);
-                const numB = parseInt(b.name.match(/^\d+/)?.[0] || '0', 10);
-                return numA - numB;
-              });
-              // De uten tall sorteres alfabetisk og legges til sist
-              withoutNumber.sort((a, b) => a.name.localeCompare(b.name));
-              list = [...withNumber, ...withoutNumber];
-            }
+              // Safari-sortering: tall først numerisk, så resten alfabetisk, så de uten tall til sist
+              if (cat.name.toLowerCase().includes('safari')) {
+                const withNumber = list.filter(t => /^\d+/.test(t.name));
+                const withoutNumber = list.filter(t => !/^\d+/.test(t.name));
+                withNumber.sort((a, b) => {
+                  const numA = parseInt(a.name.match(/^\d+/)?.[0] || '0', 10);
+                  const numB = parseInt(b.name.match(/^\d+/)?.[0] || '0', 10);
+                  return numA - numB;
+                });
+                // De uten tall sorteres alfabetisk og legges til sist
+                withoutNumber.sort((a, b) => a.name.localeCompare(b.name));
+                list = [...withNumber, ...withoutNumber];
+              }
 
-            const isUserCategory = 'isUserCategory' in cat && cat.isUserCategory;
-            const isPersonalCategory = cat.kind === 'user';
+              const isUserCategory = 'isUserCategory' in cat && cat.isUserCategory;
+              const isPersonalCategory = cat.kind === 'user';
+              const userOwnsCategory = isUserCategory && userCategories.find(c => c.id === cat.id)?.userId === userEmail;
+              const canEdit = userIsAdmin || isPersonalCategory || userOwnsCategory;
 
-            return (
-              <AccordionItem
-                key={cat.id}
-                value={cat.id}
-                className="border rounded-md px-3 py-1"
-              >
-                <AccordionTrigger className="hover:no-underline py-2">
-                  <div className="flex items-center justify-between w-full pr-2">
-                    <div className="flex items-center gap-2">
+              return (
+                <AccordionItem
+                  key={cat.id}
+                  value={cat.id}
+                  className="border rounded-md px-3 py-1"
+                >
+                  <AccordionTrigger className="hover:no-underline py-2">
+                    <div className="flex items-center justify-between w-full pr-2">
+                      <div className="flex items-center gap-2">
                       {editingCategoryId === cat.id ? (
                         <>
                           <Input
@@ -294,6 +356,45 @@ export default function TemplateLibrary() {
                           >
                             <Save className="h-4 w-4 text-green-600" />
                           </span>
+                          {(userIsAdmin || isUserCategory) && (
+                            <>
+                              <span 
+                                className="inline-flex items-center justify-center h-7 w-7 rounded-md hover:bg-accent hover:text-accent-foreground cursor-pointer" 
+                                onClick={e => { 
+                                  e.stopPropagation(); 
+                                  handleToggleCategoryVisibility(cat.id); 
+                                }} 
+                                title={(userCategories.find(c => c.id === cat.id)?.isVisible ?? builtInCategorySettings[cat.id]?.isVisible ?? true) ? "Synlig i frontend" : "Skjult i frontend"}
+                              >
+                                {(userCategories.find(c => c.id === cat.id)?.isVisible ?? builtInCategorySettings[cat.id]?.isVisible ?? true) ? (
+                                  <Eye className="h-4 w-4 text-blue-600" />
+                                ) : (
+                                  <EyeOff className="h-4 w-4 text-gray-600" />
+                                )}
+                              </span>
+                              <span 
+                                className="inline-flex items-center justify-center h-7 w-7 rounded-md hover:bg-accent hover:text-accent-foreground cursor-pointer" 
+                                onClick={e => { 
+                                  e.stopPropagation(); 
+                                  handleToggleCategoryCheckbox(cat.id); 
+                                }} 
+                                title={(userCategories.find(c => c.id === cat.id)?.hasCheckbox ?? builtInCategorySettings[cat.id]?.hasCheckbox ?? true) ? "Vises med checkbox" : "Vises alltid"}
+                              >
+                                {(userCategories.find(c => c.id === cat.id)?.hasCheckbox ?? builtInCategorySettings[cat.id]?.hasCheckbox ?? true) ? (
+                                  <CheckSquare className="h-4 w-4 text-purple-600" />
+                                ) : (
+                                  <Square className="h-4 w-4 text-gray-600" />
+                                )}
+                              </span>
+                            </>
+                          )}
+                          <span 
+                            className="inline-flex items-center justify-center h-7 w-7 rounded-md hover:bg-accent hover:text-accent-foreground cursor-pointer" 
+                            onClick={e => { e.stopPropagation(); handleDeleteCategory(cat.id); }} 
+                            title="Slett kategori"
+                          >
+                            <Trash2 className="h-4 w-4 text-red-600" />
+                          </span>
                           <span 
                             className="inline-flex items-center justify-center h-7 w-7 rounded-md hover:bg-accent hover:text-accent-foreground cursor-pointer" 
                             onClick={e => { e.stopPropagation(); setEditingCategoryId(null); }} 
@@ -305,13 +406,15 @@ export default function TemplateLibrary() {
                       ) : (
                         <>
                           <span className="font-medium text-sm">{cat.name}</span>
-                          <span 
-                            className="inline-flex items-center justify-center h-7 w-7 rounded-md hover:bg-accent hover:text-accent-foreground cursor-pointer" 
-                            onClick={e => { e.stopPropagation(); handleEditCategory(cat.id, cat.name); }} 
-                            title="Endre navn"
-                          >
-                            <Edit2 className="h-4 w-4 text-blue-600" />
-                          </span>
+                          {canEdit && (
+                            <span 
+                              className="inline-flex items-center justify-center h-7 w-7 rounded-md hover:bg-accent hover:text-accent-foreground cursor-pointer" 
+                              onClick={e => { e.stopPropagation(); handleEditCategory(cat.id, cat.name); }} 
+                              title="Endre navn"
+                            >
+                              <Edit2 className="h-4 w-4 text-blue-600" />
+                            </span>
+                          )}
                           {isPersonalCategory && (
                             <span className="text-xs px-1.5 py-0.5 bg-blue-100 text-blue-700 rounded">
                               Personlig
@@ -324,20 +427,6 @@ export default function TemplateLibrary() {
                       <span className="text-xs text-muted-foreground">
                         {list.length} filer
                       </span>
-                      {isUserCategory && userIsAdmin && (
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            handleDeleteUserCategory(cat.id, cat.name);
-                          }}
-                          className="h-5 w-5 p-0 text-destructive hover:text-destructive"
-                          title="Slett kategori"
-                        >
-                          <Trash2 className="h-3 w-3" />
-                        </Button>
-                      )}
                     </div>
                   </div>
                 </AccordionTrigger>

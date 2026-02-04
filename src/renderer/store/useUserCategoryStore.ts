@@ -7,13 +7,15 @@ export interface UserCategory {
   userId: string;
   createdAt: number;
   order: number;
+  hasCheckbox: boolean; // true = checkbox, false = always visible
+  isVisible: boolean; // true = vises i frontend, false = skjult
 }
 
 interface UserCategoryStore {
   categories: UserCategory[];
-  addCategory: (name: string, userId: string) => void;
+  addCategory: (name: string, userId: string, hasCheckbox?: boolean) => void;
   deleteCategory: (id: string) => void;
-  updateCategory: (id: string, name: string) => void;
+  updateCategory: (id: string, updates: Partial<UserCategory>) => void;
   getCategoriesForUser: (userId: string) => UserCategory[];
 }
 
@@ -22,13 +24,15 @@ export const useUserCategoryStore = create<UserCategoryStore>()(
     (set, get) => ({
       categories: [],
 
-      addCategory: (name, userId) => {
+      addCategory: (name, userId, hasCheckbox = true) => {
         const newCategory: UserCategory = {
           id: `user-cat-${Date.now()}`,
           name,
           userId,
           createdAt: Date.now(),
           order: get().categories.length + 100, // Start after default categories
+          hasCheckbox,
+          isVisible: true,
         };
         set((state) => ({
           categories: [...state.categories, newCategory],
@@ -41,10 +45,10 @@ export const useUserCategoryStore = create<UserCategoryStore>()(
         }));
       },
 
-      updateCategory: (id, name) => {
+      updateCategory: (id, updates) => {
         set((state) => ({
           categories: state.categories.map((c) =>
-            c.id === id ? { ...c, name } : c
+            c.id === id ? { ...c, ...updates } : c
           ),
         }));
       },

@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from "react";
 import { useTemplateStore } from "@/store/useTemplateStore";
+import { useUserCategoryStore } from "@/store/useUserCategoryStore";
 import TemplateDropdown from "./TemplateDropdown";
 import { getBaseTemplateFileName, getAllBaseTemplateOptions, type DestinationSelection } from "@/config/baseTemplateSelector";
 import { getUserPrefix } from "@/config/userConfig";
@@ -55,6 +56,9 @@ export default function TravelProgramBuilder({ language = 'no' }: TravelProgramB
     loadFromDB,
     slides, // <-- bring in slides from global state
   } = useTemplateStore();
+
+  const { categories: userCategories, getCategoriesForUser } = useUserCategoryStore();
+  const myUserCategories = userEmail ? getCategoriesForUser(userEmail) : [];
 
   // Dynamically get category names from store
   const AUTO_PROGRAM_CATEGORY = getCategoryNameById(categories, "base_program");
@@ -130,6 +134,22 @@ export default function TravelProgramBuilder({ language = 'no' }: TravelProgramB
   const [fastlandId, setFastlandId] = useState<string | null>(null);
   const [extraSlides, setExtraSlides] = useState(false);
   const [extraSlidesId, setExtraSlidesId] = useState<string | null>(null);
+
+  // Dynamic user-defined categories state
+  const [userCategoryStates, setUserCategoryStates] = useState<Record<string, { checked: boolean; templateId: string | null }>>({});
+
+  // Initialize state for user categories
+  useEffect(() => {
+    const newStates: Record<string, { checked: boolean; templateId: string | null }> = {};
+    myUserCategories.forEach(cat => {
+      if (!userCategoryStates[cat.id]) {
+        newStates[cat.id] = { checked: false, templateId: null };
+      }
+    });
+    if (Object.keys(newStates).length > 0) {
+      setUserCategoryStates(prev => ({ ...prev, ...newStates }));
+    }
+  }, [myUserCategories.length]);
 
   // Load templates on mount
   useEffect(() => {
@@ -255,11 +275,13 @@ export default function TravelProgramBuilder({ language = 'no' }: TravelProgramB
         .filter(Boolean) as typeof templates;
 
       // Konverter blobs til ArrayBuffers
-      const baseBuffer = await baseTemplate.blob.arrayBuffer();
+      const baseBuffer = baseTemplate.blob instanceof Blob 
+        ? await baseTemplate.blob.arrayBuffer() 
+        : baseTemplate.blob;
       const moduleBuffers = await Promise.all(
         moduleTemplates.map(async (t) => ({
           name: t.name,
-          buffer: await t.blob.arrayBuffer(),
+          buffer: t.blob instanceof Blob ? await t.blob.arrayBuffer() : t.blob,
         }))
       );
 
@@ -269,11 +291,11 @@ export default function TravelProgramBuilder({ language = 'no' }: TravelProgramB
       const flightData = flightDataStr && flightReady === 'true' ? JSON.parse(flightDataStr) : null;
 
       // Kall Electron API for å bygge PowerPoint
-      if (!window.electronAPI?.generatePpt) {
+      if (!window.electron?.generatePpt) {
         throw new Error('generatePpt API ikke tilgjengelig');
       }
 
-      const result = await window.electronAPI.generatePpt({
+      const result = await window.electron.generatePpt({
         base: baseBuffer,
         modules: moduleBuffers,
         language: userLanguage,
@@ -1021,19 +1043,51 @@ export default function TravelProgramBuilder({ language = 'no' }: TravelProgramB
               onSelectChange={setExtraSlidesId}
             />
           </div>
+
+          {/* Dynamic user-defined categories */}
+          {myUserCategories.length > 0 && (
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-4">
+              {myUserCategories.filter(userCat => userCat.isVisible).map((userCat) => {
+                const state = userCategoryStates[userCat.id] || { checked: false, templateId: null };
+                return (
+                  <CheckboxWithDropdown
+                    key={userCat.id}
+                    id={userCat.id}
+                    label={userCat.name}
+                    checked={state.checked}
+                    onCheckedChange={(checked) =>
+                      setUserCategoryStates(prev => ({
+                        ...prev,
+                        [userCat.id]: { ...state, checked: !!checked }
+                      }))
+                    }
+                    category={userCat.name}
+                    selectedId={state.templateId}
+                    onSelectChange={(id) =>
+                      setUserCategoryStates(prev => ({
+                        ...prev,
+                        [userCat.id]: { ...state, templateId: id }
+                      }))
+                    }
+                    hideCheckbox={!userCat.hasCheckbox}
+                  />
+                );
+              })}
+            </div>
+          )}
         </div>
 
         {/* Valgte slides - full bredde (inkluderer flight slide fra global state) */}
         <div className="space-y-3">
           <Label className="text-base font-semibold">Valgte slides</Label>
           <div className="border rounded-lg p-3 min-h-[120px] bg-muted/30">
-            {slides.length === 0 ? (
+            {selectedTemplateIds.length === 0 && slides.filter(s => typeof s === "object" && s.type === "flight").length === 0 ? (
               <p className="text-muted-foreground text-sm text-center py-4">
                 Ingen slides valgt ennå
               </p>
             ) : (
               <div className="space-y-2">
-                {slides.map((slide, idx) => {
+                {[...selectedTemplateIds, ...slides.filter(s => typeof s === "object" && s.type === "flight")].map((slide, idx) => {
                   if (typeof slide === "string") {
                     const tpl = templates.find((t) => t.id === slide);
                     if (!tpl) return null;

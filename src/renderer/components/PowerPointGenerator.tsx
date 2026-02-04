@@ -186,9 +186,9 @@ export const PowerPointGenerator = ({
       const flightReady = localStorage.getItem('flyinformasjon-ready');
       const flightData = flightDataStr && flightReady === 'true' ? JSON.parse(flightDataStr) : null;
 
-      // Kall PowerShell/COM via electronAPI
-      if (!window.electronAPI?.generatePpt) throw new Error('generatePpt API ikke tilgjengelig');
-      const result = await window.electronAPI.generatePpt({
+      // Kall PowerShell/COM via electron API
+      if (!window.electron?.generatePpt) throw new Error('generatePpt API ikke tilgjengelig');
+      const result = await window.electron.generatePpt({
         base: downloadedFiles[0].buffer,
         modules: downloadedFiles.slice(1).map(f => ({ name: f.name, buffer: f.buffer })),
         language,

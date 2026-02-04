@@ -399,6 +399,85 @@ ipcMain.handle("ppt:open-temp", async (_, { data, fileName }) => {
 -------------------------------------------------- */
 
 /**
+ * Mottar ArrayBuffers fra renderer og bygger PowerPoint
+ */
+ipcMain.handle("ppt:generate", async (_, payload) => {
+  const { base, modules, departureDate, language, flightData } = payload;
+  
+  try {
+    // Lag temp-mappe for filene
+    const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'pptgen-'));
+    const basePath = path.join(tmpDir, 'base.pptx');
+    
+    // Skriv base-fil
+    fs.writeFileSync(basePath, Buffer.from(base));
+    
+    // Skriv modul-filer
+    const modulePaths = [];
+    for (let i = 0; i < modules.length; i++) {
+      const modPath = path.join(tmpDir, `mod${i + 1}.pptx`);
+      fs.writeFileSync(modPath, Buffer.from(modules[i].buffer));
+      modulePaths.push(modPath);
+    }
+    
+    // Kall eksisterende build-handler
+    const result = await new Promise((resolve, reject) => {
+      const scriptPath = path.join(__dirname, "ppt-build.ps1");
+      execFile(
+        "powershell.exe",
+        [
+          "-ExecutionPolicy",
+          "Bypass",
+          "-File",
+          scriptPath,
+          basePath,
+          departureDate || "",
+          ...modulePaths
+        ],
+        (error, stdout, stderr) => {
+          if (error) {
+            console.error("PowerPoint build error:", stderr || error);
+            reject(stderr || error.message);
+          } else {
+            // After successful build, run post-processing
+            const postProcessPath = path.join(__dirname, "ppt-post-process.ps1");
+            const flightDataJson = flightData ? JSON.stringify(flightData) : "";
+            
+            execFile(
+              "powershell.exe",
+              [
+                "-ExecutionPolicy",
+                "Bypass",
+                "-File",
+                postProcessPath,
+                basePath,
+                departureDate || "",
+                flightDataJson,
+                language || "no"
+              ],
+              (postError, postStdout, postStderr) => {
+                if (postError) {
+                  console.error("PowerPoint post-processing error:", postStderr || postError);
+                  reject(postStderr || postError.message);
+                } else {
+                  console.log("Post-processing complete:", postStdout);
+                  resolve({ ok: true });
+                }
+              }
+            );
+          }
+        }
+      );
+    });
+    
+    return result;
+  } catch (error) {
+    console.error('ppt:generate error:', error);
+    return { ok: false, error: String(error) };
+  }
+});
+
+/**
  * Bygger PowerPoint ved å la PowerPoint selv gjøre jobben:
  * - Åpner basefil synlig
  * - Setter inn modul-slides før de 2 siste slidene
