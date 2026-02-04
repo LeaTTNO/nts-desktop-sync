@@ -58,7 +58,8 @@ export const useUserCategoryStore = create<UserCategoryStore>()(
       },
     }),
     {
-      name: "user-categories-storage",
+      name: "user-categories-storage-v2",
+      version: 1,
     }
   )
 );

@@ -301,6 +301,7 @@ export default function TravelProgramBuilder({ language = 'no' }: TravelProgramB
         language: userLanguage,
         departureDate: departureDate || null,
         flightData,
+        baseTemplateName: baseTemplate.name,
       });
 
       if (result && result.ok) {

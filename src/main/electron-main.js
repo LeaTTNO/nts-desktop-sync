@@ -402,12 +402,14 @@ ipcMain.handle("ppt:open-temp", async (_, { data, fileName }) => {
  * Mottar ArrayBuffers fra renderer og bygger PowerPoint
  */
 ipcMain.handle("ppt:generate", async (_, payload) => {
-  const { base, modules, departureDate, language, flightData } = payload;
+  const { base, modules, departureDate, language, flightData, baseTemplateName } = payload;
   
   try {
     // Lag temp-mappe for filene
     const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'pptgen-'));
-    const basePath = path.join(tmpDir, 'base.pptx');
+    // Use original template name or fallback to 'base.pptx'
+    const fileName = baseTemplateName || 'base.pptx';
+    const basePath = path.join(tmpDir, fileName);
     
     // Skriv base-fil
     fs.writeFileSync(basePath, Buffer.from(base));

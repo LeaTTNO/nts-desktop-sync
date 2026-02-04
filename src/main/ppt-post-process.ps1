@@ -33,7 +33,7 @@ function Format-NorwegianDate {
     
     $months = if ($Lang -eq "da") { $monthsDa } else { $monthsNo }
     
-    $day = $Date.Day
+    $day = $Date.Day.ToString("00")
     $month = $months[$Date.Month]
     
     return "$day $month"
@@ -43,34 +43,51 @@ function Format-NorwegianDate {
 # CONNECT TO POWERPOINT
 # =====================================================
 
+Write-Host "Connecting to PowerPoint..."
+Write-Host "Looking for presentation: $PresentationPath"
+
 try {
     $ppApp = [System.Runtime.InteropServices.Marshal]::GetActiveObject("PowerPoint.Application")
+    Write-Host "Connected to PowerPoint. Open presentations: $($ppApp.Presentations.Count)"
 } catch {
     Write-Error "PowerPoint is not running"
     exit 1
 }
 
 # =====================================================
-# OPEN PRESENTATION
+# FIND PRESENTATION
 # =====================================================
 
 $presentation = $null
+
+# List all open presentations for debugging
 foreach ($p in $ppApp.Presentations) {
+    Write-Host "Open presentation: $($p.FullName)"
     if ($p.FullName -eq $PresentationPath) {
         $presentation = $p
+        Write-Host "MATCH FOUND!"
         break
     }
 }
 
 if (-not $presentation) {
-    # If not already open, open it
-    $presentation = $ppApp.Presentations.Open($PresentationPath, [Microsoft.Office.Core.MsoTriState]::msoTrue, [Microsoft.Office.Core.MsoTriState]::msoFalse, [Microsoft.Office.Core.MsoTriState]::msoFalse)
+    Write-Host "Presentation not found in open windows. Trying to open..."
+    try {
+        $presentation = $ppApp.Presentations.Open($PresentationPath, $false, $false, $true)
+        Write-Host "Presentation opened successfully"
+    } catch {
+        Write-Error "Failed to open presentation: $_"
+        exit 1
+    }
 }
 
 if (-not $presentation) {
     Write-Error "Could not open presentation: $PresentationPath"
     exit 1
 }
+
+Write-Host "Working with presentation: $($presentation.FullName)"
+Write-Host "Total slides: $($presentation.Slides.Count)"
 
 # =====================================================
 # 1. DG/DTO REPLACEMENT (PAIRWISE)
@@ -84,53 +101,92 @@ $baseDate = $null
 if ($DepartureDate) {
     try {
         $baseDate = [DateTime]::ParseExact($DepartureDate, "yyyy-MM-dd", $null)
+        Write-Host "Parsed departure date: $baseDate"
     } catch {
         Write-Warning "Invalid departure date format: $DepartureDate"
     }
 }
 
+# Process all shapes in all slides
 foreach ($slide in $presentation.Slides) {
-    $modified = $true
+    Write-Host "Processing slide $($slide.SlideIndex)..."
     
-    while ($modified) {
-        $modified = $false
-        
-        foreach ($shape in $slide.Shapes) {
-            if ($shape.HasTextFrame -and $shape.TextFrame.HasText) {
-                $textRange = $shape.TextFrame.TextRange
-                $text = $textRange.Text
-                
-                # Find first "DG" followed by first "DTO"
-                $dgIndex = $text.IndexOf("DG")
-                $dtoIndex = $text.IndexOf("DTO")
-                
-                if ($dgIndex -ge 0 -and $dtoIndex -gt $dgIndex) {
-                    $dayCounter++
+    # Search through all shapes on this slide
+    foreach ($shape in $slide.Shapes) {
+        # Check if shape is a table
+        if ($shape.HasTable) {
+            Write-Host "  Found table with $($shape.Table.Rows.Count) rows"
+            
+            # Process each cell in the table
+            foreach ($row in $shape.Table.Rows) {
+                foreach ($cell in $row.Cells) {
+                    $cellText = $cell.Shape.TextFrame.TextRange.Text.Trim()
                     
-                    # Replace DG with "Dag X"
-                    $dgRange = $textRange.Characters($dgIndex + 1, 2)
-                    $dgRange.Text = "Dag $dayCounter"
-                    
-                    # Re-get text after modification
-                    $text = $shape.TextFrame.TextRange.Text
-                    
-                    # Find DTO again (position changed)
-                    $dtoIndex = $text.IndexOf("DTO")
-                    
-                    if ($dtoIndex -ge 0) {
-                        $dtoRange = $textRange.Characters($dtoIndex + 1, 3)
-                        
+                    # Check for DG
+                    if ($cellText -eq "DG") {
+                        $dayCounter++
+                        $cell.Shape.TextFrame.TextRange.Text = "Dag $dayCounter"
+                        Write-Host "  Replaced DG with 'Dag $dayCounter' in table cell"
+                    }
+                    # Check for DTO
+                    elseif ($cellText -eq "DTO") {
                         if ($baseDate) {
                             $currentDate = $baseDate.AddDays($dayCounter - 1)
                             $formatted = Format-NorwegianDate -Date $currentDate -Lang $Language
-                            $dtoRange.Text = $formatted
+                            $cell.Shape.TextFrame.TextRange.Text = $formatted
+                            Write-Host "  Replaced DTO with '$formatted' in table cell"
                         } else {
-                            $dtoRange.Text = ""
+                            $cell.Shape.TextFrame.TextRange.Text = ""
                         }
                     }
+                }
+            }
+        }
+        # Also check regular text frames (non-table shapes)
+        elseif ($shape.HasTextFrame -eq $true) {
+            if ($shape.TextFrame.HasText -eq $true) {
+                $textRange = $shape.TextFrame.TextRange
+                $text = $textRange.Text
+                
+                # Look for "DG" as a standalone word (not part of another word)
+                if ($text -match '\bDG\b') {
+                    Write-Host "  Found DG marker in text!"
                     
-                    $modified = $true
-                    break
+                    # Keep processing until no more pairs found
+                    $foundPair = $true
+                    while ($foundPair) {
+                        $foundPair = $false
+                        $text = $textRange.Text
+                        
+                        # Find the position of DG and DTO
+                        $dgPos = $text.IndexOf("DG")
+                        $dtoPos = $text.IndexOf("DTO", $dgPos)
+                        
+                        if ($dgPos -ge 0 -and $dtoPos -gt $dgPos) {
+                            $dayCounter++
+                            Write-Host "  Processing text pair #$dayCounter (DG at $dgPos, DTO at $dtoPos)"
+                            
+                            # Replace DG
+                            $textRange.Text = $text.Substring(0, $dgPos) + "Dag $dayCounter" + $text.Substring($dgPos + 2)
+                            
+                            # Recalculate DTO position after DG replacement
+                            $text = $textRange.Text
+                            $dtoPos = $text.IndexOf("DTO")
+                            
+                            if ($dtoPos -ge 0) {
+                                if ($baseDate) {
+                                    $currentDate = $baseDate.AddDays($dayCounter - 1)
+                                    $formatted = Format-NorwegianDate -Date $currentDate -Lang $Language
+                                    $textRange.Text = $text.Substring(0, $dtoPos) + $formatted + $text.Substring($dtoPos + 3)
+                                    Write-Host "  Replaced DTO with: $formatted"
+                                } else {
+                                    $textRange.Text = $text.Substring(0, $dtoPos) + $text.Substring($dtoPos + 3)
+                                }
+                            }
+                            
+                            $foundPair = $true
+                        }
+                    }
                 }
             }
         }

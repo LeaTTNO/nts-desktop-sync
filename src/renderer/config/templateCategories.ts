@@ -11,7 +11,6 @@ export interface TemplateCategory {
 }
 
 export const defaultCategories: TemplateCategory[] = [
-  { id: "base_reiseprogram", name: "Reiseprogram og Tilbud", kind: "base", order: 1, isDefault: true },
   { id: "arusha_first_night", name: "Arusha første natt", kind: "dropdown", order: 2, isDefault: true },
   { id: "safari_period_group", name: "Safariperiode", kind: "group", order: 3, isDefault: true },
   { id: "safari_mid_dec_feb_ndutu", name: "Safari - Midt DEC - FEB (Ndutu)", kind: "dropdown", parentId: "safari_period_group", order: 4, isDefault: true },
@@ -89,8 +88,8 @@ export function getAllUserBaseCategories(language: "no" | "da" = "no"): Template
 
   return users.map((user, index) => {
     const categoryName = language === "no"
-      ? `${user.name} - Basefiler`
-      : `${user.name} - Basefiler`;
+      ? `${user.name} - Reiseprogram & Tilbud`
+      : `${user.name} - Rejseprogram & Tilbud`;
 
     return {
       id: `base_${user.prefix}`,
@@ -111,8 +110,8 @@ export function getAllUserBaseCategories(language: "no" | "da" = "no"): Template
 export function getUserBaseCategory(userPrefix: string, language: "no" | "da" = "no"): TemplateCategory {
   const userName = userPrefix.charAt(0).toUpperCase() + userPrefix.slice(1);
   const categoryName = language === "no"
-    ? `${userName} - Basefiler`
-    : `${userName} - Basefiler`;
+    ? `${userName} - Reiseprogram & Tilbud`
+    : `${userName} - Rejseprogram & Tilbud`;
 
   return {
     id: `base_${userPrefix}`,
