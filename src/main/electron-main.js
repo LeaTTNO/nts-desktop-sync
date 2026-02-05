@@ -46,7 +46,7 @@ const FAREWISE_REGIONS = {
   da: {
     baseUrl: "https://api.farewise.dk",
     currency: "DKK",
-    customerId: 17179,
+    customerId: 1280,
     customerName: "Tanzania Tours ApS",
   },
 };
@@ -106,6 +106,34 @@ async function loginToFarewise(language = "no") {
     console.log("   Cookies:", farewiseCookies.substring(0, 200) + "...");
   } else {
     console.warn("⚠️ No cookies received from login!");
+  }
+
+  // EKSTRA: Hent kontekst for DK etter login (match webklient)
+  if (language === "da") {
+    // 1. GET /api/context/default/url
+    await fetch("https://www.farewise.dk/api/context/default/url", {
+      method: "GET",
+      headers: {
+        "Accept": "application/json, text/plain, */*",
+        "Accept-Language": "da-DK,da;q=0.9,en-US;q=0.8,en;q=0.7",
+        "Referer": "https://www.farewise.dk/nd/login",
+        "Origin": "https://www.farewise.dk",
+        "Cookie": farewiseCookies,
+      },
+      credentials: "include",
+    });
+    // 2. GET /api/context/get
+    await fetch("https://www.farewise.dk/api/context/get", {
+      method: "GET",
+      headers: {
+        "Accept": "application/json, text/plain, */*",
+        "Accept-Language": "da-DK,da;q=0.9,en-US;q=0.8,en;q=0.7",
+        "Referer": "https://www.farewise.dk/nd/dashboard-v2",
+        "Origin": "https://www.farewise.dk",
+        "Cookie": farewiseCookies,
+      },
+      credentials: "include",
+    });
   }
 
   return await res.json();
@@ -337,6 +365,7 @@ function convertFarewiseToAmadeus(farewiseData, currency = "NOK") {
         currency: currency, // NOK for norsk, DKK for dansk
         grandTotal: String(priceTotal),
       },
+      fareType: rec.price?.priceType === "NEGOTIATED" ? "NEGOTIATED" : "PUBLIC",
       itineraries,
       validatingAirlineCodes: [rec.carrier?.code || ""],
       numberOfBookableSeats: 9,
@@ -595,7 +624,7 @@ function createWindow() {
   if (isDev) {
     win.loadURL("http://localhost:5174");
   } else {
-    const indexPath = path.join(__dirname, "../renderer/index.html");
+    const indexPath = path.join(__dirname, "../dist/renderer/index.html");
     console.log("📦 PROD index.html:", indexPath);
     win.loadFile(indexPath);
   }

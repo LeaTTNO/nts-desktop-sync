@@ -4,11 +4,16 @@ import { fileURLToPath } from "url";
 import fs from "fs";
 import os from "os";
 
+/* --------------------------------------------------
+   📁 ESM __dirname support
+-------------------------------------------------- */
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
+/* --------------------------------------------------
+   🔧 Globals
+-------------------------------------------------- */
 let mainWindow: BrowserWindow | null = null;
-
 const isDev = !app.isPackaged;
 
 /* --------------------------------------------------
@@ -25,14 +30,13 @@ function createWindow() {
     },
   });
 
-  // ❌ DevTools åpnes IKKE automatisk
-  // (du kan åpne manuelt med Ctrl+Shift+I)
-
   if (isDev) {
+    // 🔧 DEV: Vite / dev-server
     mainWindow.loadURL("http://localhost:5174");
   } else {
+    // 🚀 PROD: last bygget renderer fra app.asar
     mainWindow.loadFile(
-      path.join(__dirname, "../renderer/index.html")
+      path.join(app.getAppPath(), "dist", "renderer", "index.html")
     );
   }
 

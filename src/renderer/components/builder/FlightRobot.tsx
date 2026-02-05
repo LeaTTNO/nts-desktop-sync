@@ -415,6 +415,7 @@ function processFlightOffers(
       inbound,
       price: parseFloat(offer.price.grandTotal),
       currency: offer.price.currency,
+      fareType: offer.fareType,
       isRecommended: false,
       rawOffer: offer,
       totalDurationMinutes: maxSingleLegDuration, // Max single leg for filtering
