@@ -2,7 +2,7 @@ import React, { useState } from "react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Copy, Check, Users, ChevronDown, FileDown, ExternalLink } from "lucide-react";
+import { Copy, Check, Users, ChevronDown, FileDown } from "lucide-react";
 import { toast } from "sonner";
 import { FlightOffer, airportNames } from "@/lib/amadeusClient";
 
@@ -270,45 +270,6 @@ export default function FlightResultCard({
     setTimeout(() => setCopied(false), 2000);
   };
 
-  const openInFarewise = () => {
-    const domain = language === "da" ? "farewise.dk" : "farewise.no";
-    const depDate = flight.outbound.departureTime.split('T')[0];
-    const retDate = flight.inbound?.departureTime.split('T')[0];
-    
-    if (!retDate) {
-      toast.error(language === "no" ? "Ingen returdato funnet" : "Ingen returdato fundet");
-      return;
-    }
-
-    // Build Farewise search URL with query parameters
-    const searchParams = new URLSearchParams({
-      from: flight.outbound.departure,
-      to: flight.outbound.arrival,
-      departureDate: depDate,
-      returnDate: retDate,
-      adults: "1",
-    });
-
-    const url = `https://www.${domain}/nd/flight/search?${searchParams.toString()}`;
-    
-    // Open in default browser
-    window.open(url, '_blank');
-    toast.success(language === "no" ? "Åpner Farewise..." : "Åbner Farewise...");
-  };
-
-  const [copiedId, setCopiedId] = useState(false);
-  const copyFlightId = async () => {
-    try {
-      await navigator.clipboard.writeText(flight.id);
-      setCopiedId(true);
-      toast.success(language === "no" ? "ID kopiert!" : "ID kopieret!");
-      setTimeout(() => setCopiedId(false), 2000);
-    } catch (err) {
-      console.error('Failed to copy ID:', err);
-      toast.error(language === "no" ? "Kunne ikke kopiere ID" : "Kunne ikke kopiére ID");
-    }
-  };
-
   const renderLeg = (
     leg: FlightLeg,
     label: string,
@@ -543,25 +504,6 @@ export default function FlightResultCard({
                   PPTX
                 </Button>
               )}
-
-              <Button variant="outline" size="sm" onClick={openInFarewise} className="w-full h-7 text-xs px-2">
-                <ExternalLink className="h-3 w-3" />
-                Farewise
-              </Button>
-
-              <Button variant="ghost" size="sm" onClick={copyFlightId} className="w-full h-7 text-xs px-2">
-                {copiedId ? (
-                  <>
-                    <Check className="h-3 w-3" />
-                    ID {t.copied}
-                  </>
-                ) : (
-                  <>
-                    <Copy className="h-3 w-3" />
-                    {language === "no" ? "Kopier ID" : "Kopier ID"}
-                  </>
-                )}
-              </Button>
             </div>
           </div>
         </div>

@@ -344,11 +344,25 @@ function getTotalMinutes(isoDuration: string): number {
 
 /**
  * Check if a time falls in the night period (00:30 - 05:50)
+ * Parse time directly from ISO string to avoid timezone conversion issues
  */
 function isNightTime(dateTimeStr: string): boolean {
-  const date = new Date(dateTimeStr);
-  const timeInMinutes = date.getHours() * 60 + date.getMinutes();
-  return timeInMinutes >= NIGHT_START_MINUTES && timeInMinutes < NIGHT_END_MINUTES;
+  // Parse time directly from ISO string: "2026-05-06T04:05:00+00:00"
+  const timeMatch = dateTimeStr.match(/T(\d{2}):(\d{2})/);
+  if (!timeMatch) {
+    console.warn(`❌ Could not parse time from: ${dateTimeStr}`);
+    return false;
+  }
+  
+  const hours = parseInt(timeMatch[1]);
+  const minutes = parseInt(timeMatch[2]);
+  const timeInMinutes = hours * 60 + minutes;
+  const isNight = timeInMinutes >= NIGHT_START_MINUTES && timeInMinutes < NIGHT_END_MINUTES;
+  
+  // Debug logging to track what's happening
+  console.log(`🕐 TIME CHECK: ${dateTimeStr} → ${hours.toString().padStart(2,'0')}:${minutes.toString().padStart(2,'0')} → ${timeInMinutes} minutes → ${isNight ? 'NIGHT (BLOCKED)' : 'DAY (OK)'}`);
+  
+  return isNight;
 }
 
 /**
@@ -362,8 +376,18 @@ function hasProblematicNightFlight(offer: FlightOffer): boolean {
   const outboundItinerary = offer.itineraries[0];
   const lastOutboundSegment = outboundItinerary.segments[outboundItinerary.segments.length - 1];
   const outboundArrivalTime = lastOutboundSegment.arrival.at;
+  
+  // Debug: Log flight details for Turkish Airlines
+  const carrierCodes = outboundItinerary.segments.map(seg => seg.carrierCode);
+  const hasTurkish = carrierCodes.includes('TK');
+  if (hasTurkish) {
+    console.log(`🛫 TURKISH FLIGHT CHECK - Carriers: ${carrierCodes.join(', ')}, Arrival: ${outboundArrivalTime}, Destination: ${lastOutboundSegment.arrival.iataCode}`);
+  }
 
   if (isNightTime(outboundArrivalTime)) {
+    if (hasTurkish) {
+      console.log(`❌ BLOCKING Turkish flight - arrives at night: ${outboundArrivalTime}`);
+    }
     return true; // BLOCKED: arrives at destination during night
   }
 
@@ -372,8 +396,18 @@ function hasProblematicNightFlight(offer: FlightOffer): boolean {
     const returnItinerary = offer.itineraries[1];
     const firstReturnSegment = returnItinerary.segments[0];
     const returnDepartureTime = firstReturnSegment.departure.at;
+    
+    // Debug: Log return flight details for Turkish Airlines
+    const returnCarrierCodes = returnItinerary.segments.map(seg => seg.carrierCode);
+    const hasReturnTurkish = returnCarrierCodes.includes('TK');
+    if (hasReturnTurkish) {
+      console.log(`🛬 TURKISH RETURN CHECK - Carriers: ${returnCarrierCodes.join(', ')}, Departure: ${returnDepartureTime}, Origin: ${firstReturnSegment.departure.iataCode}`);
+    }
 
     if (isNightTime(returnDepartureTime)) {
+      if (hasReturnTurkish) {
+        console.log(`❌ BLOCKING Turkish return flight - departs at night: ${returnDepartureTime}`);
+      }
       return true; // BLOCKED: departs from return origin during night
     }
   }

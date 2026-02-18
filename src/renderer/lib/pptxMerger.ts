@@ -104,7 +104,16 @@ export const mergePowerPointFiles = async (
     .sort((a, b) => a - b);
 
   const totalBaseSlides = baseSlideFiles.length;
-  
+
+  // Les base slide1 rels for å hente korrekt slideLayout-referanse
+  const baseSlide1RelsPath = `ppt/slides/_rels/slide${baseSlideFiles[0]}.xml.rels`;
+  let baseSlideLayoutRef = "../slideLayouts/slideLayout1.xml"; // fallback
+  if (merged.files[baseSlide1RelsPath]) {
+    const baseRelsXml = await merged.files[baseSlide1RelsPath].async("string");
+    const layoutMatch = baseRelsXml.match(/Target="(\.\.\/slideLayouts\/slideLayout\d+\.xml)"/);
+    if (layoutMatch) baseSlideLayoutRef = layoutMatch[1];
+  }
+
   // De 2 siste slidene skal flyttes til slutten
   const slidesToKeepAtEnd = 2;
   const insertAfterSlide = Math.max(0, totalBaseSlides - slidesToKeepAtEnd);
@@ -147,14 +156,18 @@ export const mergePowerPointFiles = async (
       
       merged.file(newMediaPath, await zip.files[mediaPath].async("arraybuffer"));
       
-      // Legg til i Content_Types hvis ikke finnes
-      if (!contentTypes.includes(`/ppt/media/${newMediaName}`)) {
-        const contentType = ext === 'png' ? 'image/png' : 
-                           ext === 'jpg' || ext === 'jpeg' ? 'image/jpeg' : 
-                           ext === 'gif' ? 'image/gif' : 'image/png';
+      // Legg til Default Extension i Content_Types KUN hvis den ikke allerede finnes
+      const extLower = ext.toLowerCase();
+      const hasDefaultExt = new RegExp(`Extension="${extLower}"`, 'i').test(contentTypes);
+      if (!hasDefaultExt) {
+        const contentType = extLower === 'png' ? 'image/png' : 
+                           extLower === 'jpg' || extLower === 'jpeg' ? 'image/jpeg' : 
+                           extLower === 'gif' ? 'image/gif' :
+                           extLower === 'wmf' ? 'image/x-wmf' :
+                           extLower === 'emf' ? 'image/x-emf' : 'image/png';
         contentTypes = contentTypes.replace(
           "</Types>",
-          `<Default Extension="${ext}" ContentType="${contentType}"/></Types>`
+          `<Default Extension="${extLower}" ContentType="${contentType}"/></Types>`
         );
       }
       
@@ -180,11 +193,34 @@ export const mergePowerPointFiles = async (
 
       let relsContent: string | undefined;
       if (zip.files[relSrc]) {
-        relsContent = await zip.files[relSrc].async("string");
-        // Oppdater media-referanser i rels
-        for (const [oldName, newName] of Object.entries(mediaMapping)) {
-          relsContent = relsContent.replace(new RegExp(oldName, 'g'), newName);
-        }
+        const originalRels = await zip.files[relSrc].async("string");
+        
+        // Hent kun media-relasjoner fra modulen (med oppdaterte filnavn)
+        const mediaRelMatches = Array.from(
+          originalRels.matchAll(/<Relationship[^>]*Type="[^"]*\/image"[^>]*Target="([^"]*)"[^>]*Id="([^"]*)"[^>]*\/>/g)
+        );
+        
+        // Bygg ny rels: baseLayout + media fra modulen
+        const mediaRels = mediaRelMatches.map((m, idx) => {
+          let target = m[1];
+          // Oppdater media-filnavn
+          const oldFileName = target.split('/').pop()!;
+          const newFileName = mediaMapping[oldFileName] || oldFileName;
+          const newTarget = target.replace(oldFileName, newFileName);
+          return `<Relationship Id="rId${idx + 2}" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/image" Target="${newTarget}"/>`;
+        });
+        
+        relsContent = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
+  <Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/slideLayout" Target="${baseSlideLayoutRef}"/>
+  ${mediaRels.join('\n  ')}
+</Relationships>`;
+      } else {
+        // Ingen rels i modul – bruk bare base layout
+        relsContent = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
+  <Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/slideLayout" Target="${baseSlideLayoutRef}"/>
+</Relationships>`;
       }
 
       newSlides.push({
@@ -219,9 +255,7 @@ export const mergePowerPointFiles = async (
   // Skriv nye slides til merged
   for (const slide of newSlides) {
     merged.file(`ppt/slides/slide${slide.num}.xml`, slide.xml);
-    if (slide.rels) {
-      merged.file(`ppt/slides/_rels/slide${slide.num}.xml.rels`, slide.rels);
-    }
+    merged.file(`ppt/slides/_rels/slide${slide.num}.xml.rels`, slide.rels!);
   }
 
   // 3. Reorder slides i presentation.xml slik at moduler kommer FØR de 2 siste

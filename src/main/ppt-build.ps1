@@ -18,7 +18,7 @@ $ppApp.Visible = $true
 
 $presentation = $ppApp.Presentations.Open(
     $BasePath,
-    $true,   # ReadOnly
+    $false,  # ReadOnly = false (needed for DG/DTO post-processing)
     $false,  # Untitled
     $true    # WithWindow
 )

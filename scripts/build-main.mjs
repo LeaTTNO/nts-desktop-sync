@@ -21,4 +21,15 @@ fs.copyFileSync(
   path.join(dest, "ppt-dg-dto.js")
 );
 
+// PowerShell scripts for PowerPoint generation
+fs.copyFileSync(
+  path.join(src, "ppt-build.ps1"),
+  path.join(dest, "ppt-build.ps1")
+);
+
+fs.copyFileSync(
+  path.join(src, "ppt-post-process.ps1"),
+  path.join(dest, "ppt-post-process.ps1")
+);
+
 console.log("✅ Electron main & preload kopiert til dist/");

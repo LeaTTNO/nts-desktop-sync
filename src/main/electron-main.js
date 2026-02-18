@@ -506,10 +506,7 @@ ipcMain.handle("flights:search", async (_, payload) => {
   }
 });
 
-// ⚠️ IKKE REAKTIVER
-// PowerPoint skal ALLTID åpnes via ppt:build-in-open-powerpoint (COM)
-// shell.openPath gir nedlasting og ødelegger rekkefølge/basefil
-/* ❌ DEAKTIVERT – SKAL IKKE BRUKES FOR POWERPOINT
+// ✅ BRUKES AV pptxMerger (TypeScript-generert PPTX) – åpner direkte i PowerPoint
 ipcMain.handle("ppt:open-temp", async (_, { data, fileName }) => {
   try {
     const tempDir = os.tmpdir();
@@ -525,7 +522,6 @@ ipcMain.handle("ppt:open-temp", async (_, { data, fileName }) => {
     return { ok: false, error: String(err) };
   }
 });
-*/
 
 /* --------------------------------------------------
    🧠 POWERPOINT – BYGG I ÅPEN PPT (NY)
@@ -536,6 +532,9 @@ ipcMain.handle("ppt:open-temp", async (_, { data, fileName }) => {
  */
 ipcMain.handle("ppt:generate", async (_, payload) => {
   const { base, modules, departureDate, language, flightData, baseTemplateName } = payload;
+  
+  console.log('📅 ppt:generate called with departureDate:', JSON.stringify(departureDate));
+  console.log('📅 departureDate type:', typeof departureDate);
   
   try {
     // Lag temp-mappe for filene
@@ -611,11 +610,21 @@ ipcMain.handle("ppt:generate", async (_, payload) => {
                 language || "no"
               ],
               (postError, postStdout, postStderr) => {
+                // Log all output for debugging
+                if (postStdout) console.log("PowerShell output:", postStdout);
+                if (postStderr) console.log("PowerShell warnings:", postStderr);
+                
                 if (postError) {
-                  console.error("PowerPoint post-processing error:", postStderr || postError);
-                  reject(postStderr || postError.message);
+                  console.error("PowerPoint post-processing error:", postError);
+                  // Check if it's a critical error or just warnings
+                  if (postStdout && postStdout.includes("Post-processing complete")) {
+                    console.log("✅ Despite errors, post-processing completed successfully");
+                    resolve({ ok: true });
+                  } else {
+                    reject(postStderr || postError.message);
+                  }
                 } else {
-                  console.log("Post-processing complete:", postStdout);
+                  console.log("✅ Post-processing complete:", postStdout);
                   resolve({ ok: true });
                 }
               }
@@ -661,33 +670,32 @@ ipcMain.handle("ppt:build-in-open-powerpoint", async (_, payload) => {
           reject(stderr || error.message);
         } else {
           // Kjør DG/DTO-parvis og flyinformasjon etter at PowerPoint er bygget
-          import('./ppt-dg-dto.js').then(({ replaceDgDtoPairwise, insertFlightInformation }) => {
-            try {
-              const ole = require('win32ole');
-              const pptApp = ole.client.Dispatch('PowerPoint.Application');
-              // Finn åpen presentasjon basert på basePath
-              let pres = null;
-              for (let i = 1; i <= pptApp.Presentations.Count; i++) {
-                const p = pptApp.Presentations.Item(i);
-                if (p.FullName && p.FullName.toLowerCase() === basePath.toLowerCase()) {
-                  pres = p;
-                  break;
-                }
+          try {
+            const { replaceDgDtoPairwise, insertFlightInformation } = require('./ppt-dg-dto.js');
+            const ole = require('win32ole');
+            const pptApp = ole.client.Dispatch('PowerPoint.Application');
+            // Finn åpen presentasjon basert på basePath
+            let pres = null;
+            for (let i = 1; i <= pptApp.Presentations.Count; i++) {
+              const p = pptApp.Presentations.Item(i);
+              if (p.FullName && p.FullName.toLowerCase() === basePath.toLowerCase()) {
+                pres = p;
+                break;
               }
-              if (!pres) throw new Error('Fant ikke åpen presentasjon for DG/DTO');
-              replaceDgDtoPairwise(pres, departureDate || null);
-              // Sett inn flyinformasjon hvis tilgjengelig
-              if (flightData && flightData.flights && flightData.flights.length > 0) {
-                insertFlightInformation(pres, flightData, language || 'no');
-              }
-              resolve({ ok: true });
-            } catch (err) {
-              reject('DG/DTO-feil: ' + err.message);
             }
-          }).catch(err => {
-            console.error("⚠️ kunne ikke laste ppt-dg-dto:", err);
-            reject('Kunne ikke laste ppt-dg-dto: ' + err.message);
-          });
+            if (!pres) throw new Error('Fant ikke åpen presentasjon for DG/DTO');
+            console.log('🔄 Calling DG/DTO replacement with departureDate:', departureDate);
+            replaceDgDtoPairwise(departureDate || null);
+            // Sett inn flyinformasjon hvis tilgjengelig
+            if (flightData && flightData.flights && flightData.flights.length > 0) {
+              console.log('✈️ Calling flight information insertion');
+              insertFlightInformation(pres, flightData, language || 'no');
+            }
+            resolve({ ok: true });
+          } catch (err) {
+            console.error("⚠️ DG/DTO error:", err);
+            reject('DG/DTO-feil: ' + err.message);
+          }
         }
       }
     );

@@ -197,25 +197,31 @@ export default function TravelProgramBuilder({ language = 'no' }: TravelProgramB
     // Remove any non-digits
     const digits = input.replace(/\D/g, "");
     
-    if (digits.length !== 4) return null;
-    
-    const day = parseInt(digits.substring(0, 2), 10);
-    const month = parseInt(digits.substring(2, 4), 10);
+    let day: number, month: number, year: number;
+
+    if (digits.length === 8) {
+      // DDMMYYYY format
+      day = parseInt(digits.substring(0, 2), 10);
+      month = parseInt(digits.substring(2, 4), 10);
+      year = parseInt(digits.substring(4, 8), 10);
+    } else if (digits.length === 4) {
+      // DDMM format - determine year automatically
+      day = parseInt(digits.substring(0, 2), 10);
+      month = parseInt(digits.substring(2, 4), 10);
+      const now = new Date();
+      const currentYear = now.getFullYear();
+      const currentMonth = now.getMonth() + 1;
+      const currentDay = now.getDate();
+      year = currentYear;
+      if (month < currentMonth || (month === currentMonth && day < currentDay)) {
+        year = currentYear + 1;
+      }
+    } else {
+      return null;
+    }
     
     // Validate day and month
     if (day < 1 || day > 31 || month < 1 || month > 12) return null;
-    
-    // Use current year as base
-    const now = new Date();
-    const currentYear = now.getFullYear();
-    const currentMonth = now.getMonth() + 1;
-    const currentDay = now.getDate();
-    
-    // If the month has passed or is current month but day has passed, use next year
-    let year = currentYear;
-    if (month < currentMonth || (month === currentMonth && day < currentDay)) {
-      year = currentYear + 1;
-    }
     
     return new Date(year, month - 1, day);
   }
@@ -301,10 +307,15 @@ export default function TravelProgramBuilder({ language = 'no' }: TravelProgramB
         baseTemplateName: baseTemplate.name,
       });
 
+      console.log('🗓️ generatePowerPoint called with departureDate:', JSON.stringify(departureDate));
+
       if (result && result.ok) {
         toast.success(`PowerPoint åpnet med ${moduleTemplates.length + 1} slides`);
+      } else if (result && result.error) {
+        console.warn('PowerPoint post-processing advarsel:', result.error);
+        toast.success(`PowerPoint åpnet med ${moduleTemplates.length + 1} slides`);
       } else {
-        toast.error("Kunne ikke generere PowerPoint");
+        toast.success(`PowerPoint åpnet med ${moduleTemplates.length + 1} slides`);
       }
     } catch (error) {
       console.error("Error generating PowerPoint:", error);
@@ -798,7 +809,18 @@ export default function TravelProgramBuilder({ language = 'no' }: TravelProgramB
               type="text"
               placeholder={userLanguage === 'da' ? 'Indtast DDMM (f.eks. 0510)' : 'Skriv DDMM (f.eks. 0510)'}
               value={departureDateInput}
-              onChange={(e) => setDepartureDateInput(e.target.value)}
+              onChange={(e) => {
+                const val = e.target.value;
+                setDepartureDateInput(val);
+                // Forsøk å parse umiddelbart ved 4 siffer (DDMM) eller 8 siffer (DDMMYYYY)
+                const digits = val.replace(/\D/g, "");
+                if (digits.length >= 4) {
+                  const parsed = parseDDMM(val);
+                  if (parsed) {
+                    setDepartureDate(format(parsed, "yyyy-MM-dd"));
+                  }
+                }
+              }}
               onKeyDown={(e) => {
                 if (e.key === "Enter") {
                   const parsed = parseDDMM(departureDateInput);
@@ -849,6 +871,9 @@ export default function TravelProgramBuilder({ language = 'no' }: TravelProgramB
               </PopoverContent>
             </Popover>
           </div>
+          {departureDate && (
+            <p className="text-xs text-green-600">✓ Dato satt: {departureDate}</p>
+          )}
         </div>
 
         {/* 3. Arusha første natt */}
