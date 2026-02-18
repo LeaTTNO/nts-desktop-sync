@@ -2,7 +2,7 @@
 // 📦 IMPORTS
 // ──────────────────────────────────────────────
 
-import { app, BrowserWindow, ipcMain, shell, screen } from "electron";
+import { app, BrowserWindow, ipcMain, shell, screen, dialog } from "electron";
 import path from "path";
 import { fileURLToPath } from "url";
 import fs from "fs";
