@@ -250,52 +250,74 @@ export default function TemplateLibrary() {
         return; // User canceled
       }
       
-      const filePath = dialogResult.filePath;
-      const fileName = filePath.split(/[\\/]/).pop() || 'unknown.pptx';
+      const filePaths = dialogResult.filePaths; // Now an array of paths
+      let successCount = 0;
+      let failCount = 0;
       
-      // Read file content via IPC
-      // @ts-ignore - Electron IPC
-      const fileResult = await window.electron.invoke("file:read", filePath);
-      
-      if (!fileResult.success) {
-        toast.error(`Kunne ikke lese filen: ${fileResult.error}`);
-        return;
-      }
-      
-      const buf = fileResult.data.buffer; // Convert Node Buffer to ArrayBuffer
-      
-      // Save to IndexedDB (local)
-      await addTemplate({
-        name: fileName.replace(/\.pptx?$/i, ""),
-        fileName: fileName,
-        blob: buf,
-        category,
-      });
-      
-      // If admin: Register file in OneDrive manifest (file already exists in OneDrive folder)
-      if (userIsAdmin) {
+      // Process each selected file
+      for (const filePath of filePaths) {
         try {
+          const fileName = filePath.split(/[\\/]/).pop() || 'unknown.pptx';
+          
+          // Read file content via IPC
           // @ts-ignore - Electron IPC
-          const result = await window.electron.invoke("onedrive:upload-template", {
-            filePath: filePath, // Send full file path now, not just fileName
-            category: category,
-            order: 999,
-            language: userLanguage,
+          const fileResult = await window.electron.invoke("file:read", filePath);
+          
+          if (!fileResult.success) {
+            console.error(`Kunne ikke lese ${fileName}:`, fileResult.error);
+            failCount++;
+            continue;
+          }
+          
+          const buf = fileResult.data.buffer; // Convert Node Buffer to ArrayBuffer
+          
+          // Save to IndexedDB (local)
+          await addTemplate({
+            name: fileName.replace(/\.pptx?$/i, ""),
+            fileName: fileName,
+            blob: buf,
+            category,
           });
           
-          if (result.success) {
-            console.log(`✅ Admin registered ${fileName} in OneDrive manifest`);
-            toast.success(`${fileName} registrert for deling med alle brukere`);
-          } else {
-            console.error(`❌ Failed to register in manifest:`, result.error);
-            toast.warning(`Lagret lokalt, men kunne ikke registrere til deling: ${result.error}`);
+          // If admin: Register file in OneDrive manifest (file already exists in OneDrive folder)
+          if (userIsAdmin) {
+            try {
+              // @ts-ignore - Electron IPC
+              const result = await window.electron.invoke("onedrive:upload-template", {
+                filePath: filePath,
+                category: category,
+                order: 999,
+                language: userLanguage,
+              });
+              
+              if (result.success) {
+                console.log(`✅ Admin registered ${fileName} in OneDrive manifest`);
+              } else {
+                console.error(`❌ Failed to register ${fileName}:`, result.error);
+                failCount++;
+                continue;
+              }
+            } catch (error) {
+              console.error(`OneDrive registration error for ${fileName}:`, error);
+              failCount++;
+              continue;
+            }
           }
+          
+          successCount++;
         } catch (error) {
-          console.error('OneDrive registration error:', error);
-          toast.warning('Lagret lokalt, men kunne ikke registrere til deling');
+          console.error('File processing error:', error);
+          failCount++;
         }
-      } else {
-        toast.success(`${fileName} lastet opp til ${category}`);
+      }
+      
+      // Show summary toast
+      if (successCount > 0 && failCount === 0) {
+        toast.success(`${successCount} fil${successCount > 1 ? 'er' : ''} lastet opp til ${category}`);
+      } else if (successCount > 0 && failCount > 0) {
+        toast.warning(`${successCount} fil${successCount > 1 ? 'er' : ''} lastet opp, ${failCount} feilet`);
+      } else if (failCount > 0) {
+        toast.error(`Kunne ikke laste opp ${failCount} fil${failCount > 1 ? 'er' : ''}`);
       }
     } catch (error) {
       console.error('Upload error:', error);

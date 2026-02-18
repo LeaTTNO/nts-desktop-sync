@@ -698,7 +698,7 @@ ipcMain.handle("ppt:build-in-open-powerpoint", async (_, payload) => {
 -------------------------------------------------- */
 ipcMain.handle("dialog:select-file", async () => {
   const result = await dialog.showOpenDialog(mainWindow, {
-    properties: ['openFile'],
+    properties: ['openFile', 'multiSelections'],
     filters: [
       { name: 'PowerPoint', extensions: ['pptx', 'ppt'] }
     ]
@@ -708,7 +708,7 @@ ipcMain.handle("dialog:select-file", async () => {
     return { canceled: true };
   }
   
-  return { filePath: result.filePaths[0] };
+  return { filePaths: result.filePaths }; // Return all selected files
 });
 // Read file content (for template upload)
 ipcMain.handle("file:read", async (event, filePath) => {
