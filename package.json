@@ -5,7 +5,7 @@
   "author": "Tanzania Tours",
   "private": true,
   "type": "module",
-  "main": "./src/main/electron-main.js",
+  "main": "./dist/main/electron-main.js",
 
 
   "scripts": {

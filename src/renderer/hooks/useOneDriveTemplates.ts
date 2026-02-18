@@ -310,6 +310,28 @@ export const useOneDriveTemplates = (language: 'no' | 'da') => {
     localStorage.setItem('custom-categories', JSON.stringify(customCategories));
   }, [customCategories]);
 
+  // 🔄 Auto-sync listener - triggered daily at 08:00 by main process
+  useEffect(() => {
+    if (!window.electron?.on) return;
+
+    console.log('🔔 Setting up OneDrive auto-sync listener');
+    
+    const unsubscribe = window.electron.on('onedrive:auto-sync-trigger', () => {
+      console.log('⏰ Auto-sync triggered at 08:00');
+      if (isAuthenticated) {
+        console.log('🔄 Refreshing templates from OneDrive...');
+        loadTemplatesForLanguage(language);
+        toast.info('Auto-synkroniserer maler fra OneDrive...');
+      } else {
+        console.log('⚠️ Auto-sync skipped: not authenticated');
+      }
+    });
+
+    return () => {
+      if (unsubscribe) unsubscribe();
+    };
+  }, [isAuthenticated, language]);
+
   const initializeOneDrive = async () => {
     try {
       await oneDriveClient.initialize();
@@ -418,9 +440,21 @@ export const useOneDriveTemplates = (language: 'no' | 'da') => {
     }
   };
 
-  const refreshTemplates = () => {
-    if (isAuthenticated) {
+  const refreshTemplates = async () => {
+    if (!isAuthenticated) return;
+    
+    try {
+      // Notify main process about manual sync
+      if (window.electron?.invoke) {
+        console.log('📤 Calling onedrive:sync-now IPC handler');
+        await window.electron.invoke('onedrive:sync-now', { language });
+      }
+      
+      // Refresh templates from OneDrive
       loadTemplatesForLanguage(language);
+    } catch (error) {
+      console.error('Manual sync failed:', error);
+      toast.error('Kunne ikke synkronisere maler');
     }
   };
 

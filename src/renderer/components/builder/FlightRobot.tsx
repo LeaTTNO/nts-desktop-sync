@@ -75,7 +75,8 @@ interface ProcessedFlight {
     arrivalTime: string;
     duration: string;
     stops: number;
-    airlines: string[];
+    airlines: string[]; // IATA codes for matching
+    airlineNames?: string[]; // Full names for display (optional for backward compatibility)
     segments: string;
   };
   inbound?: {
@@ -85,17 +86,20 @@ interface ProcessedFlight {
     arrivalTime: string;
     duration: string;
     stops: number;
-    airlines: string[];
+    airlines: string[]; // IATA codes for matching
+    airlineNames?: string[]; // Full names for display (optional for backward compatibility)
     segments: string;
   };
   price: number;
   currency: string;
+  fareType?: "NEGOTIATED" | "PUBLIC";
   isRecommended: boolean;
   recommendReason?: string;
-  rawOffer: FlightOffer;
+  rawOffer?: FlightOffer;
   totalDurationMinutes: number; // Max single leg duration (for filtering)
   combinedDurationMinutes?: number; // Combined out+in duration (for scoring)
   hasNightFlight: boolean;
+  hasInvalidOsloLayover?: boolean; // Oslo layover < 2 hours (NO only)
   searchDate?: string;
   nightsDiff?: number;
 }
@@ -114,10 +118,15 @@ interface ExtendedResults {
 // CONSTRAINTS (HARD LIMITS)
 // =============================================================================
 
-const MAX_STRICT_DURATION_HOURS = 22;    // Main results: max 22 hours
+// Helper function to get max strict duration based on departure airport
+function getMaxStrictDurationHours(departureAirport: string): number {
+  const MAJOR_HUBS = ['OSL', 'HAM', 'CPH']; // Major European hubs with better connections
+  return MAJOR_HUBS.includes(departureAirport.toUpperCase()) ? 20 : 22;
+}
+
 const MAX_EXTENDED_DURATION_HOURS = 25;  // Extended alternatives: max 25 hours
-const NIGHT_START_HOUR = 0;              // Night period starts 00:00
-const NIGHT_END_MINUTES = 355;           // Night period ends 05:55 (5*60 + 55 = 355 minutes)
+const NIGHT_START_MINUTES = 30;          // Night period starts 00:30 (30 minutes)
+const NIGHT_END_MINUTES = 350;           // Night period ends 05:50 (5*60 + 50 = 350 minutes)
 
 // =============================================================================
 // TRANSLATIONS
@@ -162,14 +171,14 @@ const translations = {
     error: "Kunne ikke søke fly",
     fillFields: "Fyll ut alle obligatoriske felt",
     duration: "Reisetid",
-    flexibleDates: "Fleksible datoer (±",
-    nights: "netter)",
-    addNights: "Legg til ekstra netter (+",
-    removeNights: "Fjern netter (-",
-    nightsExtra: "netter ekstra)",
-    nightsLess: "netter)",
+    flexibleDates: "Fleksible datoer ±",
+    nights: "",
+    addNights: "Legg til netter +",
+    removeNights: "Fjern netter -",
+    nightsExtra: "",
+    nightsLess: "",
     mainResults: "Hovedresultater",
-    mainResultsDesc: "Max 22t reisetid, ingen nattfly (00:00-05:55)",
+    mainResultsDesc: "Max 22t reisetid, ingen nattfly (00:30-05:50)",
     extendedResults: "Utvidede alternativer",
     extendedResultsDesc: "Max 25t reisetid, tillater nattfly",
     cheaperFlexible: "Billigere med andre datoer",
@@ -189,9 +198,12 @@ const translations = {
     showDetails: "Vis detaljer",
     hideDetails: "Skjul detaljer",
     noFlightsFound: "Ingen flyreiser funnet som oppfyller kriteriene",
-    noFlightsMainCriteria: "Ingen flyreiser innenfor hovedkriterier (max 22t, ingen nattfly 00:00-05:55)",
+    noFlightsMainCriteria: "Ingen flyreiser innenfor hovedkriterier (max 22t, ingen nattfly 00:30-05:50)",
     onlyLongerFlights: "Det finnes kun flyreiser med lengre reisetid (over 25 timer)",
     tryExtendingSearch: "Prøv å utvide søket eller endre datoene",
+    preferredAirline: "Velg flyselskap",
+    selectAirline: "Velg flyselskap",
+    noPreferredAirlineResults: "Ingen resultater funnet med valgt flyselskap som passer til kriteriene",
   },
   da: {
     title: "FLYROBOT",
@@ -231,14 +243,14 @@ const translations = {
     error: "Kunne ikke søge fly",
     fillFields: "Udfyld alle obligatoriske felter",
     duration: "Rejsetid",
-    flexibleDates: "Fleksible datoer (±",
-    nights: "nætter)",
-    addNights: "Tilføj ekstra nætter (+",
-    removeNights: "Fjern nætter (-",
-    nightsExtra: "nætter ekstra)",
-    nightsLess: "nætter)",
+    flexibleDates: "Fleksible datoer ±",
+    nights: "",
+    addNights: "Tilføj nætter +",
+    removeNights: "Fjern nætter -",
+    nightsExtra: "",
+    nightsLess: "",
     mainResults: "Hovedresultater",
-    mainResultsDesc: "Max 22t rejsetid, ingen natfly (00:00-05:55)",
+    mainResultsDesc: "Max 22t rejsetid, ingen natfly (00:30-05:50)",
     extendedResults: "Udvidede alternativer",
     extendedResultsDesc: "Max 25t rejsetid, tillader natfly",
     cheaperFlexible: "Billigere med andre datoer",
@@ -258,9 +270,12 @@ const translations = {
     showDetails: "Vis detaljer",
     hideDetails: "Skjul detaljer",
     noFlightsFound: "Ingen flyrejser fundet som opfylder kriterierne",
-    noFlightsMainCriteria: "Ingen flyrejser inden for hovedkriterier (max 22t, ingen natfly 00:00-05:55)",
+    noFlightsMainCriteria: "Ingen flyrejser inden for hovedkriterier (max 22t, ingen natfly 00:30-05:50)",
     onlyLongerFlights: "Der findes kun flyrejser med længere rejsetid (over 25 timer)",
     tryExtendingSearch: "Prøv at udvide søgningen eller ændre datoerne",
+    preferredAirline: "Vælg flyselskab",
+    selectAirline: "Vælg flyselskab",
+    noPreferredAirlineResults: "Ingen resultater fundet med valgt flyselskab som passer til kriterierne",
   },
 };
 
@@ -277,9 +292,38 @@ function formatDuration(isoDuration: string): string {
 }
 
 function formatTime(isoDateTime: string): string {
-  return new Date(isoDateTime).toLocaleTimeString("no-NO", {
+  // Parse ISO string and extract time components directly to show airport local time
+  // Example: "2026-02-17T19:45:00+03:00" (Dar es Salaam) should show 19:45, not converted
+  const date = new Date(isoDateTime);
+  
+  // Extract timezone offset from ISO string if present
+  const tzMatch = isoDateTime.match(/([+-]\d{2}:\d{2}|Z)$/);
+  
+  if (tzMatch) {
+    // ISO string has timezone info - use UTC and format to show the original time
+    const hours = date.getUTCHours();
+    const minutes = date.getUTCMinutes();
+    
+    // Parse timezone offset
+    let offsetMinutes = 0;
+    if (tzMatch[1] !== 'Z') {
+      const [offsetHours, offsetMins] = tzMatch[1].split(':').map(s => parseInt(s.replace('+', '')));
+      offsetMinutes = offsetHours * 60 + (offsetHours < 0 ? -offsetMins : offsetMins);
+    }
+    
+    // Apply offset to get local airport time
+    const totalMinutes = hours * 60 + minutes + offsetMinutes;
+    const localHours = Math.floor(totalMinutes / 60) % 24;
+    const localMinutes = totalMinutes % 60;
+    
+    return `${String(localHours).padStart(2, '0')}:${String(localMinutes).padStart(2, '0')}`;
+  }
+  
+  // Fallback: no timezone in string, use as-is
+  return date.toLocaleTimeString("no-NO", {
     hour: "2-digit",
     minute: "2-digit",
+    timeZone: "UTC", // Interpret as UTC to avoid double conversion
   });
 }
 
@@ -299,18 +343,18 @@ function getTotalMinutes(isoDuration: string): number {
 }
 
 /**
- * Check if a time falls in the night period (00:00 - 05:55)
+ * Check if a time falls in the night period (00:30 - 05:50)
  */
 function isNightTime(dateTimeStr: string): boolean {
   const date = new Date(dateTimeStr);
   const timeInMinutes = date.getHours() * 60 + date.getMinutes();
-  return timeInMinutes >= NIGHT_START_HOUR && timeInMinutes < NIGHT_END_MINUTES;
+  return timeInMinutes >= NIGHT_START_MINUTES && timeInMinutes < NIGHT_END_MINUTES;
 }
 
 /**
  * Check if flight has problematic night arrival/departure at CRITICAL ENDPOINTS ONLY:
- * BLOCKED: Arrival at final destination (JRO/ZNZ/DAR) between 00:00-05:55
- * BLOCKED: Departure from origin on return leg (JRO/ZNZ/DAR) between 00:00-05:55
+ * BLOCKED: Arrival at final destination (JRO/ZNZ/DAR) between 00:30-05:50
+ * BLOCKED: Departure from origin on return leg (JRO/ZNZ/DAR) between 00:30-05:50
  * OK: Night layovers in between are allowed (ADD, DOH, AMS, etc)
  */
 function hasProblematicNightFlight(offer: FlightOffer): boolean {
@@ -337,6 +381,39 @@ function hasProblematicNightFlight(offer: FlightOffer): boolean {
   return false; // OK: no problematic night flights at critical endpoints
 }
 
+/**
+ * Check if flight has Oslo layover with less than 2 hours connection time
+ * Only applies to Norwegian flights (NO language)
+ */
+function hasInvalidOsloLayover(offer: FlightOffer): boolean {
+  // Check all itineraries (outbound and return)
+  for (const itinerary of offer.itineraries) {
+    const segments = itinerary.segments;
+    
+    // Check each connection point
+    for (let i = 0; i < segments.length - 1; i++) {
+      const currentSeg = segments[i];
+      const nextSeg = segments[i + 1];
+      
+      // Check if this is an Oslo connection (arrival and departure both OSL)
+      if (currentSeg.arrival.iataCode === 'OSL' && nextSeg.departure.iataCode === 'OSL') {
+        // Calculate layover time
+        const arrivalTime = new Date(currentSeg.arrival.at);
+        const departureTime = new Date(nextSeg.departure.at);
+        const layoverMinutes = (departureTime.getTime() - arrivalTime.getTime()) / (1000 * 60);
+        
+        // Minimum 2 hours (120 minutes) required for Oslo
+        if (layoverMinutes < 120) {
+          console.log(`⚠️ Invalid Oslo layover: ${Math.round(layoverMinutes)} min (min 120 min required)`);
+          return true; // BLOCKED: Oslo layover too short
+        }
+      }
+    }
+  }
+  
+  return false; // OK: No Oslo layovers or all Oslo layovers are ≥2 hours
+}
+
 function addDays(dateStr: string, days: number): string {
   const date = new Date(dateStr);
   date.setDate(date.getDate() + days);
@@ -355,7 +432,8 @@ function calculateNights(depDate: string, retDate: string): number {
 
 function processFlightOffers(
   offers: FlightOffer[],
-  searchInfo?: { date: string; nightsDiff: number }
+  searchInfo?: { date: string; nightsDiff: number },
+  passengerCount: number = 1
 ): ProcessedFlight[] {
   return offers.map((offer): ProcessedFlight => {
     const outboundItinerary = offer.itineraries?.[0];
@@ -377,6 +455,15 @@ function processFlightOffers(
       const airlines = [...new Set(itinerary.segments.map(s => s.carrierCode))];
       const stops = itinerary.segments.length - 1;
 
+      // Debug logging for EK flights
+      if (airlines.includes('EK')) {
+        console.log('🔍 Found EK in segment carriers:', {
+          route: `${firstSeg.departure.iataCode} → ${lastSeg.arrival.iataCode}`,
+          carriers: airlines,
+          segments: itinerary.segments.map(s => `${s.departure.iataCode}-${s.arrival.iataCode}: ${s.carrierCode}`)
+        });
+      }
+
       const segmentDetails = itinerary.segments.map(seg =>
         `${seg.carrierCode}${seg.number}`
       ).join(" → ");
@@ -388,7 +475,8 @@ function processFlightOffers(
         arrivalTime: lastSeg.arrival.at,
         duration: itinerary.duration || "PT0H0M",
         stops,
-        airlines: airlines.map(code => airlineNames[code] || code),
+        airlines: airlines, // Keep IATA codes (ET, QR, etc.) for matching
+        airlineNames: airlines.map(code => airlineNames[code] || code), // Full names for display only
         segments: segmentDetails,
       };
     };
@@ -401,19 +489,48 @@ function processFlightOffers(
       return null as any;
     }
 
+    // Debug EK flights - check duration format
+    const hasEK = outbound.airlines.includes('EK') || (inbound?.airlines.includes('EK') ?? false);
+    if (hasEK) {
+      console.log('🔍 EK DURATION in processFlightOffer:', {
+        id: offer.id,
+        'outbound.duration': outbound.duration,
+        'inbound.duration': inbound?.duration,
+        'offer.fareType': offer.fareType,
+        'offer.price': offer.price,
+      });
+    }
+
     const outDuration = getTotalMinutes(outbound.duration);
     const inDuration = inbound ? getTotalMinutes(inbound.duration) : 0;
+
+    if (hasEK) {
+      console.log('🔍 EK PARSED DURATION:', {
+        id: offer.id,
+        outDuration: outDuration + ' minutes (' + Math.round(outDuration / 60) + 'h)',
+        inDuration: inDuration + ' minutes (' + Math.round(inDuration / 60) + 'h)',
+      });
+    }
 
     // Max duration of single leg for filtering (keep ≤22h or ≤25h check)
     const maxSingleLegDuration = Math.max(outDuration, inDuration);
     // Combined total duration for scoring (prioritize shortest total journey)
     const combinedDuration = outDuration + inDuration;
 
+    if (hasEK && offer.fareType !== 'NEGOTIATED') {
+      console.log('⚠️ EK FARE TYPE NOT NEGOTIATED:', {
+        id: offer.id,
+        fareType: offer.fareType,
+        'offer.price keys': Object.keys(offer.price || {}),
+        'offer keys (first 20)': Object.keys(offer).slice(0, 20),
+      });
+    }
+
     return {
       id: offer.id,
       outbound,
       inbound,
-      price: parseFloat(offer.price.grandTotal),
+      price: parseFloat(offer.price.grandTotal) / passengerCount,
       currency: offer.price.currency,
       fareType: offer.fareType,
       isRecommended: false,
@@ -421,6 +538,7 @@ function processFlightOffers(
       totalDurationMinutes: maxSingleLegDuration, // Max single leg for filtering
       combinedDurationMinutes: combinedDuration, // Total out+in for scoring
       hasNightFlight: hasProblematicNightFlight(offer),
+      hasInvalidOsloLayover: hasInvalidOsloLayover(offer),
       searchDate: searchInfo?.date,
       nightsDiff: searchInfo?.nightsDiff,
     };
@@ -447,17 +565,33 @@ function calculateFlightScore(flight: ProcessedFlight): number {
  * 3. Cheapest extended (≤25h, allows night flights)
  * 4. Cheapest with night flights (any duration, but has night departure/arrival)
  */
-function categorizeFlights(flights: ProcessedFlight[], t: typeof translations.no): {
+function categorizeFlights(
+  flights: ProcessedFlight[], 
+  t: typeof translations.no,
+  departureAirport: string,
+  language: 'no' | 'da'
+): {
   bestAndCheapest: ProcessedFlight | null;
   bestQuality: ProcessedFlight | null;
   cheapestExtended: ProcessedFlight | null;
 } {
-  console.log(`🔍 CATEGORIZE: Received ${flights.length} total flights`);
+  const MAX_STRICT_DURATION_HOURS = getMaxStrictDurationHours(departureAirport);
+  console.log(`🔍 CATEGORIZE: Received ${flights.length} total flights (max strict: ${MAX_STRICT_DURATION_HOURS}h for ${departureAirport})`);
   
   // HARD FILTER: Never show flights over 25 hours
-  const validFlights = flights.filter(f =>
+  let validFlights = flights.filter(f =>
     f.totalDurationMinutes <= MAX_EXTENDED_DURATION_HOURS * 60
   );
+
+  // HARD FILTER (NO only): Oslo layover must be ≥ 2 hours
+  if (language === 'no') {
+    const beforeOsloFilter = validFlights.length;
+    validFlights = validFlights.filter(f => f.hasInvalidOsloLayover !== true);
+    const removedOslo = beforeOsloFilter - validFlights.length;
+    if (removedOslo > 0) {
+      console.log(`🇳🇴 Removed ${removedOslo} flights with Oslo layover < 2 hours`);
+    }
+  }
 
   console.log(`✅ Valid flights (≤25h): ${validFlights.length}`);
   
@@ -466,26 +600,41 @@ function categorizeFlights(flights: ProcessedFlight[], t: typeof translations.no
     return { bestAndCheapest: null, bestQuality: null, cheapestExtended: null };
   }
 
-  // Category 1 & 2: Strict flights (≤22h, no night flights)
+  // Category 1 & 2: Strict flights (≤20h or ≤22h depending on departure, no night flights)
   const strictFlights = validFlights.filter(f =>
     f.totalDurationMinutes <= MAX_STRICT_DURATION_HOURS * 60 && !f.hasNightFlight
   );
 
-  console.log(`✅ Strict flights (≤22h, no night): ${strictFlights.length}`);
+  console.log(`✅ Strict flights (≤${MAX_STRICT_DURATION_HOURS}h, no night): ${strictFlights.length}`);
   console.log(`🌙 Flights with night departures/arrivals: ${validFlights.filter(f => f.hasNightFlight).length}`);
-  console.log(`⏱️ Flights over 22h (but under 25h): ${validFlights.filter(f => f.totalDurationMinutes > MAX_STRICT_DURATION_HOURS * 60).length}`);
+  console.log(`⏱️ Flights over ${MAX_STRICT_DURATION_HOURS}h (but under 25h): ${validFlights.filter(f => f.totalDurationMinutes > MAX_STRICT_DURATION_HOURS * 60).length}`);
 
-  // Score strict flights with special handling for similar prices
+  // Score strict flights with special handling for similar prices and fare types
+  const PACKAGE_FARE_TOLERANCE = 300; // Prefer NEGOTIATED if within 300 kr
+  
   const scoredStrict = strictFlights
     .map(f => ({ ...f, score: calculateFlightScore(f) }))
     .sort((a, b) => {
-      // If prices are within 300 kr, prioritize by combined duration
+      // PRIORITY 1: Prefer NEGOTIATED (package) fares when comparable price
+      const isANegotiated = a.fareType === 'NEGOTIATED';
+      const isBNegotiated = b.fareType === 'NEGOTIATED';
+      
+      if (isANegotiated && !isBNegotiated) {
+        // A is package, B is public: choose A if within tolerance
+        if (a.price <= b.price + PACKAGE_FARE_TOLERANCE) return -1;
+      }
+      if (!isANegotiated && isBNegotiated) {
+        // B is package, A is public: choose B if within tolerance
+        if (b.price <= a.price + PACKAGE_FARE_TOLERANCE) return 1;
+      }
+      
+      // PRIORITY 2: If prices are within 300 kr, prioritize by combined duration
       if (Math.abs(a.price - b.price) <= 300) {
         const aDuration = a.combinedDurationMinutes || a.totalDurationMinutes;
         const bDuration = b.combinedDurationMinutes || b.totalDurationMinutes;
         return aDuration - bDuration;
       }
-      // Otherwise use normal score (duration + stops + price)
+      // PRIORITY 3: Otherwise use normal score (duration + stops + price)
       return a.score - b.score;
     });
 
@@ -499,17 +648,45 @@ function categorizeFlights(flights: ProcessedFlight[], t: typeof translations.no
     bestQuality = scoredStrict.find(f => f.id !== bestAndCheapest?.id) || null;
   }
 
-  // RESULT 3: Cheapest extended (≤25h, allows night flights) - prioritize duration when prices similar
+  // RESULT 3: Cheapest extended (≤25h, allows night flights) - prioritize NEGOTIATED fares
+  // ALWAYS find a different flight than bestAndCheapest and bestQuality
   const sortedByPrice = [...validFlights].sort((a, b) => {
-    // If prices are within 300 kr, prioritize by combined duration
+    // PRIORITY 1: Prefer NEGOTIATED (package) fares when comparable price
+    const isANegotiated = a.fareType === 'NEGOTIATED';
+    const isBNegotiated = b.fareType === 'NEGOTIATED';
+    
+    if (isANegotiated && !isBNegotiated) {
+      // A is package, B is public: choose A if within tolerance
+      if (a.price <= b.price + PACKAGE_FARE_TOLERANCE) return -1;
+    }
+    if (!isANegotiated && isBNegotiated) {
+      // B is package, A is public: choose B if within tolerance
+      if (b.price <= a.price + PACKAGE_FARE_TOLERANCE) return 1;
+    }
+    
+    // PRIORITY 2: If prices are within 300 kr, prioritize by combined duration
     if (Math.abs(a.price - b.price) <= 300) {
       const aDuration = a.combinedDurationMinutes || a.totalDurationMinutes;
       const bDuration = b.combinedDurationMinutes || b.totalDurationMinutes;
       return aDuration - bDuration;
     }
+    // PRIORITY 3: Otherwise sort by price
     return a.price - b.price;
   });
-  const cheapestExtended = sortedByPrice[0] ? sortedByPrice[0] : null;
+  
+  // Find cheapest that's different from the other two results
+  let cheapestExtended: ProcessedFlight | null = null;
+  for (const flight of sortedByPrice) {
+    if (flight.id !== bestAndCheapest?.id && flight.id !== bestQuality?.id) {
+      cheapestExtended = flight;
+      break;
+    }
+  }
+  
+  // If we still haven't found 3 different flights, use the first available
+  if (!cheapestExtended && sortedByPrice.length > 0) {
+    cheapestExtended = sortedByPrice[0];
+  }
 
   return {
     bestAndCheapest,
@@ -551,6 +728,15 @@ export default function FlightRobot() {
   const [passengers, setPassengers] = useState("1");
   const [children, setChildren] = useState("0");
   const [isSearching, setIsSearching] = useState(false);
+  
+  // Dynamic description based on departure airport (computed after departure state)
+  const maxStrictHours = getMaxStrictDurationHours(departure || 'OSL');
+  const mainResultsDesc = language === 'da' 
+    ? `Max ${maxStrictHours}t rejsetid, ingen natfly (00:30-05:50)`
+    : `Max ${maxStrictHours}t reisetid, ingen nattfly (00:30-05:50)`;
+  const noMainResultsCriteria = language === 'da'
+    ? `Ingen flyrejser indenfor hovedkriterier (max ${maxStrictHours}t, ingen natfly 00:30-05:50)`
+    : `Ingen flyreiser innenfor hovedkriterier (max ${maxStrictHours}t, ingen nattfly 00:30-05:50)`;
   const [error, setError] = useState<string | null>(null);
 
   // Calendar limits - only allow 1 year ahead
@@ -622,8 +808,18 @@ export default function FlightRobot() {
   const [removeNights, setRemoveNights] = useState(false);
   const [removeNightsCount, setRemoveNightsCount] = useState(1);
 
+  // Preferred airline option - CHANGED TO MULTI-SELECT
+  const [usePreferredAirline, setUsePreferredAirline] = useState(false);
+  const [selectedAirlines, setSelectedAirlines] = useState<string[]>([]); // Multi-select
+  const [hasPreferredAirlineResults, setHasPreferredAirlineResults] = useState(false);
+
+  // NEW: Abort controller for cancelling search
+  const [abortController, setAbortController] = useState<AbortController | null>(null);
+
+  // Search progress tracking
+  const [searchProgress, setSearchProgress] = useState({ current: 0, max: 0 });
+
   // NEW: Children checkbox state
-  const [includeChildren, setIncludeChildren] = useState(false);
 
   // Date interval option
   const [useDateInterval, setUseDateInterval] = useState(false);
@@ -631,6 +827,8 @@ export default function FlightRobot() {
   const [latestDeparture, setLatestDeparture] = useState<Date | undefined>(undefined);
   const [earliestDateOpen, setEarliestDateOpen] = useState(false);
   const [latestDateOpen, setLatestDateOpen] = useState(false);
+  const [earliestDateInput, setEarliestDateInput] = useState("");
+  const [latestDateInput, setLatestDateInput] = useState("");
 
   // Results - nå fra Zustand store med auto-persist
   const { savedFlights, addFlight, clearFlights } = useFlightInfo();
@@ -651,6 +849,99 @@ export default function FlightRobot() {
     resetAll: resetFlightStore,
   } = useFlightStore();
   const hasSearched = useFlightStore(state => state.hasSearched);
+
+  // Preferred airline results (separate state since they're shown alongside regular results)
+  const [preferredAirlineResults, setPreferredAirlineResults] = useState<{
+    bestAndCheapest: ProcessedFlight | null;
+    bestQuality: ProcessedFlight | null;
+    cheapestExtended: ProcessedFlight | null;
+    flexible: ProcessedFlight | null;
+    extendedStay: ProcessedFlight | null;
+    dateInterval: ProcessedFlight | null;
+  }>({
+    bestAndCheapest: null,
+    bestQuality: null,
+    cheapestExtended: null,
+    flexible: null,
+    extendedStay: null,
+    dateInterval: null,
+  });
+
+  // Clear search results on app startup
+  useEffect(() => {
+    resetFlightStore();
+  }, [resetFlightStore]);
+
+  // Listen for Farewise EK debug data from electron-main
+  useEffect(() => {
+    // @ts-expect-error - electron API
+    const removeListener = window.electron?.on?.('farewise:debug-ek', (debugData: any) => {
+      console.log('\n🔥 RAW FAREWISE EMIRATES DATA FROM API:');
+      console.log('Total EK flights:', debugData.count);
+      console.log('First EK flight FULL object:', debugData.firstFlight);
+      console.log('Available fields:', debugData.fields);
+      console.log('\n📋 Checking fare type fields:');
+      console.log('fareType:', debugData.firstFlight?.fareType);
+      console.log('priceType:', debugData.firstFlight?.priceType);
+      console.log('type:', debugData.firstFlight?.type);
+      console.log('price object:', debugData.firstFlight?.price);
+      console.log('\n📋 Checking duration fields:');
+      if (debugData.firstFlight?.legs?.[0]?.routes?.[0]) {
+        const route = debugData.firstFlight.legs[0].routes[0];
+        console.log('route.duration:', route.duration);
+        console.log('route.elapsedTime:', route.elapsedTime);
+        console.log('route object keys:', Object.keys(route));
+      }
+    });
+    
+    return () => {
+      removeListener?.();
+    };
+  }, []);
+
+  // Reset all state when language changes (NO ↔ DK)
+  useEffect(() => {
+    console.log(`🌐 Language changed to ${language}, resetting all state...`);
+    // Reset dates
+    setDepartureDate(undefined);
+    setReturnDate(undefined);
+    setDepartureDateInput("");
+    setReturnDateInput("");
+    
+    // Reset airports to defaults
+    setDeparture(language === "da" ? "CPH" : "OSL");
+    setReturnTo(language === "da" ? "CPH" : "OSL");
+    setDestination("JRO");
+    setReturnFrom("ZNZ");
+    
+    // Reset airline selection
+    setUsePreferredAirline(false);
+    setSelectedAirlines([]);
+    
+    // Reset flexible options
+    setFlexibleDates(false);
+    setAddNights(false);
+    setRemoveNights(false);
+    setUseDateInterval(false);
+    setEarliestDeparture(undefined);
+    setLatestDeparture(undefined);
+    setEarliestDateInput("");
+    setLatestDateInput("");
+    
+    // Reset all flight results
+    resetFlightStore();
+    clearFlights();
+    setPreferredAirlineResults({
+      bestAndCheapest: null,
+      bestQuality: null,
+      cheapestExtended: null,
+      flexible: null,
+      extendedStay: null,
+      dateInterval: null,
+    });
+    setHasPreferredAirlineResults(false);
+    setError(null);
+  }, [language]); // Runs when language changes
 
   // Hjelpefunksjon for å konvertere ProcessedFlight til FlightInfo
   function toFlightInfo(flight: ProcessedFlight, title: string): FlightInfo {
@@ -685,6 +976,124 @@ export default function FlightRobot() {
   function handleReset() {
     clearFlights();
     resetFlightStore();
+    setHasPreferredAirlineResults(false);
+    setPreferredAirlineResults({
+      bestAndCheapest: null,
+      bestQuality: null,
+      cheapestExtended: null,
+      flexible: null,
+      extendedStay: null,
+      dateInterval: null,
+    });
+  }
+
+  // Helper function to check if flight includes preferred airline
+  function hasPreferredAirline(flight: ProcessedFlight, airlineCode: string): boolean {
+    const hasOutbound = flight.outbound.airlines.includes(airlineCode);
+    const hasInbound = flight.inbound?.airlines.includes(airlineCode) ?? false;
+    const result = hasOutbound || hasInbound;
+    
+    // Debug logging for EK
+    if (airlineCode === 'EK' && result) {
+      console.log(`✅ Found ${airlineCode} flight:`, {
+        id: flight.id,
+        price: flight.price,
+        outboundAirlines: flight.outbound.airlines,
+        inboundAirlines: flight.inbound?.airlines,
+        outboundDuration: flight.outbound.duration,
+        hasNightFlight: flight.hasNightFlight
+      });
+    }
+    
+    return result;
+  }
+
+  // Helper function to find best flight with preferred airline from a list
+  function findBestWithPreferredAirline(
+    flights: ProcessedFlight[], 
+    airlineCode: string,
+    sortBy: 'price' | 'quality' = 'price',
+    category: 'strict' | 'extended' = 'strict',
+    departureAirport: string = departure,
+    userLanguage: 'no' | 'da' = language
+  ): ProcessedFlight | null {
+    const MAX_STRICT_DURATION_HOURS = getMaxStrictDurationHours(departureAirport);
+    
+    // Filter by airline first
+    let filtered = flights.filter(f => hasPreferredAirline(f, airlineCode));
+    console.log(`  ${airlineNames[airlineCode]} (${airlineCode}): ${filtered.length} flights found with this airline`);
+    
+    if (filtered.length === 0) return null;
+    
+    // Filter by max duration (25 hours for all)
+    filtered = filtered.filter(f => f.totalDurationMinutes <= MAX_EXTENDED_DURATION_HOURS * 60);
+    
+    // Filter Oslo layover (NO only)
+    if (userLanguage === 'no') {
+      filtered = filtered.filter(f => f.hasInvalidOsloLayover !== true);
+    }
+    
+    if (filtered.length === 0) {
+      console.log(`    No flights ≤25h found`);
+      return null;
+    }
+    
+    // For strict categories, prefer flights ≤20h/22h (based on departure) with no night flights, but fallback if none exist
+    if (category === 'strict') {
+      const strictFiltered = filtered.filter(f => 
+        f.totalDurationMinutes <= MAX_STRICT_DURATION_HOURS * 60 && !f.hasNightFlight
+      );
+      console.log(`    Strict flights (≤${MAX_STRICT_DURATION_HOURS}h, no night): ${strictFiltered.length}/${filtered.length}`);
+      
+      // Use strict flights if available, otherwise use all valid flights
+      if (strictFiltered.length > 0) {
+        filtered = strictFiltered;
+      } else {
+        console.log(`    No strict flights found, using extended criteria (≤25h)`);
+      }
+    }
+    
+    // PRIORITIZE NEGOTIATED (package) FARES
+    // Rule: If a NEGOTIATED fare is within 300 kr of PUBLIC fare, choose NEGOTIATED
+    const PACKAGE_FARE_TOLERANCE = 300;
+    
+    if (sortBy === 'price') {
+      return filtered.reduce((best, current) => {
+        // Both NEGOTIATED: compare price
+        if (best.fareType === 'NEGOTIATED' && current.fareType === 'NEGOTIATED') {
+          return current.price < best.price ? current : best;
+        }
+        // Both PUBLIC: compare price
+        if (best.fareType !== 'NEGOTIATED' && current.fareType !== 'NEGOTIATED') {
+          return current.price < best.price ? current : best;
+        }
+        // One is NEGOTIATED, one is PUBLIC
+        if (current.fareType === 'NEGOTIATED') {
+          // Current is package: choose if ≤300 kr more expensive than best
+          return current.price <= best.price + PACKAGE_FARE_TOLERANCE ? current : best;
+        } else {
+          // Best is package: keep if ≤300 kr more expensive than current
+          return best.price <= current.price + PACKAGE_FARE_TOLERANCE ? best : current;
+        }
+      });
+    } else {
+      // For quality: prioritize shorter duration, then fareType, then price
+      return filtered.reduce((best, current) => {
+        if (current.totalDurationMinutes < best.totalDurationMinutes) return current;
+        if (current.totalDurationMinutes === best.totalDurationMinutes) {
+          // Same duration: prefer NEGOTIATED if within tolerance
+          if (best.fareType === 'NEGOTIATED' && current.fareType !== 'NEGOTIATED') {
+            return best.price <= current.price + PACKAGE_FARE_TOLERANCE ? best : current;
+          }
+          if (current.fareType === 'NEGOTIATED' && best.fareType !== 'NEGOTIATED') {
+            return current.price <= best.price + PACKAGE_FARE_TOLERANCE ? current : best;
+          }
+          // Same fare type or both public: compare price
+          return current.price < best.price ? current : best;
+        }
+        return best;
+      });
+    }
   }
 
   // Update departure and return when language changes
@@ -803,10 +1212,10 @@ function saveToPowerPointSingle(flight: ProcessedFlight, title: string) {
       if (mainResults.bestAndCheapest) {
         addFlightInfo(mainResults.bestAndCheapest, t.bestAndCheapest);
       }
-      if (bestQualityResult && bestQualityResult.id !== mainResults.bestAndCheapest?.id) {
+      if (bestQualityResult) {
         addFlightInfo(bestQualityResult, t.beste);
       }
-      if (cheapestExtendedResult && cheapestExtendedResult.id !== mainResults.bestAndCheapest?.id) {
+      if (cheapestExtendedResult) {
         addFlightInfo(cheapestExtendedResult, t.cheapest);
       }
       localStorage.setItem('flyinformasjon-data', JSON.stringify(flightData));
@@ -853,6 +1262,18 @@ function saveToPowerPointSingle(flight: ProcessedFlight, title: string) {
     return [];
   }
 
+  // Cancel search handler
+  function handleCancelSearch() {
+    if (abortController) {
+      console.log('🛑 Cancelling search...');
+      abortController.abort();
+      setAbortController(null);
+      setIsSearching(false);
+      setSearchProgress({ current: 0, max: 0 });
+      toast.info(language === "no" ? "Søket ble avbrutt" : "Søgningen blev afbrudt");
+    }
+  }
+
   // Main search handler
   async function handleSearch() {
     if (!departure || !departureDateStr || !returnDateStr) {
@@ -860,10 +1281,35 @@ function saveToPowerPointSingle(flight: ProcessedFlight, title: string) {
       return;
     }
 
+    // Create new abort controller for this search
+    const newAbortController = new AbortController();
+    setAbortController(newAbortController);
+
+    // Calculate max expected results based on enabled options
+    let maxResults = 3; // 3 main categories always
+    if (flexibleDates) maxResults += 1;
+    if (addNights || removeNights) maxResults += 1;
+    if (useDateInterval) maxResults += 1;
+    if (usePreferredAirline && selectedAirlines.length > 0) {
+      maxResults += 3; // Up to 3 preferred airline categories
+    }
+    
+    // Cap at 7 for display purposes
+    maxResults = Math.min(maxResults, 7);
+    
+    setSearchProgress({ current: 0, max: maxResults });
     setIsSearching(true);
     setError(null);
     setHasSearched(true);
-    // Nullstill kun ved eksplisitt reset, ikke ved fane-bytte
+    
+    // Clear all previous results before starting new search
+    clearFlights();
+    setMainResults({ bestAndCheapest: null, cheapest: null });
+    setBestQualityResult(null);
+    setCheapestExtendedResult(null);
+    setFlexibleResult(null);
+    setExtendedStayResult(null);
+    setDateIntervalResult(null);
 
     const currency = language === "da" ? "DKK" : "NOK";
     const pax = parseInt(passengers);
@@ -873,26 +1319,123 @@ function saveToPowerPointSingle(flight: ProcessedFlight, title: string) {
       console.log('🔍 SEARCH START:', { departure, destination, returnFrom, returnTo, departureDateStr, returnDateStr, pax, currency });
       const mainOffers = await searchFlightsApi(departure, destination, returnFrom, returnTo, departureDateStr, returnDateStr, pax, currency);
       console.log('📡 API RESPONSE:', mainOffers.length, 'offers received');
-      const processedFlights = processFlightOffers(mainOffers);
+      const processedFlights = processFlightOffers(mainOffers, undefined, pax);
       console.log('⚙️ PROCESSED:', processedFlights.length, 'flights after processing');
-      const categories = categorizeFlights(processedFlights, t);
+      const categories = categorizeFlights(processedFlights, t, departure, language);
 
       // Set all 3 mandatory categories
       setMainResults({ bestAndCheapest: categories.bestAndCheapest, cheapest: null });
       setBestQualityResult(categories.bestQuality);
       setCheapestExtendedResult(categories.cheapestExtended);
-      if (categories.bestAndCheapest) addFlight(toFlightInfo(categories.bestAndCheapest, t.bestAndCheapest));
-      if (categories.bestQuality) addFlight(toFlightInfo(categories.bestQuality, t.beste));
-      if (categories.cheapestExtended) addFlight(toFlightInfo(categories.cheapestExtended, t.cheapest));
+      
+      let foundCount = 0;
+      if (categories.bestAndCheapest) {
+        addFlight(toFlightInfo(categories.bestAndCheapest, t.bestAndCheapest));
+        foundCount++;
+        setSearchProgress(prev => ({ ...prev, current: prev.current + 1 }));
+      }
+      if (categories.bestQuality) {
+        addFlight(toFlightInfo(categories.bestQuality, t.beste));
+        foundCount++;
+        setSearchProgress(prev => ({ ...prev, current: prev.current + 1 }));
+      }
+      if (categories.cheapestExtended) {
+        addFlight(toFlightInfo(categories.cheapestExtended, t.cheapest));
+        foundCount++;
+        setSearchProgress(prev => ({ ...prev, current: prev.current + 1 }));
+      }
       if (flexibleResult) addFlight(toFlightInfo(flexibleResult, t.cheaperFlexible));
       if (extendedStayResult) addFlight(toFlightInfo(extendedStayResult, t.cheaperExtended));
       if (dateIntervalResult) addFlight(toFlightInfo(dateIntervalResult, t.searchInInterval));
 
       const basePrice = categories.bestAndCheapest?.price || Infinity;
 
+      // 1.5. PREFERRED AIRLINE SEARCH - Find best alternatives with selected airlines
+      if (usePreferredAirline && selectedAirlines.length > 0) {
+        console.log('✈️ SELECTED AIRLINES:', selectedAirlines.map(code => `${airlineNames[code]} (${code})`).join(', '));
+        console.log('Total processed flights:', processedFlights.length);
+        
+        // Log all unique airlines in results for debugging
+        const allAirlines = new Set<string>();
+        processedFlights.forEach(f => {
+          f.outbound.airlines.forEach(a => allAirlines.add(a));
+          f.inbound?.airlines.forEach(a => allAirlines.add(a));
+        });
+        console.log('Airlines available in results (IATA codes):', Array.from(allAirlines).map(code => `${airlineNames[code] || code} (${code})`).join(', '));
+        
+        let hasAnyPreferredResults = false;
+        const preferredResults: typeof preferredAirlineResults = {
+          bestAndCheapest: null,
+          bestQuality: null,
+          cheapestExtended: null,
+          flexible: null,
+          extendedStay: null,
+          dateInterval: null,
+        };
+
+        // Find best alternatives for each selected airline
+        for (const airlineCode of selectedAirlines) {
+          const airlineName = airlineNames[airlineCode];
+          console.log(`\n🔍 Searching for ${airlineName} (${airlineCode})...`);
+          
+          // Apply same constraints as main categories
+          const preferredBestAndCheapest = findBestWithPreferredAirline(processedFlights, airlineCode, 'price', 'strict');
+          const preferredBestQuality = findBestWithPreferredAirline(processedFlights, airlineCode, 'quality', 'strict');
+          const preferredCheapestExtended = findBestWithPreferredAirline(processedFlights, airlineCode, 'price', 'extended');
+          
+          console.log(`Found with ${airlineName}:`, {
+            bestAndCheapest: preferredBestAndCheapest ? `YES (${preferredBestAndCheapest.price} kr, ${Math.round(preferredBestAndCheapest.totalDurationMinutes / 60)}h)` : 'NO',
+            bestQuality: preferredBestQuality ? `YES (${preferredBestQuality.price} kr, ${Math.round(preferredBestQuality.totalDurationMinutes / 60)}h)` : 'NO',
+            cheapestExtended: preferredCheapestExtended ? `YES (${preferredCheapestExtended.price} kr, ${Math.round(preferredCheapestExtended.totalDurationMinutes / 60)}h)` : 'NO'
+          });
+
+          // Always add to flight info if they exist (even if same as main results)
+          if (preferredBestAndCheapest) {
+            console.log(`Adding ${airlineName} bestAndCheapest to flight info`);
+            addFlight(toFlightInfo(preferredBestAndCheapest, `${airlineName} - ${t.bestAndCheapest}`));
+            hasAnyPreferredResults = true;
+            if (!preferredResults.bestAndCheapest) {
+              setSearchProgress(prev => ({ ...prev, current: prev.current + 1 }));
+            }
+          }
+          if (preferredBestQuality) {
+            console.log(`Adding ${airlineName} bestQuality to flight info`);
+            addFlight(toFlightInfo(preferredBestQuality, `${airlineName} - ${t.beste}`));
+            hasAnyPreferredResults = true;
+            if (!preferredResults.bestQuality) {
+              setSearchProgress(prev => ({ ...prev, current: prev.current + 1 }));
+            }
+          }
+          if (preferredCheapestExtended) {
+            console.log(`Adding ${airlineName} cheapestExtended to flight info`);
+            addFlight(toFlightInfo(preferredCheapestExtended, `${airlineName} - ${t.cheapest}`));
+            hasAnyPreferredResults = true;
+            if (!preferredResults.cheapestExtended) {
+              setSearchProgress(prev => ({ ...prev, current: prev.current + 1 }));
+            }
+          }
+
+          // Keep track of overall best preferred results (for display purposes)
+          if (preferredBestAndCheapest && (!preferredResults.bestAndCheapest || preferredBestAndCheapest.price < preferredResults.bestAndCheapest.price)) {
+            preferredResults.bestAndCheapest = { ...preferredBestAndCheapest, recommendReason: `${airlineName} - ${t.bestAndCheapest}` };
+          }
+          if (preferredBestQuality && (!preferredResults.bestQuality || preferredBestQuality.totalDurationMinutes < preferredResults.bestQuality.totalDurationMinutes)) {
+            preferredResults.bestQuality = { ...preferredBestQuality, recommendReason: `${airlineName} - ${t.beste}` };
+          }
+          if (preferredCheapestExtended && (!preferredResults.cheapestExtended || preferredCheapestExtended.price < preferredResults.cheapestExtended.price)) {
+            preferredResults.cheapestExtended = { ...preferredCheapestExtended, recommendReason: `${airlineName} - ${t.cheapest}` };
+          }
+        }
+        
+        setPreferredAirlineResults(preferredResults);
+        setHasPreferredAirlineResults(hasAnyPreferredResults);
+        console.log('Has any preferred results:', hasAnyPreferredResults);
+      }
+
       // 2. FLEXIBLE DATES SEARCH (±X days, same number of nights) - Sequential to avoid rate limiting
       if (flexibleDates && flexibleNights > 0) {
         let cheapestFlex: ProcessedFlight | null = null;
+        const allFlexFlights: ProcessedFlight[] = []; // Collect all flights for preferred airline search
 
         for (let i = -flexibleNights; i <= flexibleNights; i++) {
           if (i === 0) continue;
@@ -901,11 +1444,18 @@ function saveToPowerPointSingle(flight: ProcessedFlight, title: string) {
 
           try {
             const offers = await searchFlightsApi(departure, destination, returnFrom, returnTo, newDepDate, newRetDate, pax, currency);
-            const processed = processFlightOffers(offers, { date: newDepDate, nightsDiff: 0 });
+            const processed = processFlightOffers(offers, { date: newDepDate, nightsDiff: 0 }, pax);
             // Allow longer flights with night layovers, but exclude problematic endpoints
-            const valid = processed.filter(f =>
+            let valid = processed.filter(f =>
               f.totalDurationMinutes <= MAX_EXTENDED_DURATION_HOURS * 60 && !f.hasNightFlight
             );
+            
+            // Filter Oslo layover (NO only)
+            if (language === 'no') {
+              valid = valid.filter(f => f.hasInvalidOsloLayover !== true);
+            }
+
+            allFlexFlights.push(...valid); // Store for preferred airline search
 
             for (const flight of valid) {
               if (!cheapestFlex || flight.price < cheapestFlex.price) {
@@ -920,22 +1470,57 @@ function saveToPowerPointSingle(flight: ProcessedFlight, title: string) {
         // Only show if cheaper than original
         if (cheapestFlex && cheapestFlex.price < basePrice) {
           setFlexibleResult({ ...cheapestFlex, recommendReason: t.cheapest });
+          setSearchProgress(prev => ({ ...prev, current: prev.current + 1 }));
+        }
+        
+        // Find best flexible option for each selected airline
+        if (usePreferredAirline && selectedAirlines.length > 0 && allFlexFlights.length > 0) {
+          for (const airlineCode of selectedAirlines) {
+            const airlineName = airlineNames[airlineCode];
+            const preferredFlexFlights = allFlexFlights.filter(f => hasPreferredAirline(f, airlineCode));
+            
+            if (preferredFlexFlights.length > 0) {
+              const preferredFlex = preferredFlexFlights.reduce((best, current) => 
+                current.price < best.price ? current : best
+              );
+              
+              if (preferredFlex.price < basePrice) {
+                setPreferredAirlineResults(prev => ({
+                  ...prev,
+                  flexible: preferredFlex.price < (prev.flexible?.price || Infinity) 
+                    ? { ...preferredFlex, recommendReason: `${airlineName} - ${t.cheaperFlexible}` }
+                    : prev.flexible
+                }));
+                setHasPreferredAirlineResults(true);
+                addFlight(toFlightInfo(preferredFlex, `${airlineName} - ${t.cheaperFlexible}`));
+                setSearchProgress(prev => ({ ...prev, current: prev.current + 1 }));
+              }
+            }
+          }
         }
       }
 
       // 3A. ADD NIGHTS SEARCH (extend trip if cheaper)
       if (addNights && addNightsCount > 0) {
         let cheapestAdd: ProcessedFlight | null = null;
+        const allAddFlights: ProcessedFlight[] = []; // Collect all flights for preferred airline search
 
         for (let i = 1; i <= addNightsCount; i++) {
           const newRetDate = addDays(returnDateStr, i);
 
           try {
             const offers = await searchFlightsApi(departure, destination, returnFrom, returnTo, departureDateStr, newRetDate, pax, currency);
-            const processed = processFlightOffers(offers, { date: departureDateStr, nightsDiff: i });
-            const valid = processed.filter(f =>
+            const processed = processFlightOffers(offers, { date: departureDateStr, nightsDiff: i }, pax);
+            let valid = processed.filter(f =>
               f.totalDurationMinutes <= MAX_EXTENDED_DURATION_HOURS * 60 && !f.hasNightFlight
             );
+            
+            // Filter Oslo layover (NO only)
+            if (language === 'no') {
+              valid = valid.filter(f => f.hasInvalidOsloLayover !== true);
+            }
+
+            allAddFlights.push(...valid); // Store for preferred airline search
 
             for (const flight of valid) {
               flight.nightsDiff = i;
@@ -951,22 +1536,57 @@ function saveToPowerPointSingle(flight: ProcessedFlight, title: string) {
         // Only show if cheaper than original
         if (cheapestAdd && cheapestAdd.price < basePrice) {
           setExtendedStayResult({ ...cheapestAdd, recommendReason: t.cheapest });
+          setSearchProgress(prev => ({ ...prev, current: prev.current + 1 }));
+        }
+        
+        // Find best extended stay option for each selected airline
+        if (usePreferredAirline && selectedAirlines.length > 0 && allAddFlights.length > 0) {
+          for (const airlineCode of selectedAirlines) {
+            const airlineName = airlineNames[airlineCode];
+            const preferredAddFlights = allAddFlights.filter(f => hasPreferredAirline(f, airlineCode));
+            
+            if (preferredAddFlights.length > 0) {
+              const preferredAdd = preferredAddFlights.reduce((best, current) => 
+                current.price < best.price ? current : best
+              );
+              
+              if (preferredAdd.price < basePrice) {
+                setPreferredAirlineResults(prev => ({
+                  ...prev,
+                  extendedStay: preferredAdd.price < (prev.extendedStay?.price || Infinity)
+                    ? { ...preferredAdd, recommendReason: `${airlineName} - ${t.cheaperExtended}` }
+                    : prev.extendedStay
+                }));
+                setHasPreferredAirlineResults(true);
+                addFlight(toFlightInfo(preferredAdd, `${airlineName} - ${t.cheaperExtended}`));
+                setSearchProgress(prev => ({ ...prev, current: prev.current + 1 }));
+              }
+            }
+          }
         }
       }
 
       // 3B. REMOVE NIGHTS SEARCH (shorten trip if cheaper)
       if (removeNights && removeNightsCount > 0) {
         let cheapestRemove: ProcessedFlight | null = null;
+        const allRemoveFlights: ProcessedFlight[] = []; // Collect all flights for preferred airline search
 
         for (let i = 1; i <= removeNightsCount; i++) {
           const newRetDate = addDays(returnDateStr, -i);
 
           try {
             const offers = await searchFlightsApi(departure, destination, returnFrom, returnTo, departureDateStr, newRetDate, pax, currency);
-            const processed = processFlightOffers(offers, { date: departureDateStr, nightsDiff: -i });
-            const valid = processed.filter(f =>
+            const processed = processFlightOffers(offers, { date: departureDateStr, nightsDiff: -i }, pax);
+            let valid = processed.filter(f =>
               f.totalDurationMinutes <= MAX_EXTENDED_DURATION_HOURS * 60 && !f.hasNightFlight
             );
+            
+            // Filter Oslo layover (NO only)
+            if (language === 'no') {
+              valid = valid.filter(f => f.hasInvalidOsloLayover !== true);
+            }
+
+            allRemoveFlights.push(...valid); // Store for preferred airline search
 
             for (const flight of valid) {
               flight.nightsDiff = -i;
@@ -984,6 +1604,33 @@ function saveToPowerPointSingle(flight: ProcessedFlight, title: string) {
           // If we already have addNights result, keep the cheapest one
           if (!extendedStayResult || cheapestRemove.price < extendedStayResult.price) {
             setExtendedStayResult({ ...cheapestRemove, recommendReason: t.cheapest });
+            setSearchProgress(prev => ({ ...prev, current: prev.current + 1 }));
+          }
+        }
+        
+        // Find best remove nights option for each selected airline
+        if (usePreferredAirline && selectedAirlines.length > 0 && allRemoveFlights.length > 0) {
+          for (const airlineCode of selectedAirlines) {
+            const airlineName = airlineNames[airlineCode];
+            const preferredRemoveFlights = allRemoveFlights.filter(f => hasPreferredAirline(f, airlineCode));
+            
+            if (preferredRemoveFlights.length > 0) {
+              const preferredRemove = preferredRemoveFlights.reduce((best, current) => 
+                current.price < best.price ? current : best
+              );
+              
+              if (preferredRemove.price < basePrice) {
+                setPreferredAirlineResults(prev => ({
+                  ...prev,
+                  extendedStay: preferredRemove.price < (prev.extendedStay?.price || Infinity)
+                    ? { ...preferredRemove, recommendReason: `${airlineName} - ${t.cheaperExtended}` }
+                    : prev.extendedStay
+                }));
+                setHasPreferredAirlineResults(true);
+                addFlight(toFlightInfo(preferredRemove, `${airlineName} - ${t.cheaperExtended}`));
+                setSearchProgress(prev => ({ ...prev, current: prev.current + 1 }));
+              }
+            }
           }
         }
       }
@@ -992,6 +1639,7 @@ function saveToPowerPointSingle(flight: ProcessedFlight, title: string) {
       if (useDateInterval && earliestDeparture && latestDeparture) {
         const tripNights = calculateNights(departureDateStr, returnDateStr);
         let cheapestInterval: ProcessedFlight | null = null;
+        const allIntervalFlights: ProcessedFlight[] = []; // Collect all flights for preferred airline search
 
         // Calculate number of days in the interval
         const startDate = new Date(earliestDeparture);
@@ -1007,11 +1655,18 @@ function saveToPowerPointSingle(flight: ProcessedFlight, title: string) {
 
           try {
             const offers = await searchFlightsApi(departure, destination, returnFrom, returnTo, searchDepDate, searchRetDate, pax, currency);
-            const processed = processFlightOffers(offers, { date: searchDepDate, nightsDiff: 0 });
+            const processed = processFlightOffers(offers, { date: searchDepDate, nightsDiff: 0 }, pax);
             // Allow longer flights with night layovers, but exclude problematic endpoints
-            const valid = processed.filter(f =>
+            let valid = processed.filter(f =>
               f.totalDurationMinutes <= MAX_EXTENDED_DURATION_HOURS * 60 && !f.hasNightFlight
             );
+            
+            // Filter Oslo layover (NO only)
+            if (language === 'no') {
+              valid = valid.filter(f => f.hasInvalidOsloLayover !== true);
+            }
+
+            allIntervalFlights.push(...valid); // Store for preferred airline search
 
             for (const flight of valid) {
               if (!cheapestInterval || flight.price < cheapestInterval.price) {
@@ -1026,6 +1681,33 @@ function saveToPowerPointSingle(flight: ProcessedFlight, title: string) {
         // Only show if cheaper than original
         if (cheapestInterval && cheapestInterval.price < basePrice) {
           setDateIntervalResult({ ...cheapestInterval, recommendReason: t.searchInInterval });
+          setSearchProgress(prev => ({ ...prev, current: prev.current + 1 }));
+        }
+        
+        // Find best interval option for each selected airline
+        if (usePreferredAirline && selectedAirlines.length > 0 && allIntervalFlights.length > 0) {
+          for (const airlineCode of selectedAirlines) {
+            const airlineName = airlineNames[airlineCode];
+            const preferredIntervalFlights = allIntervalFlights.filter(f => hasPreferredAirline(f, airlineCode));
+            
+            if (preferredIntervalFlights.length > 0) {
+              const preferredInterval = preferredIntervalFlights.reduce((best, current) => 
+                current.price < best.price ? current : best
+              );
+              
+              if (preferredInterval.price < basePrice) {
+                setPreferredAirlineResults(prev => ({
+                  ...prev,
+                  dateInterval: preferredInterval.price < (prev.dateInterval?.price || Infinity)
+                    ? { ...preferredInterval, recommendReason: `${airlineName} - ${t.searchInInterval}` }
+                    : prev.dateInterval
+                }));
+                setHasPreferredAirlineResults(true);
+                addFlight(toFlightInfo(preferredInterval, `${airlineName} - ${t.searchInInterval}`));
+                setSearchProgress(prev => ({ ...prev, current: prev.current + 1 }));
+              }
+            }
+          }
         }
       }
 
@@ -1037,11 +1719,18 @@ function saveToPowerPointSingle(flight: ProcessedFlight, title: string) {
       }
 
     } catch (err) {
+      // Don't show error if search was manually aborted
+      if (err instanceof Error && err.name === 'AbortError') {
+        console.log('Search was aborted by user');
+        return;
+      }
+      
       console.error("Flight search error:", err);
       setError(err instanceof Error ? err.message : t.error);
       toast.error(t.error);
     } finally {
       setIsSearching(false);
+      setAbortController(null);
     }
   }
 
@@ -1087,7 +1776,7 @@ function saveToPowerPointSingle(flight: ProcessedFlight, title: string) {
                 <SelectTrigger className="bg-muted/30">
                   <SelectValue />
                 </SelectTrigger>
-                <SelectContent className="bg-background z-50">
+                <SelectContent position="popper" className="bg-background z-50 max-h-[300px] overflow-y-auto">
                   {[1, 2, 3, 4, 5, 6, 7, 8, 9].map((n) => (
                     <SelectItem key={n} value={String(n)}>{n}</SelectItem>
                   ))}
@@ -1122,6 +1811,21 @@ function saveToPowerPointSingle(flight: ProcessedFlight, title: string) {
                 className="uppercase bg-muted/30"
                 maxLength={3}
               />
+            </div>
+            
+            {/* Children */}
+            <div className="space-y-1">
+              <Label>{t.children}</Label>
+              <Select value={children} onValueChange={setChildren}>
+                <SelectTrigger className="bg-muted/30">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent position="popper" className="bg-background z-50 max-h-[300px] overflow-y-auto">
+                  {[0, 1, 2, 3, 4, 5, 6].map((n) => (
+                    <SelectItem key={n} value={String(n)}>{n}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
             </div>
           </div>
 
@@ -1253,7 +1957,7 @@ function saveToPowerPointSingle(flight: ProcessedFlight, title: string) {
                   <SelectTrigger className="w-16 h-8 bg-muted/30">
                     <SelectValue />
                   </SelectTrigger>
-                  <SelectContent className="bg-background z-50">
+                  <SelectContent position="popper" className="bg-background z-50 max-h-[200px] overflow-y-auto">
                     {[1, 2, 3, 4, 5, 7].map((n) => (
                       <SelectItem key={n} value={String(n)}>{n}</SelectItem>
                     ))}
@@ -1276,7 +1980,7 @@ function saveToPowerPointSingle(flight: ProcessedFlight, title: string) {
                   <SelectTrigger className="w-16 h-8 bg-muted/30">
                     <SelectValue />
                   </SelectTrigger>
-                  <SelectContent className="bg-background z-50">
+                  <SelectContent position="popper" className="bg-background z-50 max-h-[200px] overflow-y-auto">
                     {[1, 2, 3, 4, 5, 7].map((n) => (
                       <SelectItem key={n} value={String(n)}>{n}</SelectItem>
                     ))}
@@ -1299,7 +2003,7 @@ function saveToPowerPointSingle(flight: ProcessedFlight, title: string) {
                   <SelectTrigger className="w-16 h-8 bg-muted/30">
                     <SelectValue />
                   </SelectTrigger>
-                  <SelectContent className="bg-background z-50">
+                  <SelectContent position="popper" className="bg-background z-50 max-h-[200px] overflow-y-auto">
                     {[1, 2, 3, 4, 5, 7].map((n) => (
                       <SelectItem key={n} value={String(n)}>{n}</SelectItem>
                     ))}
@@ -1309,118 +2013,216 @@ function saveToPowerPointSingle(flight: ProcessedFlight, title: string) {
               </Label>
             </div>
 
-            {/* NEW: Children Option */}
-            <div className="flex items-center gap-3">
-              <Checkbox
-                id="includeChildren"
-                checked={includeChildren}
-                onCheckedChange={(checked) => setIncludeChildren(checked === true)}
-              />
-              <Label htmlFor="includeChildren" className="flex items-center gap-2 cursor-pointer">
-                {t.children}
-                <Select value={children} onValueChange={setChildren}>
-                  <SelectTrigger className="w-16 h-8 bg-muted/30">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent className="bg-background z-50">
-                    {[1, 2, 3, 4, 5, 6, 7, 8, 9].map((n) => (
-                      <SelectItem key={n} value={String(n)}>{n}</SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </Label>
+            {/* Preferred Airline - Multi-Select with Checkboxes */}
+            <div className="col-span-1 md:col-span-2 w-full">
+              <div className="flex items-center gap-2 mb-3">
+                <Checkbox
+                  id="preferredAirline"
+                  checked={usePreferredAirline}
+                  onCheckedChange={(checked) => setUsePreferredAirline(checked === true)}
+                />
+                <Label htmlFor="preferredAirline" className="cursor-pointer font-semibold">
+                  {t.preferredAirline}
+                </Label>
+              </div>
+              
+              {usePreferredAirline && (
+                <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-2 pl-6 pb-2 border border-border/30 rounded-md p-3 bg-muted/10">
+                  {Object.entries(airlineNames).map(([code, name]) => (
+                    <div key={code} className="flex items-center gap-2">
+                      <Checkbox
+                        id={`airline-${code}`}
+                        checked={selectedAirlines.includes(code)}
+                        onCheckedChange={(checked) => {
+                          if (checked) {
+                            setSelectedAirlines(prev => [...prev, code]);
+                          } else {
+                            setSelectedAirlines(prev => prev.filter(c => c !== code));
+                          }
+                        }}
+                      />
+                      <Label htmlFor={`airline-${code}`} className="cursor-pointer text-sm">
+                        {name} ({code})
+                      </Label>
+                    </div>
+                  ))}
+                </div>
+              )}
             </div>
 
             {/* Date Interval Option */}
-            <div className="col-span-1 md:col-span-2 flex flex-wrap items-center gap-3 pt-2 border-t border-border/30">
-              <Checkbox
-                id="dateInterval"
-                checked={useDateInterval}
-                onCheckedChange={(checked) => setUseDateInterval(checked === true)}
-              />
-              <Label htmlFor="dateInterval" className="cursor-pointer">
-                {t.dateInterval}:
-              </Label>
-              <div className="flex flex-wrap items-center gap-2">
-                {/* Earliest departure - NEW: auto-set to departure month when opened */}
-                <Input
-                  type="date"
-                  value={earliestDeparture ? format(earliestDeparture, "yyyy-MM-dd") : ""}
-                  onChange={(e) => {
-                    const value = e.target.value;
-                    setEarliestDeparture(value ? new Date(value) : undefined);
-                  }}
-                  onFocus={(e) => {
-                    // NEW: Auto-set month to departure date's month when first opened
-                    if (!earliestDeparture && departureDate) {
-                      e.target.value = format(departureDate, "yyyy-MM-dd");
-                      setEarliestDeparture(departureDate);
-                    }
-                  }}
-                  min={format(new Date(), "yyyy-MM-dd")}
-                  className="w-[150px]"
-                  disabled={!useDateInterval}
-                />
-
-                <span className="text-muted-foreground">→</span>
-
-                {/* Latest departure - NEW: auto-set to return month when opened */}
-                <Input
-                  type="date"
-                  value={latestDeparture ? format(latestDeparture, "yyyy-MM-dd") : ""}
-                  onChange={(e) => {
-                    const value = e.target.value;
-                    setLatestDeparture(value ? new Date(value) : undefined);
-                  }}
-                  onFocus={(e) => {
-                    // NEW: Auto-set month to return date's month when first opened
-                    if (!latestDeparture && returnDate) {
-                      e.target.value = format(returnDate, "yyyy-MM-dd");
-                      setLatestDeparture(returnDate);
-                    }
-                  }}
-                  min={
-                    earliestDeparture
-                      ? format(earliestDeparture, "yyyy-MM-dd")
-                      : format(new Date(), "yyyy-MM-dd")
-                  }
-                  className="w-[150px]"
-                  disabled={!useDateInterval}
-                />
+            <div className="col-span-1 md:col-span-2 w-full pt-2 border-t border-border/30">
+              <div className="flex flex-wrap items-center gap-4">
+                <div className="flex items-center gap-2">
+                  <Checkbox
+                    id="dateInterval"
+                    checked={useDateInterval}
+                    onCheckedChange={(checked) => setUseDateInterval(checked === true)}
+                  />
+                  <Label htmlFor="dateInterval" className="cursor-pointer whitespace-nowrap">
+                    {t.dateInterval}:
+                  </Label>
+                </div>
+                
+                {/* Earliest departure */}
+                <div className="space-y-1 flex-1 min-w-[180px]">
+                  <Label>{t.earliestDeparture}</Label>
+                  <div className="flex gap-2">
+                    <Input
+                      placeholder="DDMM (f.eks. 0510)"
+                      value={earliestDateInput}
+                      onChange={(e) => setEarliestDateInput(e.target.value)}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter') {
+                          const parsed = parseDDMM(earliestDateInput);
+                          if (parsed) {
+                            setEarliestDeparture(parsed);
+                            setEarliestDateInput(format(parsed, 'dd.MM.yyyy'));
+                          }
+                        }
+                      }}
+                      onBlur={() => {
+                        const parsed = parseDDMM(earliestDateInput);
+                        if (parsed) {
+                          setEarliestDeparture(parsed);
+                          setEarliestDateInput(format(parsed, 'dd.MM.yyyy'));
+                        } else if (earliestDeparture) {
+                          setEarliestDateInput(format(earliestDeparture, 'dd.MM.yyyy'));
+                        }
+                      }}
+                      className="w-[120px] bg-muted/30 flex-1"
+                      disabled={!useDateInterval}
+                    />
+                    <Popover open={earliestDateOpen} onOpenChange={setEarliestDateOpen}>
+                      <PopoverTrigger asChild>
+                        <Button
+                          variant="outline"
+                          size="icon"
+                          className="bg-muted/30"
+                          disabled={!useDateInterval}
+                        >
+                          <CalendarIcon className="h-4 w-4" />
+                        </Button>
+                      </PopoverTrigger>
+                      <PopoverContent className="w-auto p-0" side="bottom" align="start" avoidCollisions={false}>
+                        <Calendar
+                          mode="single"
+                          selected={earliestDeparture}
+                          onSelect={(date) => {
+                            setEarliestDeparture(date);
+                            setEarliestDateInput(date ? format(date, 'dd.MM.yyyy') : '');
+                            setEarliestDateOpen(false);
+                          }}
+                          disabled={(date) => date < today || date > maxDate}
+                          initialFocus
+                          locale={dayPickerLocale}
+                        />
+                      </PopoverContent>
+                    </Popover>
+                  </div>
+                </div>
+                
+                {/* Arrow between dates */}
+                <div className="flex items-center justify-center px-2">
+                  <span className="text-muted-foreground text-lg">→</span>
+                </div>
+                
+                {/* Latest departure */}
+                <div className="space-y-1 flex-1 min-w-[180px]">
+                  <Label>{t.latestDeparture}</Label>
+                  <div className="flex gap-2">
+                    <Input
+                      placeholder="DDMM (f.eks. 1510)"
+                      value={latestDateInput}
+                      onChange={(e) => setLatestDateInput(e.target.value)}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter') {
+                          const parsed = parseDDMM(latestDateInput);
+                          if (parsed) {
+                            setLatestDeparture(parsed);
+                            setLatestDateInput(format(parsed, 'dd.MM.yyyy'));
+                          }
+                        }
+                      }}
+                      onBlur={() => {
+                        const parsed = parseDDMM(latestDateInput);
+                        if (parsed) {
+                          setLatestDeparture(parsed);
+                          setLatestDateInput(format(parsed, 'dd.MM.yyyy'));
+                        } else if (latestDeparture) {
+                          setLatestDateInput(format(latestDeparture, 'dd.MM.yyyy'));
+                        }
+                      }}
+                      className="w-[120px] bg-muted/30 flex-1"
+                      disabled={!useDateInterval}
+                    />
+                    <Popover open={latestDateOpen} onOpenChange={setLatestDateOpen}>
+                      <PopoverTrigger asChild>
+                        <Button
+                          variant="outline"
+                          size="icon"
+                          className="bg-muted/30"
+                          disabled={!useDateInterval}
+                        >
+                          <CalendarIcon className="h-4 w-4" />
+                        </Button>
+                      </PopoverTrigger>
+                      <PopoverContent className="w-auto p-0" side="bottom" align="start" avoidCollisions={false}>
+                        <Calendar
+                          mode="single"
+                          selected={latestDeparture}
+                          month={earliestDeparture || latestDeparture}
+                          onSelect={(date) => {
+                            setLatestDeparture(date);
+                            setLatestDateInput(date ? format(date, 'dd.MM.yyyy') : '');
+                            setLatestDateOpen(false);
+                          }}
+                          disabled={(date) => {
+                            const minDate = earliestDeparture || today;
+                            return date < minDate || date > maxDate;
+                          }}
+                          initialFocus
+                          locale={dayPickerLocale}
+                        />
+                      </PopoverContent>
+                    </Popover>
+                  </div>
+                </div>
               </div>
             </div>
 
-            {/* Search Button */}
-            <div className="mt-2 grid grid-cols-1 gap-2">
+            {/* Search and Cancel Buttons */}
+            <div className="mt-4 flex gap-3 justify-center">
               <Button
                 onClick={handleSearch}
                 disabled={isSearching}
-                className="w-full"
+                variant="outline"
+                className="gap-2 border-2 border-primary min-w-[220px]"
                 size="lg"
               >
                 {isSearching ? (
                   <>
-                    <Search className="mr-2 h-4 w-4 animate-spin" />
-                    {t.searching}
+                    <Search className="h-4 w-4 animate-spin" />
+                    {t.searching} ({searchProgress.current}/{searchProgress.max})
                   </>
                 ) : (
                   <>
-                    <Plane className="mr-2 h-4 w-4" />
+                    <Plane className="h-4 w-4" />
                     {t.search}
                   </>
                 )}
               </Button>
 
-              {/* Nullstill-knapp */}
-              {(mainResults.bestAndCheapest || bestQualityResult || cheapestExtendedResult || flexibleResult || extendedStayResult || dateIntervalResult) && (
+              {/* Avslutt søk-knapp - vises mens søket pågår */}
+              {isSearching && (
                 <Button
-                  onClick={handleReset}
-                  variant="destructive"
-                  className="w-full"
+                  onClick={handleCancelSearch}
+                  variant="outline"
+                  className="gap-2 border-2 border-destructive text-destructive hover:bg-destructive hover:text-destructive-foreground min-w-[180px]"
                   size="lg"
                 >
-                  <RotateCcw className="mr-2 h-4 w-4" />
-                  {language === "no" ? "Nullstill alle resultater" : "Nulstil alle resultater"}
+                  <AlertCircle className="h-4 w-4" />
+                  {language === "no" ? "Avslutt søk" : "Afbryd søgning"}
                 </Button>
               )}
             </div>
@@ -1450,7 +2252,7 @@ function saveToPowerPointSingle(flight: ProcessedFlight, title: string) {
                 <Star className="h-5 w-5 text-primary fill-primary" />
                 <div>
                   <h3 className="font-semibold text-foreground">{t.bestAndCheapest}</h3>
-                  <p className="text-xs text-muted-foreground">{t.mainResultsDesc}</p>
+                  <p className="text-xs text-muted-foreground">{mainResultsDesc}</p>
                 </div>
               </div>
               <div className="relative">
@@ -1463,11 +2265,55 @@ function saveToPowerPointSingle(flight: ProcessedFlight, title: string) {
                   formatDuration={formatDuration}
                   onSave={saveToPowerPointSingle}
                   title={t.bestAndCheapest}
-                  childrenCount={includeChildren ? parseInt(children) : 0}
+                  childrenCount={parseInt(children)}
                   hasNightFlight={mainResults.bestAndCheapest.hasNightFlight}
                 />
               </div>
             </div>
+          )}
+
+          {/* PREFERRED AIRLINE: Best and Cheapest */}
+          {usePreferredAirline && selectedAirlines.length > 0 && preferredAirlineResults.bestAndCheapest && (
+            <div className="space-y-4">
+              <div className="flex items-center gap-2">
+                <Star className="h-5 w-5 text-blue-500 fill-blue-500" />
+                <div>
+                  <h3 className="font-semibold text-foreground">{preferredAirlineResults.bestAndCheapest.recommendReason}</h3>
+                  <p className="text-xs text-muted-foreground">{mainResultsDesc}</p>
+                </div>
+              </div>
+              <div className="relative">
+                <FlightResultCard
+                  flight={preferredAirlineResults.bestAndCheapest}
+                  language={language}
+                  translations={t}
+                  formatTime={formatTime}
+                  formatDate={formatDate}
+                  formatDuration={formatDuration}
+                  onSave={saveToPowerPointSingle}
+                  title={preferredAirlineResults.bestAndCheapest.recommendReason || t.bestAndCheapest}
+                  childrenCount={parseInt(children)}
+                  hasNightFlight={preferredAirlineResults.bestAndCheapest.hasNightFlight}
+                />
+              </div>
+            </div>
+          )}
+
+          {/* NO PREFERRED AIRLINE RESULTS for this category */}
+          {usePreferredAirline && selectedAirlines.length > 0 && hasSearched && !preferredAirlineResults.bestAndCheapest && (
+            <Card className="border-amber-200 bg-amber-50/50 dark:border-amber-800 dark:bg-amber-950/20">
+              <CardContent className="pt-4 pb-4">
+                <div className="flex items-center gap-3">
+                  <AlertCircle className="h-5 w-5 text-amber-600 dark:text-amber-400" />
+                  <p className="text-sm text-amber-800 dark:text-amber-200">
+                    {language === "no" 
+                      ? `Ingen ruter funnet for ${t.bestAndCheapest} med ${selectedAirlines.map(c => airlineNames[c]).join(', ')}`
+                      : `Ingen ruter fundet for ${t.bestAndCheapest} med ${selectedAirlines.map(c => airlineNames[c]).join(', ')}`
+                    }
+                  </p>
+                </div>
+              </CardContent>
+            </Card>
           )}
           {/* CATEGORY 2: Best by Quality (≤22h, no night) */}
 
@@ -1489,14 +2335,56 @@ function saveToPowerPointSingle(flight: ProcessedFlight, title: string) {
                 formatDuration={formatDuration}
                 onSave={saveToPowerPointSingle}
                 title={t.beste}
-                childrenCount={includeChildren ? parseInt(children) : 0}
+                childrenCount={parseInt(children)}
                 hasNightFlight={bestQualityResult.hasNightFlight}
               />
             </div>
           )}
 
+          {/* PREFERRED AIRLINE: Best by Quality */}
+          {usePreferredAirline && selectedAirlines.length > 0 && preferredAirlineResults.bestQuality && (
+            <div className="space-y-4">
+              <div className="flex items-center gap-2">
+                <Trophy className="h-5 w-5 text-blue-500" />
+                <div>
+                  <h3 className="font-semibold text-foreground">{preferredAirlineResults.bestQuality.recommendReason}</h3>
+                  <p className="text-xs text-muted-foreground">{t.bestQualityDesc || "Best overall flight based on duration and connections"}</p>
+                </div>
+              </div>
+              <FlightResultCard
+                flight={preferredAirlineResults.bestQuality}
+                language={language}
+                translations={t}
+                formatTime={formatTime}
+                formatDate={formatDate}
+                formatDuration={formatDuration}
+                onSave={saveToPowerPointSingle}
+                title={preferredAirlineResults.bestQuality.recommendReason || t.beste}
+                childrenCount={parseInt(children)}
+                hasNightFlight={preferredAirlineResults.bestQuality.hasNightFlight}
+              />
+            </div>
+          )}
+
+          {/* NO PREFERRED AIRLINE RESULTS for quality category */}
+          {usePreferredAirline && selectedAirlines.length > 0 && hasSearched && !preferredAirlineResults.bestQuality && (
+            <Card className="border-amber-200 bg-amber-50/50 dark:border-amber-800 dark:bg-amber-950/20">
+              <CardContent className="pt-4 pb-4">
+                <div className="flex items-center gap-3">
+                  <AlertCircle className="h-5 w-5 text-amber-600 dark:text-amber-400" />
+                  <p className="text-sm text-amber-800 dark:text-amber-200">
+                    {language === "no" 
+                      ? `Ingen ruter funnet for ${t.beste} med ${selectedAirlines.map(c => airlineNames[c]).join(', ')}`
+                      : `Ingen ruter fundet for ${t.beste} med ${selectedAirlines.map(c => airlineNames[c]).join(', ')}`
+                    }
+                  </p>
+                </div>
+              </CardContent>
+            </Card>
+          )}
+
           {/* CATEGORY 3: Cheapest Extended (≤25h, allows night flights) */}
-          {cheapestExtendedResult && cheapestExtendedResult.id !== mainResults.bestAndCheapest?.id && (
+          {cheapestExtendedResult && (
             <div className="space-y-4">
               <div className="flex items-center gap-2">
                 <TrendingDown className="h-5 w-5 text-green-500" />
@@ -1514,10 +2402,52 @@ function saveToPowerPointSingle(flight: ProcessedFlight, title: string) {
                 formatDuration={formatDuration}
                 onSave={saveToPowerPointSingle}
                 title={t.cheapest}
-                childrenCount={includeChildren ? parseInt(children) : 0}
+                childrenCount={parseInt(children)}
                 hasNightFlight={cheapestExtendedResult.hasNightFlight}
               />
             </div>
+          )}
+
+          {/* PREFERRED AIRLINE: Cheapest Extended */}
+          {usePreferredAirline && selectedAirlines.length > 0 && preferredAirlineResults.cheapestExtended && (
+            <div className="space-y-4">
+              <div className="flex items-center gap-2">
+                <TrendingDown className="h-5 w-5 text-blue-500" />
+                <div>
+                  <h3 className="font-semibold text-foreground">{preferredAirlineResults.cheapestExtended.recommendReason}</h3>
+                  <p className="text-xs text-muted-foreground">{t.cheapestWithFlexibility || "Cheapest option up to 25 hours"}</p>
+                </div>
+              </div>
+              <FlightResultCard
+                flight={preferredAirlineResults.cheapestExtended}
+                language={language}
+                translations={t}
+                formatTime={formatTime}
+                formatDate={formatDate}
+                formatDuration={formatDuration}
+                onSave={saveToPowerPointSingle}
+                title={preferredAirlineResults.cheapestExtended.recommendReason || t.cheapest}
+                childrenCount={parseInt(children)}
+                hasNightFlight={preferredAirlineResults.cheapestExtended.hasNightFlight}
+              />
+            </div>
+          )}
+
+          {/* NO PREFERRED AIRLINE RESULTS for cheapest extended category */}
+          {usePreferredAirline && selectedAirlines.length > 0 && hasSearched && !preferredAirlineResults.cheapestExtended && (
+            <Card className="border-amber-200 bg-amber-50/50 dark:border-amber-800 dark:bg-amber-950/20">
+              <CardContent className="pt-4 pb-4">
+                <div className="flex items-center gap-3">
+                  <AlertCircle className="h-5 w-5 text-amber-600 dark:text-amber-400" />
+                  <p className="text-sm text-amber-800 dark:text-amber-200">
+                    {language === "no" 
+                      ? `Ingen ruter funnet for ${t.cheapest} med ${selectedAirlines.map(c => airlineNames[c]).join(', ')}`
+                      : `Ingen ruter fundet for ${t.cheapest} med ${selectedAirlines.map(c => airlineNames[c]).join(', ')}`
+                    }
+                  </p>
+                </div>
+              </CardContent>
+            </Card>
           )}
         </div>
       )}
@@ -1545,8 +2475,37 @@ function saveToPowerPointSingle(flight: ProcessedFlight, title: string) {
             formatDuration={formatDuration}
             onSave={saveToPowerPointSingle}
             title={t.cheaperFlexible}
-            childrenCount={includeChildren ? parseInt(children) : 0}
+            childrenCount={parseInt(children)}
             hasNightFlight={flexibleResult.hasNightFlight}
+          />
+        </div>
+      )}
+
+      {/* PREFERRED AIRLINE: Flexible Date Result */}
+      {usePreferredAirline && selectedAirlines.length > 0 && preferredAirlineResults.flexible && (
+        <div className="space-y-4">
+          <div className="flex items-center gap-2">
+            <CalendarIcon className="h-5 w-5 text-blue-500" />
+            <div>
+              <h3 className="font-semibold text-foreground">{preferredAirlineResults.flexible.recommendReason}</h3>
+              {preferredAirlineResults.flexible.searchDate && (
+                <p className="text-xs text-muted-foreground">
+                  Avreise: {format(new Date(preferredAirlineResults.flexible.searchDate), "dd.MM.yyyy")}
+                </p>
+              )}
+            </div>
+          </div>
+          <FlightResultCard
+            flight={preferredAirlineResults.flexible}
+            language={language}
+            translations={t}
+            formatTime={formatTime}
+            formatDate={formatDate}
+            formatDuration={formatDuration}
+            onSave={saveToPowerPointSingle}
+            title={preferredAirlineResults.flexible.recommendReason || t.cheaperFlexible}
+            childrenCount={parseInt(children)}
+            hasNightFlight={preferredAirlineResults.flexible.hasNightFlight}
           />
         </div>
       )}
@@ -1574,8 +2533,37 @@ function saveToPowerPointSingle(flight: ProcessedFlight, title: string) {
             formatDuration={formatDuration}
             onSave={saveToPowerPointSingle}
             title={t.cheaperExtended}
-            childrenCount={includeChildren ? parseInt(children) : 0}
+            childrenCount={parseInt(children)}
             hasNightFlight={extendedStayResult.hasNightFlight}
+          />
+        </div>
+      )}
+
+      {/* PREFERRED AIRLINE: Extended Stay Result */}
+      {usePreferredAirline && selectedAirlines.length > 0 && preferredAirlineResults.extendedStay && (
+        <div className="space-y-4">
+          <div className="flex items-center gap-2">
+            <TrendingDown className="h-5 w-5 text-blue-500" />
+            <div>
+              <h3 className="font-semibold text-foreground">
+                {preferredAirlineResults.extendedStay.recommendReason} {Math.abs(preferredAirlineResults.extendedStay.nightsDiff || 0)} {(preferredAirlineResults.extendedStay.nightsDiff || 0) > 0 ? t.extraNights : t.fewerNights}
+              </h3>
+              <p className="text-xs text-muted-foreground">
+                {(preferredAirlineResults.extendedStay.nightsDiff || 0) > 0 ? "Lengre opphold" : "Kortere opphold"}
+              </p>
+            </div>
+          </div>
+          <FlightResultCard
+            flight={preferredAirlineResults.extendedStay}
+            language={language}
+            translations={t}
+            formatTime={formatTime}
+            formatDate={formatDate}
+            formatDuration={formatDuration}
+            onSave={saveToPowerPointSingle}
+            title={preferredAirlineResults.extendedStay.recommendReason || t.cheaperExtended}
+            childrenCount={parseInt(children)}
+            hasNightFlight={preferredAirlineResults.extendedStay.hasNightFlight}
           />
         </div>
       )}
@@ -1603,8 +2591,39 @@ function saveToPowerPointSingle(flight: ProcessedFlight, title: string) {
             formatDuration={formatDuration}
             onSave={saveToPowerPointSingle}
             title={t.searchInInterval}
-            childrenCount={includeChildren ? parseInt(children) : 0}
+            childrenCount={parseInt(children)}
             hasNightFlight={dateIntervalResult.hasNightFlight}
+          />
+        </div>
+      )}
+
+      {/* PREFERRED AIRLINE: Date Interval Result */}
+      {usePreferredAirline && selectedAirlines.length > 0 && preferredAirlineResults.dateInterval && (
+        <div className="space-y-4">
+          <div className="flex items-center gap-2">
+            <CalendarIcon className="h-5 w-5 text-blue-500" />
+            <div>
+              <h3 className="font-semibold text-foreground">
+                {preferredAirlineResults.dateInterval.recommendReason}
+              </h3>
+              {preferredAirlineResults.dateInterval.searchDate && (
+                <p className="text-xs text-muted-foreground">
+                  Avreise: {format(new Date(preferredAirlineResults.dateInterval.searchDate), "dd.MM.yyyy")}
+                </p>
+              )}
+            </div>
+          </div>
+          <FlightResultCard
+            flight={preferredAirlineResults.dateInterval}
+            language={language}
+            translations={t}
+            formatTime={formatTime}
+            formatDate={formatDate}
+            formatDuration={formatDuration}
+            onSave={saveToPowerPointSingle}
+            title={preferredAirlineResults.dateInterval.recommendReason || t.searchInInterval}
+            childrenCount={parseInt(children)}
+            hasNightFlight={preferredAirlineResults.dateInterval.hasNightFlight}
           />
         </div>
       )}
@@ -1618,7 +2637,7 @@ function saveToPowerPointSingle(flight: ProcessedFlight, title: string) {
                 <div className="space-y-2">
                   <h3 className="font-semibold text-foreground text-lg">{t.noFlightsFound}</h3>
                   <p className="text-sm text-muted-foreground">
-                    {t.noFlightsMainCriteria}
+                    {noMainResultsCriteria}
                   </p>
                   <p className="text-sm text-muted-foreground">
                     {t.onlyLongerFlights}

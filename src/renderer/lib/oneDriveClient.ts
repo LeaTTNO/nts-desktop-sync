@@ -1,14 +1,11 @@
 import { PublicClientApplication, Configuration, AccountInfo } from '@azure/msal-browser';
+import { msalConfig as baseConfig } from '@/config/msalConfig';
 
-// MSAL configuration - brukeren må legge til sin egen clientId fra Azure AD
+// Override cache location for OneDrive to persist across sessions
 const msalConfig: Configuration = {
-  auth: {
-    clientId: import.meta.env.VITE_AZURE_CLIENT_ID || 'YOUR_CLIENT_ID_HERE',
-    authority: 'https://login.microsoftonline.com/common',
-    redirectUri: window.location.origin,
-  },
+  ...baseConfig,
   cache: {
-    cacheLocation: 'localStorage',
+    cacheLocation: 'localStorage', // Use localStorage so login persists
     storeAuthStateInCookie: false,
   },
 };
@@ -25,16 +22,29 @@ const loginRequest = {
 class OneDriveClient {
   private msalInstance: PublicClientApplication;
   private account: AccountInfo | null = null;
+  private initialized: boolean = false;
 
   constructor() {
     this.msalInstance = new PublicClientApplication(msalConfig);
   }
 
   async initialize() {
+    // Skip if already initialized
+    if (this.initialized) {
+      console.log('OneDrive: Already initialized, updating account...');
+      const accounts = this.msalInstance.getAllAccounts();
+      if (accounts.length > 0) {
+        this.account = accounts[0];
+        console.log('OneDrive: Using existing account:', this.account.username);
+      }
+      return;
+    }
+
     try {
       console.log('OneDrive: Starting initialization...');
       await this.msalInstance.initialize();
       console.log('OneDrive: MSAL initialized successfully');
+      this.initialized = true;
       
       const accounts = this.msalInstance.getAllAccounts();
       console.log('OneDrive: Found accounts:', accounts.length);
@@ -42,11 +52,34 @@ class OneDriveClient {
       if (accounts.length > 0) {
         this.account = accounts[0];
         console.log('OneDrive: Logged in as:', this.account.username);
-      } else {
-        console.log('OneDrive: No accounts found');
+        return;
       }
+      
+      // No accounts found - try silent SSO (Windows integrated auth)
+      console.log('OneDrive: No accounts found, attempting Windows SSO...');
+      await this.loginSilent();
+      
     } catch (error) {
       console.error('OneDrive: Initialization error:', error);
+      // Don't throw - we can still try popup login later if needed
+    }
+  }
+
+  async loginSilent() {
+    try {
+      console.log('OneDrive: Attempting silent SSO (Windows integrated auth)...');
+      
+      const response = await this.msalInstance.ssoSilent({
+        scopes: loginRequest.scopes,
+      });
+      
+      this.account = response.account;
+      this.msalInstance.setActiveAccount(response.account);
+      console.log('✅ OneDrive: Silent SSO successful! Logged in as:', this.account.username);
+      return response;
+    } catch (error) {
+      console.log('⚠️ OneDrive: Silent SSO failed:', error);
+      // Silent login failed - might need popup
       throw error;
     }
   }

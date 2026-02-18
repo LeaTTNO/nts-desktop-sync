@@ -2,7 +2,7 @@ import React, { useState } from "react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Copy, Check, Users, ChevronDown, FileDown } from "lucide-react";
+import { Copy, Check, Users, ChevronDown, FileDown, ExternalLink } from "lucide-react";
 import { toast } from "sonner";
 import { FlightOffer, airportNames } from "@/lib/amadeusClient";
 
@@ -13,7 +13,8 @@ interface FlightLeg {
   arrivalTime: string;
   duration: string;
   stops: number;
-  airlines: string[];
+  airlines: string[]; // IATA codes (ET, QR, etc.) for matching
+  airlineNames?: string[]; // Full names for display (optional for backward compatibility)
   segments: string;
 }
 
@@ -27,6 +28,11 @@ interface ProcessedFlight {
   isRecommended: boolean;
   recommendReason?: string;
   rawOffer?: FlightOffer;
+  totalDurationMinutes: number;
+  combinedDurationMinutes?: number;
+  hasNightFlight: boolean;
+  searchDate?: string;
+  nightsDiff?: number;
 }
 
 interface FlightResultCardProps {
@@ -143,7 +149,7 @@ export default function FlightResultCard({
   const availableSeats = flight.rawOffer?.numberOfBookableSeats;
 
   const copyToClipboard = async () => {
-    const airline = flight.outbound.airlines[0] || "Flyreise";
+    const airline = flight.outbound.airlineNames?.[0] || flight.outbound.airlines[0] || "Flyreise";
     const roundedPrice = Math.ceil(flight.price / 50) * 50;
     
     const formatShortDate = (isoDateTime: string): string => {
@@ -262,6 +268,45 @@ export default function FlightResultCard({
       toast.error('Kunne ikke kopiere');
     }
     setTimeout(() => setCopied(false), 2000);
+  };
+
+  const openInFarewise = () => {
+    const domain = language === "da" ? "farewise.dk" : "farewise.no";
+    const depDate = flight.outbound.departureTime.split('T')[0];
+    const retDate = flight.inbound?.departureTime.split('T')[0];
+    
+    if (!retDate) {
+      toast.error(language === "no" ? "Ingen returdato funnet" : "Ingen returdato fundet");
+      return;
+    }
+
+    // Build Farewise search URL with query parameters
+    const searchParams = new URLSearchParams({
+      from: flight.outbound.departure,
+      to: flight.outbound.arrival,
+      departureDate: depDate,
+      returnDate: retDate,
+      adults: "1",
+    });
+
+    const url = `https://www.${domain}/nd/flight/search?${searchParams.toString()}`;
+    
+    // Open in default browser
+    window.open(url, '_blank');
+    toast.success(language === "no" ? "Åpner Farewise..." : "Åbner Farewise...");
+  };
+
+  const [copiedId, setCopiedId] = useState(false);
+  const copyFlightId = async () => {
+    try {
+      await navigator.clipboard.writeText(flight.id);
+      setCopiedId(true);
+      toast.success(language === "no" ? "ID kopiert!" : "ID kopieret!");
+      setTimeout(() => setCopiedId(false), 2000);
+    } catch (err) {
+      console.error('Failed to copy ID:', err);
+      toast.error(language === "no" ? "Kunne ikke kopiere ID" : "Kunne ikke kopiére ID");
+    }
   };
 
   const renderLeg = (
@@ -416,7 +461,7 @@ export default function FlightResultCard({
       {/* Airline header */}
       <div className="flex items-center justify-between px-3 py-1.5 bg-muted/30 border-b border-border/50">
         <div className="flex items-center gap-2">
-          <span className="font-semibold text-sm text-foreground">{flight.outbound.airlines[0]}</span>
+          <span className="font-semibold text-sm text-foreground">{flight.outbound.airlineNames?.[0] || flight.outbound.airlines[0]}</span>
           {flight.isRecommended && (
             <Badge variant="default" className="bg-primary/10 text-primary border-primary/20 text-[10px] px-1.5 py-0">
               ⭐ {flight.recommendReason || t.recommended}
@@ -498,6 +543,25 @@ export default function FlightResultCard({
                   PPTX
                 </Button>
               )}
+
+              <Button variant="outline" size="sm" onClick={openInFarewise} className="w-full h-7 text-xs px-2">
+                <ExternalLink className="h-3 w-3" />
+                Farewise
+              </Button>
+
+              <Button variant="ghost" size="sm" onClick={copyFlightId} className="w-full h-7 text-xs px-2">
+                {copiedId ? (
+                  <>
+                    <Check className="h-3 w-3" />
+                    ID {t.copied}
+                  </>
+                ) : (
+                  <>
+                    <Copy className="h-3 w-3" />
+                    {language === "no" ? "Kopier ID" : "Kopier ID"}
+                  </>
+                )}
+              </Button>
             </div>
           </div>
         </div>

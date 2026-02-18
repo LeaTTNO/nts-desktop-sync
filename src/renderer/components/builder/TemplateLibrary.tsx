@@ -4,6 +4,7 @@ import { useUserCategoryStore } from "@/store/useUserCategoryStore";
 import { useAuth } from "@/contexts/AuthContext";
 import { getUploadableCategories, getUserPersonalCategory, getAllUserBaseCategories } from "@/config/templateCategories";
 import { getUserPrefix } from "@/config/userConfig";
+import { saveTemplate, type TemplateEntry } from "@/services/templateStorage";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -240,24 +241,66 @@ export default function TemplateLibrary() {
     toast.success(`Kategori "${categoryName}" ble slettet`);
   };
 
-  async function handleUpload(
-    e: React.ChangeEvent<HTMLInputElement>,
-    category: string
-  ) {
-    const files = Array.from(e.target.files || []);
-    
-    for (const f of files) {
-      const buf = await f.arrayBuffer();
+  async function handleUpload(category: string) {
+    try {
+      // @ts-ignore - Electron IPC
+      const dialogResult = await window.electron.invoke("dialog:select-file");
+      
+      if (dialogResult.canceled) {
+        return; // User canceled
+      }
+      
+      const filePath = dialogResult.filePath;
+      const fileName = filePath.split(/[\\/]/).pop() || 'unknown.pptx';
+      
+      // Read file content via IPC
+      // @ts-ignore - Electron IPC
+      const fileResult = await window.electron.invoke("file:read", filePath);
+      
+      if (!fileResult.success) {
+        toast.error(`Kunne ikke lese filen: ${fileResult.error}`);
+        return;
+      }
+      
+      const buf = fileResult.data.buffer; // Convert Node Buffer to ArrayBuffer
+      
+      // Save to IndexedDB (local)
       await addTemplate({
-        name: f.name.replace(/\.pptx?$/i, ""),
-        fileName: f.name,
+        name: fileName.replace(/\.pptx?$/i, ""),
+        fileName: fileName,
         blob: buf,
         category,
       });
+      
+      // If admin: Register file in OneDrive manifest (file already exists in OneDrive folder)
+      if (userIsAdmin) {
+        try {
+          // @ts-ignore - Electron IPC
+          const result = await window.electron.invoke("onedrive:upload-template", {
+            filePath: filePath, // Send full file path now, not just fileName
+            category: category,
+            order: 999,
+            language: userLanguage,
+          });
+          
+          if (result.success) {
+            console.log(`✅ Admin registered ${fileName} in OneDrive manifest`);
+            toast.success(`${fileName} registrert for deling med alle brukere`);
+          } else {
+            console.error(`❌ Failed to register in manifest:`, result.error);
+            toast.warning(`Lagret lokalt, men kunne ikke registrere til deling: ${result.error}`);
+          }
+        } catch (error) {
+          console.error('OneDrive registration error:', error);
+          toast.warning('Lagret lokalt, men kunne ikke registrere til deling');
+        }
+      } else {
+        toast.success(`${fileName} lastet opp til ${category}`);
+      }
+    } catch (error) {
+      console.error('Upload error:', error);
+      toast.error('Feil ved opplasting');
     }
-    
-    toast.success(`${files.length} fil(er) lastet opp til ${category}`);
-    e.target.value = "";
   }
 
   function handleDelete(id: string, name: string) {
@@ -273,21 +316,82 @@ export default function TemplateLibrary() {
   async function handleSyncNow() {
     setIsSyncing(true);
     try {
+      console.log("🔄 Starting OneDrive sync (local filesystem)...");
+      console.log("📁 User language:", userLanguage);
+      toast.info("Synkroniserer fra OneDrive-mappe...");
+      
+      // Call main process to read files from local OneDrive folder
       // @ts-ignore - Electron IPC
-      const result = await window.electron.invoke("onedrive:sync-now");
-      if (result.success) {
-        toast.success("OneDrive synkronisering startet!");
-        // Reload templates after a short delay
-        setTimeout(() => {
-          loadFromDB();
-          toast.info("Maler oppdatert");
-        }, 2000);
-      } else {
-        toast.error("Synkronisering feilet: " + result.error);
+      const result = await window.electron.invoke("onedrive:sync-now", { language: userLanguage });
+      
+      if (!result.success) {
+        toast.error(result.error || "Kunne ikke synkronisere");
+        setIsSyncing(false);
+        return;
       }
+      
+      const { files, count } = result;
+      console.log(`📁 Received ${count} files from OneDrive`);
+      
+      if (count === 0) {
+        toast.info("Ingen PowerPoint-filer funnet i OneDrive");
+        setIsSyncing(false);
+        return;
+      }
+      
+      toast.info(`Lagrer ${count} fil${count > 1 ? 'er' : ''}...`);
+      
+      // Save each file to IndexedDB
+      let successCount = 0;
+      let errorCount = 0;
+      
+      for (const file of files) {
+        try {
+          // Convert base64 back to ArrayBuffer
+          const binaryString = atob(file.data);
+          const bytes = new Uint8Array(binaryString.length);
+          for (let i = 0; i < binaryString.length; i++) {
+            bytes[i] = binaryString.charCodeAt(i);
+          }
+          const arrayBuffer = bytes.buffer;
+          
+          // Create template entry using category from manifest
+          const template: TemplateEntry = {
+            id: `onedrive-${file.name}`,
+            name: file.name.replace(/\.pptx?$/i, ''),
+            category: file.category || 'onedrive-sync', // Use category from manifest
+            order: file.order || 999,
+            visibleInBuilder: true,
+            blob: arrayBuffer,
+            fileName: file.name,
+            createdAt: Date.now(),
+          };
+          
+          await saveTemplate(template);
+          successCount++;
+          console.log(`✅ Saved: ${file.name} (category: ${file.category})`);
+        } catch (error) {
+          console.error(`❌ Failed to save ${file.name}:`, error);
+          errorCount++;
+        }
+      }
+      
+      // Reload UI
+      await loadFromDB();
+      
+      // Show result
+      if (successCount > 0) {
+        toast.success(`✅ Synkronisert ${successCount} mal${successCount > 1 ? 'er' : ''} fra OneDrive`);
+      }
+      if (errorCount > 0) {
+        toast.error(`⚠️ ${errorCount} feil under synkronisering`);
+      }
+      
+      console.log(`🎉 Sync complete: ${successCount} success, ${errorCount} errors`);
+      
     } catch (error) {
-      console.error("Sync error:", error);
-      toast.error("Kunne ikke starte synkronisering");
+      console.error("❌ Sync error:", error);
+      toast.error("Kunne ikke synkronisere: " + (error instanceof Error ? error.message : 'Ukjent feil'));
     } finally {
       setIsSyncing(false);
     }
@@ -424,6 +528,36 @@ export default function TemplateLibrary() {
                       )}
                     </div>
                     <div className="flex items-center gap-2">
+                      {/* Visibility toggle - vises alltid for admin eller brukerkategorier */}
+                      {!editingCategoryId && (userIsAdmin || isUserCategory) && (
+                        <span 
+                          className="inline-flex items-center justify-center h-7 w-7 rounded-md hover:bg-accent hover:text-accent-foreground cursor-pointer" 
+                          onClick={e => { 
+                            e.stopPropagation(); 
+                            handleToggleCategoryVisibility(cat.id); 
+                          }} 
+                          title={(userCategories.find(c => c.id === cat.id)?.isVisible ?? builtInCategorySettings[cat.id]?.isVisible ?? true) ? "Synlig i Bygg reiseprogram" : "Skjult i Bygg reiseprogram"}
+                        >
+                          {(userCategories.find(c => c.id === cat.id)?.isVisible ?? builtInCategorySettings[cat.id]?.isVisible ?? true) ? (
+                            <Eye className="h-4 w-4 text-green-600" />
+                          ) : (
+                            <EyeOff className="h-4 w-4 text-gray-400" />
+                          )}
+                        </span>
+                      )}
+                      {/* Delete category - vises alltid for admin eller brukerkategorier */}
+                      {!editingCategoryId && (userIsAdmin || isUserCategory) && (
+                        <span 
+                          className="inline-flex items-center justify-center h-7 w-7 rounded-md hover:bg-accent hover:text-accent-foreground cursor-pointer" 
+                          onClick={e => { 
+                            e.stopPropagation(); 
+                            handleDeleteCategory(cat.id); 
+                          }} 
+                          title="Slett kategori"
+                        >
+                          <Trash2 className="h-4 w-4 text-red-600" />
+                        </span>
+                      )}
                       <span className="text-xs text-muted-foreground">
                         {list.length} filer
                       </span>
@@ -436,21 +570,15 @@ export default function TemplateLibrary() {
                     {/* Upload button - kun for admin eller brukerens personlige kategori */}
                     {(userIsAdmin || isPersonalCategory) && (
                       <div>
-                        <label className="cursor-pointer">
-                          <input
-                            type="file"
-                            multiple
-                            accept=".ppt,.pptx"
-                            onChange={(e) => handleUpload(e, cat.name)}
-                            className="hidden"
-                          />
-                          <Button variant="outline" size="sm" asChild>
-                            <span className="gap-2">
-                              <Upload className="h-4 w-4" />
-                              Last opp filer
-                            </span>
-                          </Button>
-                        </label>
+                        <Button 
+                          variant="outline" 
+                          size="sm"
+                          onClick={() => handleUpload(cat.name)}
+                          className="gap-2"
+                        >
+                          <Upload className="h-4 w-4" />
+                          Last opp filer
+                        </Button>
                       </div>
                     )}
 
@@ -484,7 +612,7 @@ export default function TemplateLibrary() {
                                   <SelectTrigger className="h-8 w-[140px] text-xs">
                                     <SelectValue />
                                   </SelectTrigger>
-                                  <SelectContent>
+                                  <SelectContent position="popper" className="max-h-[300px] overflow-y-auto">
                                     {allCategories.map((c) => (
                                       <SelectItem key={c.id} value={c.name}>
                                         {c.name}

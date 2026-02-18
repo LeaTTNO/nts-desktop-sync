@@ -8,7 +8,10 @@ const allowedInvokes = [
   "flights:search",
   "farewise:searchFlights",
   "onedrive:auto-sync",
-  "onedrive:sync-now"
+  "onedrive:sync-now",
+  "onedrive:upload-template",
+  "dialog:select-file",
+  "file:read"
 ];
 
 contextBridge.exposeInMainWorld("electron", {
@@ -46,5 +49,14 @@ contextBridge.exposeInMainWorld("electron", {
   // 🔄 NEW — Auto-sync listener
   onAutoSync: (callback) => {
     ipcRenderer.on('onedrive:auto-sync', callback);
+  },
+
+  // 🐛 NEW — Generic event listener for debugging
+  on: (channel, callback) => {
+    const subscription = (event, ...args) => callback(...args);
+    ipcRenderer.on(channel, subscription);
+    return () => {
+      ipcRenderer.removeListener(channel, subscription);
+    };
   }
 });

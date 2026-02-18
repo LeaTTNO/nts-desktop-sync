@@ -41,18 +41,16 @@ const FLIGHTROBOT_AUTH_GUID = process.env.FLIGHTROBOT_AUTH_GUID;
 // Region-spesifikke innstillinger
 const FAREWISE_REGIONS = {
   no: {
-    baseUrl: "https://www.farewise.no",
+    baseUrl: "https://api.farewise.dk",
     currency: "NOK",
     customerId: 17179,
     customerName: "Tanzania Tours ApS",
-    authRequired: true,
   },
   da: {
-    baseUrl: "https://www.farewise.dk",
+    baseUrl: "https://api.farewise.dk",
     currency: "DKK",
     customerId: 1280,
     customerName: "Tanzania Tours ApS",
-    authRequired: false, // DK krever IKKE authorizationGuid
   },
 };
 
@@ -147,15 +145,15 @@ async function searchFlightsMain(params) {
     language = "no", // Default til norsk
   } = params;
 
-  // FORSØKER DK API: Bruk language-spesifikk Farewise region
-  // Fallback til NO hvis DK feiler (backup i electron-main.BACKUP-WORKING-NO-ONLY.js)
-  console.log(`🔐 Logging in to Farewise ${language.toUpperCase()}...`);
-  await loginToFarewise(language);
+  // MIDLERTIDIG: Bruk alltid norsk Farewise (fungerer for både NO og DK kunder)
+  // DK-API blokkerer programmatisk tilgang. NO-API støtter CPH og andre danske flyplasser.
+  console.log(`🔐 Logging in to Farewise NO (serving ${language.toUpperCase()} market)...`);
+  await loginToFarewise("no"); // Alltid login til NO
 
   // Bygg Farewise request body - bruker strukturen som ga oss 225 resultater
   const legs = [];
   
-  // Bruk riktig timezone basert på region (+01 for både NO og DK - begge i Europa)
+  // Alltid bruk norsk timezone (+01) siden vi bruker NO-API
   const timezone = "+01";
   
   // Outbound leg - convert date to timezone format
@@ -174,8 +172,8 @@ async function searchFlightsMain(params) {
     });
   }
 
-  // Bruk language-spesifikk region
-  const region = FAREWISE_REGIONS[language] || FAREWISE_REGIONS.no;
+  // Alltid bruk norsk region-konfigurasjon
+  const region = FAREWISE_REGIONS.no;
 
   const requestBody = {
     customerId: region.customerId,
@@ -204,20 +202,14 @@ async function searchFlightsMain(params) {
     },
     raw: false,
     cabinClass: "Y",
+    authorizationGuid: FLIGHTROBOT_AUTH_GUID, // NO krever alltid authorizationGuid
   };
-  
-  // Kun legg til authorizationGuid hvis region krever det (NO)
-  if (region.authRequired && FLIGHTROBOT_AUTH_GUID) {
-    requestBody.authorizationGuid = FLIGHTROBOT_AUTH_GUID;
-  }
 
-  // Bruk language-spesifikk endpoint
-  const domain = language === "da" ? "dk" : "no";
-  const apiUrl = `https://www.farewise.${domain}/api/recommendations/search`;
+  // Alltid bruk norsk endpoint
+  const apiUrl = "https://www.farewise.no/api/recommendations/search";
 
-  console.log(`Farewise ${language.toUpperCase()} API Request:`, JSON.stringify(requestBody, null, 2));
+  console.log(`Farewise NO API Request (for ${language.toUpperCase()} market):`, JSON.stringify(requestBody, null, 2));
   console.log(`Using endpoint: ${apiUrl}`);
-  console.log(`CustomerId: ${region.customerId}`);
   console.log(`Cookies being sent:`);
   if (farewiseCookies) {
     const cookieArray = farewiseCookies.split('; ');
@@ -228,6 +220,9 @@ async function searchFlightsMain(params) {
   } else {
     console.log('   NONE!');
   }
+
+  // Alltid bruk .no domain i Referer/Origin siden vi bruker NO API
+  const domain = "no"; // Alltid "no" siden vi bruker farewise.no API for begge markeder
 
   const res = await fetch(apiUrl, {
     method: "POST",
@@ -259,8 +254,8 @@ async function searchFlightsMain(params) {
   }
 
   const result = await res.json();
-  console.log(`Farewise ${language.toUpperCase()} RAW RESPONSE:`, JSON.stringify(result, null, 2).substring(0, 2000));
-  console.log(`Farewise ${language.toUpperCase()} returned ${result?.recommendations?.length || 0} recommendations`);
+  console.log(`Farewise NO RAW RESPONSE (for ${language.toUpperCase()} market):`, JSON.stringify(result, null, 2).substring(0, 2000));
+  console.log(`Farewise NO returned ${result?.recommendations?.length || 0} recommendations`);
   
   // DEBUG: Find Emirates flights and send RAW data to renderer for inspection
   if (result?.recommendations) {
@@ -299,10 +294,9 @@ async function searchFlightsMain(params) {
   }
   
   // Konverter Farewise format til Amadeus-format
-  // DK API returnerer allerede DKK (ingen konvertering nødvendig)
-  // NO API returnerer NOK
-  const targetCurrency = region.currency;
-  const convertPrices = false; // Farewise returnerer allerede riktig valuta per region
+  // For DK: Konverter priser fra NOK til DKK
+  const targetCurrency = language === "da" ? "DKK" : "NOK";
+  const convertPrices = language === "da"; // True hvis vi skal konvertere
   return convertFarewiseToAmadeus(result, targetCurrency, convertPrices);
 }
 

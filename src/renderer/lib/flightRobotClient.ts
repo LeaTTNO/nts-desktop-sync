@@ -79,10 +79,8 @@ export const airlineNames: Record<string, string> = {
   AF: "Air France",
   BA: "British Airways",
   SK: "SAS",
-  DY: "Norwegian",
   KQ: "Kenya Airways",
-  WB: "RwandAir",
-  PW: "Precision Air",
+  SN: "Brussels Airlines",
 };
 
 // Airport codes to city names

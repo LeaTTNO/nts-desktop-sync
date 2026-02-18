@@ -763,7 +763,7 @@ export default function TravelProgramBuilder({ language = 'no' }: TravelProgramB
             <SelectTrigger className="bg-gray-50">
               <SelectValue placeholder={userLanguage === 'da' ? 'Vælg basis-skabelon' : 'Velg base-mal'} />
             </SelectTrigger>
-            <SelectContent className="bg-gray-50 z-50">
+            <SelectContent position="popper" className="bg-gray-50 z-50 max-h-[300px] overflow-y-auto">
               {getUserBaseTemplates()
                 .filter((t) => t.visibleInBuilder)
                 .map((t) => (
@@ -864,7 +864,7 @@ export default function TravelProgramBuilder({ language = 'no' }: TravelProgramB
             <SelectTrigger className="bg-gray-50">
               <SelectValue placeholder="Velg hotell" />
             </SelectTrigger>
-            <SelectContent className="bg-gray-50 z-50">
+            <SelectContent position="popper" className="bg-gray-50 z-50 max-h-[300px] overflow-y-auto">
               {getFilteredTemplatesByCategoryName(FIRST_NIGHT_CATEGORY)
                 .filter((t) => t.visibleInBuilder)
                 .map((t) => (
@@ -903,7 +903,7 @@ export default function TravelProgramBuilder({ language = 'no' }: TravelProgramB
             <SelectTrigger className="bg-gray-50">
               <SelectValue placeholder="Velg hotell" />
             </SelectTrigger>
-            <SelectContent className="bg-gray-50 z-50">
+            <SelectContent position="popper" className="bg-gray-50 z-50 max-h-[300px] overflow-y-auto">
               {getFilteredTemplatesByCategoryName(LAST_NIGHT_CATEGORY)
                 .filter((t) => t.visibleInBuilder)
                 .map((t) => (
@@ -947,7 +947,7 @@ export default function TravelProgramBuilder({ language = 'no' }: TravelProgramB
               <SelectTrigger className="bg-background">
                 <SelectValue placeholder="Velg mal" />
               </SelectTrigger>
-              <SelectContent className="bg-background z-50">
+              <SelectContent position="popper" className="bg-background z-50 max-h-[300px] overflow-y-auto">
                 {getFilteredTemplatesByCategoryName(ZANZIBAR_STONE_TOWN)
                   .filter((t) => t.visibleInBuilder)
                   .map((t) => (

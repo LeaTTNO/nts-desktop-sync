@@ -7,13 +7,12 @@ directories:
 
 files:
   - dist/**/*
-  - src/main/**/*
   - package.json
 
 win:
   target:
     - nsis
-  icon: build/icon.ico
+  icon: build/logo-white.ico
   artifactName: 'NTS Desktop Sync Setup ${version}.exe'
 
 nsis:

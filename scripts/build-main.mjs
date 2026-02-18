@@ -16,4 +16,9 @@ fs.copyFileSync(
   path.join(dest, "preload.js")
 );
 
+fs.copyFileSync(
+  path.join(src, "ppt-dg-dto.js"),
+  path.join(dest, "ppt-dg-dto.js")
+);
+
 console.log("✅ Electron main & preload kopiert til dist/");

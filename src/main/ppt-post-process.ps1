@@ -17,7 +17,7 @@
 param (
     [string]$PresentationPath,
     [string]$DepartureDate,
-    [string]$FlightDataJson,
+    [string]$FlightDataPath,  # Changed from FlightDataJson to file path
     [string]$Language = "no"
 )
 
@@ -201,11 +201,29 @@ Write-Host "DG/DTO processing complete. Processed $dayCounter day markers."
 
 Write-Host "Processing flight information..."
 
+# Read flight data from file
+$FlightDataJson = ""
+if ($FlightDataPath -and (Test-Path $FlightDataPath)) {
+    Write-Host "📄 Reading flight data from: $FlightDataPath"
+    $FlightDataJson = Get-Content $FlightDataPath -Raw
+    Write-Host "✅ Loaded flight JSON (length: $($FlightDataJson.Length) characters)"
+} else {
+    Write-Warning "⚠️ Flight data file not found or path empty: $FlightDataPath"
+}
+
 if ($FlightDataJson -and $FlightDataJson -ne "") {
     try {
-        $flightData = $FlightDataJson | ConvertFrom-Json
+        Write-Host "Attempting to parse flight JSON..."
+        Write-Host "JSON preview (first 200 chars): $($FlightDataJson.Substring(0, [Math]::Min(200, $FlightDataJson.Length)))"
         
-        if ($flightData.flights -and $flightData.flights.Count -gt 0) {
+        $flightData = $FlightDataJson | ConvertFrom-Json
+        Write-Host "✅ JSON parsed successfully"
+        
+        if ($flightData.flights) {
+            Write-Host "Found $($flightData.flights.Count) flight(s) in data"
+        } else {
+            Write-Warning "Flight data has no 'flights' property"
+        }
             # Find slide with "FLYINFORMATION" placeholder
             $flightSlide = $null
             
@@ -240,6 +258,16 @@ if ($FlightDataJson -and $FlightDataJson -ne "") {
                     
                     # Get first flight (we're using segments structure)
                     $flight = $flightData.flights[0]
+                    Write-Host "Flight object type: $($flight.GetType().Name)"
+                    Write-Host "Flight has segments: $($null -ne $flight.segments)"
+                    
+                    if ($flight.segments) {
+                        Write-Host "Segments count: $($flight.segments.Count)"
+                        Write-Host "Segments type: $($flight.segments.GetType().Name)"
+                    } else {
+                        Write-Warning "Flight object does not have 'segments' property"
+                        Write-Host "Available properties: $(($flight | Get-Member -MemberType Properties | Select-Object -ExpandProperty Name) -join ', ')"
+                    }
                     
                     if ($flight.segments -and $flight.segments.Count -gt 0) {
                         Write-Host "Processing $($flight.segments.Count) flight segments"
