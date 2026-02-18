@@ -46,7 +46,7 @@ export default function TemplateLibrary() {
   const [editingCategoryName, setEditingCategoryName] = useState<string>("");
   const [hiddenCategories, setHiddenCategories] = useState<string[]>([]);
   // State for innebygde kategoriers synlighet og checkbox for admin
-  const [builtInCategorySettings, setBuiltInCategorySettings] = useState<Record<string, { isVisible?: boolean; hasCheckbox?: boolean }>>({});
+  const [builtInCategorySettings, setBuiltInCategorySettings] = useState<Record<string, { isVisible?: boolean; hasCheckbox?: boolean }>>({});;
 
   const { user, userEmail, userLanguage, isAdmin: userIsAdmin } = useAuth();
   const userPrefix = userEmail ? getUserPrefix(userEmail) : undefined;
@@ -65,7 +65,9 @@ export default function TemplateLibrary() {
     addCategory: addUserCategory,
     deleteCategory: deleteUserCategory,
     getCategoriesForUser,
-    updateCategory: updateUserCategory
+    updateCategory: updateUserCategory,
+    setBuiltinCategoryVisible,
+    isBuiltinCategoryVisible,
   } = useUserCategoryStore();
 
   // Håndter lagring av nytt navn på kategori
@@ -122,8 +124,10 @@ export default function TemplateLibrary() {
       updateUserCategory(catId, { isVisible: !userCat.isVisible });
       toast.success(userCat.isVisible ? "Kategori skjult i frontend" : "Kategori synlig i frontend");
     } else if (userIsAdmin) {
-      // For innebygde kategorier - kun admin kan endre
-      const currentIsVisible = builtInCategorySettings[catId]?.isVisible ?? true;
+      // For innebygde kategorier - lagre i useUserCategoryStore (persistent)
+      const currentIsVisible = isBuiltinCategoryVisible(catId);
+      setBuiltinCategoryVisible(catId, !currentIsVisible);
+      // Speil i lokal state for umiddelbar UI-oppdatering
       setBuiltInCategorySettings(prev => ({
         ...prev,
         [catId]: { ...prev[catId], isVisible: !currentIsVisible }
@@ -160,6 +164,20 @@ export default function TemplateLibrary() {
   useEffect(() => {
     loadFromDB();
   }, [loadFromDB]);
+
+  // Synkroniser innebygd kategori-synlighet fra store ved oppstart
+  useEffect(() => {
+    const uploadable = getUploadableCategories();
+    const newSettings: Record<string, { isVisible?: boolean; hasCheckbox?: boolean }> = {};
+    uploadable.forEach(cat => {
+      newSettings[cat.id] = {
+        isVisible: isBuiltinCategoryVisible(cat.id),
+        hasCheckbox: builtInCategorySettings[cat.id]?.hasCheckbox,
+      };
+    });
+    setBuiltInCategorySettings(newSettings);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [userCategories.length]);
 
   // Legg til brukerens personlige kategori
   const personalCategory = userPrefix

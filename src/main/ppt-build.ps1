@@ -31,7 +31,6 @@ foreach ($modulePath in $ModulePaths) {
 
     if (-not (Test-Path $modulePath)) { continue }
 
-    # 🔒 Sett inn moduler FØR de siste 2 slidene (bevarer layout)
     $modulePres = $ppApp.Presentations.Open(
         $modulePath,
         $true,
@@ -39,15 +38,27 @@ foreach ($modulePath in $ModulePaths) {
         $false
     )
 
-    # Beregn hvor vi skal sette inn (før de siste 2 slidene)
-    $totalSlides = $presentation.Slides.Count
-    $insertPosition = [Math]::Max(1, $totalSlides - 1)  # Før nest-siste slide
+    # Er dette flyinformasjon-modulen? Sjekk filnavnet
+    $isFlight = ($modulePath -match 'flyinformasjon' -or $modulePath -match 'flight')
 
-    # Kopier alle slides fra modulen
-    foreach ($slide in $modulePres.Slides) {
-        $slide.Copy()
-        $presentation.Slides.Paste($insertPosition)
-        $insertPosition++
+    if ($isFlight) {
+        # Flyinformasjon skal alltid ligge som nest siste side:
+        # Beregn posisjon FØR første slide kopieres, og hold den fast
+        $flightInsertPos = [Math]::Max(1, $presentation.Slides.Count - 1)
+        $slideIndex = 0
+        foreach ($slide in $modulePres.Slides) {
+            $slide.Copy()
+            $presentation.Slides.Paste($flightInsertPos + $slideIndex)
+            $slideIndex++
+        }
+    } else {
+        # Vanlige moduler: sett inn FØR de siste 2 slidene (nest siste posisjon på det tidspunktet)
+        $insertPosition = [Math]::Max(1, $presentation.Slides.Count - 1)
+        foreach ($slide in $modulePres.Slides) {
+            $slide.Copy()
+            $presentation.Slides.Paste($insertPosition)
+            $insertPosition++
+        }
     }
 
     $modulePres.Close()

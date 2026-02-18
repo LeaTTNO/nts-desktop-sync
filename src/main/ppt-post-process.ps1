@@ -242,52 +242,70 @@ if ($FlightDataJson -and $FlightDataJson -ne "") {
         if ($flightData.flights -and $flightData.flights.Count -gt 0) {
             $flight = $flightData.flights[0]
 
-            # Find slide with FLYINFORMATION placeholder
-            $flightSlide = $null
-            foreach ($slide in $presentation.Slides) {
-                foreach ($shape in $slide.Shapes) {
-                    if ($shape.HasTextFrame -and $shape.TextFrame.HasText) {
-                        $text = $shape.TextFrame.TextRange.Text
-                        if ($text -match "FLYINFORMATION" -or $text -match "Flyinformasjon" -or $text -match "FLYINFORMASJON") {
-                            $flightSlide = $slide
+            if ($flight.segments -and $flight.segments.Count -gt 0) {
+                # Find table containing {{DATO}} placeholder (anywhere in the presentation)
+                $flightTable = $null
+                $flightSlide = $null
+                foreach ($slide in $presentation.Slides) {
+                    foreach ($shape in $slide.Shapes) {
+                        if ($shape.HasTable) {
+                            foreach ($row in $shape.Table.Rows) {
+                                foreach ($cell in $row.Cells) {
+                                    if ($cell.Shape.TextFrame.TextRange.Text -match "\{\{DATO\}\}") {
+                                        $flightTable = $shape.Table
+                                        $flightSlide = $slide
+                                        break
+                                    }
+                                }
+                                if ($flightTable) { break }
+                            }
+                        }
+                        if ($flightTable) { break }
+                    }
+                    if ($flightTable) { break }
+                }
+
+                if ($flightTable) {
+                    Write-Host "Found flight table with {{}} placeholders. Replacing with $($flight.segments.Count) segments"
+
+                    # Find first data row (row containing {{DATO}})
+                    $dataStartRow = -1
+                    for ($r = 1; $r -le $flightTable.Rows.Count; $r++) {
+                        $cellText = $flightTable.Cell($r, 1).Shape.TextFrame.TextRange.Text
+                        if ($cellText -match "\{\{DATO\}\}") {
+                            $dataStartRow = $r
                             break
                         }
                     }
-                }
-                if ($flightSlide) { break }
-            }
 
-            if ($flightSlide) {
-                $flightTable = $null
-                foreach ($shape in $flightSlide.Shapes) {
-                    if ($shape.HasTable) { $flightTable = $shape.Table; break }
-                }
-
-                if ($flightTable -and $flight.segments -and $flight.segments.Count -gt 0) {
-                    Write-Host "Populating flight table with $($flight.segments.Count) segments"
-
-                    # Clear existing data rows (keep header row 1)
-                    $currentRows = $flightTable.Rows.Count
-                    for ($i = $currentRows; $i -gt 1; $i--) {
-                        $flightTable.Rows.Item($i).Delete()
-                    }
-
-                    foreach ($segment in $flight.segments) {
-                        $newRow = $flightTable.Rows.Add()
-                        if ($flightTable.Columns.Count -ge 5) {
-                            $newRow.Cells.Item(1).Shape.TextFrame.TextRange.Text = $segment.date
-                            $newRow.Cells.Item(2).Shape.TextFrame.TextRange.Text = $segment.from
-                            $newRow.Cells.Item(3).Shape.TextFrame.TextRange.Text = $segment.to
-                            $newRow.Cells.Item(4).Shape.TextFrame.TextRange.Text = $segment.time
-                            $newRow.Cells.Item(5).Shape.TextFrame.TextRange.Text = $segment.airline
+                    if ($dataStartRow -gt 0) {
+                        $segIndex = 0
+                        for ($r = $dataStartRow; $r -le $flightTable.Rows.Count; $r++) {
+                            if ($segIndex -lt $flight.segments.Count) {
+                                $seg = $flight.segments[$segIndex]
+                                $flightTable.Cell($r, 1).Shape.TextFrame.TextRange.Text = $seg.date
+                                $flightTable.Cell($r, 2).Shape.TextFrame.TextRange.Text = $seg.from
+                                $flightTable.Cell($r, 3).Shape.TextFrame.TextRange.Text = $seg.to
+                                $flightTable.Cell($r, 4).Shape.TextFrame.TextRange.Text = $seg.time
+                                $flightTable.Cell($r, 5).Shape.TextFrame.TextRange.Text = $seg.airline
+                                Write-Host "  Row $r : $($seg.from) -> $($seg.to) $($seg.date)"
+                                $segIndex++
+                            } else {
+                                # Clear remaining placeholder rows
+                                for ($c = 1; $c -le $flightTable.Columns.Count; $c++) {
+                                    $flightTable.Cell($r, $c).Shape.TextFrame.TextRange.Text = ""
+                                }
+                            }
                         }
+                        Write-Host "Flight table populated with $segIndex segments"
+                    } else {
+                        Write-Host "No {{DATO}} row found in table"
                     }
-                    Write-Host "Flight table populated"
                 } else {
-                    Write-Host "No flight table or segments found - skipping"
+                    Write-Host "No flight table with {{DATO}} placeholder found - skipping"
                 }
             } else {
-                Write-Host "No FLYINFORMATION slide found - skipping flight table"
+                Write-Host "No segments in flight data"
             }
         } else {
             Write-Host "No flights in flight data"

@@ -10,6 +10,7 @@ import os from "os";
 import fetch from "node-fetch";
 import "dotenv/config";
 import { execFile } from "child_process";
+import JSZip from "jszip";
 
 // ⚠️ electron-updater er CommonJS
 import updaterPkg from "electron-updater";
@@ -530,6 +531,415 @@ ipcMain.handle("ppt:open-temp", async (_, { data, fileName }) => {
 /**
  * Mottar ArrayBuffers fra renderer og bygger PowerPoint
  */
+// ──────────────────────────────────────────────
+// ✈️ Bygg Flyinformasjon PPTX fra scratch med JSZip
+// Ingen mal trengs — tabellen genereres direkte fra segment-data
+// ──────────────────────────────────────────────
+// ──────────────────────────────────────────────
+// ✈️ Injiser flytabell i eksisterende Flyinformasjon PPTX
+// Fjerner det innebygde Excel OLE-objektet og erstatter med ekte PPTX-tabell
+// ──────────────────────────────────────────────
+async function injectFlightTable(buffer, segments, passengers) {
+  const zip = await JSZip.loadAsync(buffer);
+
+  const slideFiles = Object.keys(zip.files).filter(
+    f => f.startsWith('ppt/slides/slide') && f.endsWith('.xml') && !f.includes('_rels')
+  ).sort();
+
+  // IATA flyplass → bynavn
+  const airportNames = {
+    OSL:'Oslo', BGO:'Bergen', SVG:'Stavanger', TRD:'Trondheim', TOS:'Tromsø',
+    CPH:'København', ARN:'Stockholm', HEL:'Helsinki', LHR:'London', LGW:'London Gatwick',
+    CDG:'Paris', AMS:'Amsterdam', FRA:'Frankfurt', MUC:'München', ZRH:'Zürich',
+    FCO:'Roma', BCN:'Barcelona', MAD:'Madrid', VIE:'Wien', BRU:'Brussel',
+    DXB:'Dubai', DOH:'Doha', AUH:'Abu Dhabi', IST:'Istanbul', SIN:'Singapore',
+    BKK:'Bangkok', KUL:'Kuala Lumpur', HKG:'Hongkong', NRT:'Tokyo', ICN:'Seoul',
+    SYD:'Sydney', MEL:'Melbourne', JFK:'New York', LAX:'Los Angeles', MIA:'Miami',
+    ORD:'Chicago', DFW:'Dallas', ATL:'Atlanta', SFO:'San Francisco', YYZ:'Toronto',
+    GRU:'São Paulo', EZE:'Buenos Aires', LIM:'Lima', BOG:'Bogotá', SCL:'Santiago',
+    NBO:'Nairobi', ADD:'Addis Abeba', DAR:'Dar es Salaam', JRO:'Kilimanjaro',
+    ZNZ:'Zanzibar', MBA:'Mombasa', ENT:'Entebbe', KGL:'Kigali', LOS:'Lagos',
+    ACC:'Accra', CPT:'Cape Town', JNB:'Johannesburg', DUR:'Durban', SEZ:'Mahé',
+    MLE:'Malé', BOM:'Mumbai', DEL:'New Delhi', MAA:'Chennai', BLR:'Bangalore',
+    CMB:'Colombo', KTM:'Kathmandu', CCU:'Kolkata',
+  };
+
+  // IATA flyselskap → fullt navn
+  const airlineNames = {
+    ET:'Ethiopian Airlines', QR:'Qatar Airways', EK:'Emirates', SK:'SAS',
+    LH:'Lufthansa', BA:'British Airways', AF:'Air France', KL:'KLM',
+    AY:'Finnair', TK:'Turkish Airlines', MS:'EgyptAir', WB:'RwandAir',
+    KQ:'Kenya Airways', TC:'Air Tanzania', PW:'Precision Air', S8:'Sounds Air',
+    DY:'Norwegian', FR:'Ryanair', U2:'easyJet', VY:'Vueling',
+    IB:'Iberia', AZ:'ITA Airways', OS:'Austrian', LX:'Swiss',
+    UA:'United Airlines', AA:'American Airlines', DL:'Delta Air Lines',
+    AC:'Air Canada', QF:'Qantas', NZ:'Air New Zealand', CX:'Cathay Pacific',
+    SQ:'Singapore Airlines', MH:'Malaysia Airlines', TG:'Thai Airways',
+    JL:'Japan Airlines', NH:'ANA', OZ:'Asiana Airlines', KE:'Korean Air',
+  };
+
+  const expandAirport = code => airportNames[code?.toUpperCase()] || code || '';
+  const expandAirline = code => airlineNames[code?.toUpperCase()] || code || '';
+
+  // Kantlinje-XML mosegrønn #798D84
+  const border = (w = 9525) =>
+    `<a:solidFill><a:srgbClr val="798D84"/></a:solidFill>`;
+  const allBorders = (w = 9525) =>
+    `<a:lnL w="${w}" cap="flat" cmpd="sng"><a:solidFill><a:srgbClr val="798D84"/></a:solidFill></a:lnL>` +
+    `<a:lnR w="${w}" cap="flat" cmpd="sng"><a:solidFill><a:srgbClr val="798D84"/></a:solidFill></a:lnR>` +
+    `<a:lnT w="${w}" cap="flat" cmpd="sng"><a:solidFill><a:srgbClr val="798D84"/></a:solidFill></a:lnT>` +
+    `<a:lnB w="${w}" cap="flat" cmpd="sng"><a:solidFill><a:srgbClr val="798D84"/></a:solidFill></a:lnB>`;
+
+  // Hjelpefunksjon: én normal celle (ikke merged)
+  // algn: "l"=venstre, "ctr"=midtstilt
+  function makeCell(text, { bg, fontColor, font, sz, bold, algn, bottomBorder } = {}) {
+    const bgFill = bg ? `<a:solidFill><a:srgbClr val="${bg}"/></a:solidFill>` : `<a:noFill/>`;
+    const fc = fontColor || '2C2C2C';
+    const typeface = font || 'PT Sans';
+    const fontSize = sz || '900';
+    const boldAttr = bold ? ' b="1"' : '';
+    const align = algn || 'ctr';
+    const lnBXml = bottomBorder
+      ? `<a:lnB w="9525" cap="flat" cmpd="sng"><a:solidFill><a:srgbClr val="BFBFBF"/></a:solidFill></a:lnB>`
+      : `<a:lnB w="9525" cap="flat" cmpd="sng"><a:solidFill><a:srgbClr val="798D84"/></a:solidFill></a:lnB>`;
+    return (
+      `<a:tc>` +
+        `<a:txBody>` +
+          `<a:bodyPr anchor="ctr"/>` +
+          `<a:lstStyle/>` +
+          `<a:p>` +
+            `<a:pPr algn="${align}"/>` +
+            `<a:r>` +
+              `<a:rPr lang="nb-NO" sz="${fontSize}"${boldAttr} dirty="0">` +
+                `<a:solidFill><a:srgbClr val="${fc}"/></a:solidFill>` +
+                `<a:latin typeface="${typeface}"/>` +
+              `</a:rPr>` +
+              `<a:t>${text}</a:t>` +
+            `</a:r>` +
+            `<a:endParaRPr lang="nb-NO" sz="${fontSize}"${boldAttr} dirty="0">` +
+              `<a:solidFill><a:srgbClr val="${fc}"/></a:solidFill>` +
+              `<a:latin typeface="${typeface}"/>` +
+            `</a:endParaRPr>` +
+          `</a:p>` +
+        `</a:txBody>` +
+        `<a:tcPr marL="114300" marR="114300" marT="45720" marB="45720">` +
+          `<a:lnL w="9525" cap="flat" cmpd="sng"><a:solidFill><a:srgbClr val="798D84"/></a:solidFill></a:lnL>` +
+          `<a:lnR w="9525" cap="flat" cmpd="sng"><a:solidFill><a:srgbClr val="798D84"/></a:solidFill></a:lnR>` +
+          `<a:lnT w="9525" cap="flat" cmpd="sng"><a:solidFill><a:srgbClr val="798D84"/></a:solidFill></a:lnT>` +
+          lnBXml +
+          bgFill +
+        `</a:tcPr>` +
+      `</a:tc>`
+    );
+  }
+
+  // Merged celle som spenner over alle 5 kolonner
+  function makeMergedCell(text, { bg, fontColor, font, sz, bold, algn } = {}) {
+    const bgFill = bg ? `<a:solidFill><a:srgbClr val="${bg}"/></a:solidFill>` : `<a:noFill/>`;
+    const fc = fontColor || '2C2C2C';
+    const typeface = font || 'PT Sans';
+    const fontSize = sz || '900';
+    const boldAttr = bold ? ' b="1"' : '';
+    const align = algn || 'l';
+    const numCols = 5;
+    // Første celle med gridSpan=5, resten hMerge="1"
+    const firstCell =
+      `<a:tc gridSpan="${numCols}">` +
+        `<a:txBody>` +
+          `<a:bodyPr anchor="ctr"/>` +
+          `<a:lstStyle/>` +
+          `<a:p>` +
+            `<a:pPr algn="${align}"/>` +
+            `<a:r>` +
+              `<a:rPr lang="nb-NO" sz="${fontSize}"${boldAttr} dirty="0">` +
+                `<a:solidFill><a:srgbClr val="${fc}"/></a:solidFill>` +
+                `<a:latin typeface="${typeface}"/>` +
+              `</a:rPr>` +
+              `<a:t>${text}</a:t>` +
+            `</a:r>` +
+            `<a:endParaRPr lang="nb-NO" sz="${fontSize}"${boldAttr} dirty="0">` +
+              `<a:solidFill><a:srgbClr val="${fc}"/></a:solidFill>` +
+              `<a:latin typeface="${typeface}"/>` +
+            `</a:endParaRPr>` +
+          `</a:p>` +
+        `</a:txBody>` +
+        `<a:tcPr marL="114300" marR="114300" marT="45720" marB="45720">` +
+          `<a:lnL w="9525" cap="flat" cmpd="sng"><a:solidFill><a:srgbClr val="798D84"/></a:solidFill></a:lnL>` +
+          `<a:lnR w="9525" cap="flat" cmpd="sng"><a:solidFill><a:srgbClr val="798D84"/></a:solidFill></a:lnR>` +
+          `<a:lnT w="9525" cap="flat" cmpd="sng"><a:solidFill><a:srgbClr val="798D84"/></a:solidFill></a:lnT>` +
+          `<a:lnB w="9525" cap="flat" cmpd="sng"><a:solidFill><a:srgbClr val="798D84"/></a:solidFill></a:lnB>` +
+          bgFill +
+        `</a:tcPr>` +
+      `</a:tc>`;
+    const mergedCells = Array(numCols - 1).fill(
+      `<a:tc hMerge="1"><a:txBody><a:bodyPr/><a:lstStyle/><a:p/></a:txBody><a:tcPr><a:lnL w="0"><a:noFill/></a:lnL><a:lnR w="0"><a:noFill/></a:lnR><a:lnT w="0"><a:noFill/></a:lnT><a:lnB w="0"><a:noFill/></a:lnB><a:noFill/></a:tcPr></a:tc>`
+    ).join('');
+    return firstCell + mergedCells;
+  }
+
+  // Kolonnebredder like store (totalt cx=6567488)
+  const colWidths = [1313498, 1313498, 1313498, 1313498, 1313496];
+  const colDefs = colWidths.map(w => `<a:gridCol w="${w}"/>`).join('');
+
+  // Rad 1: #46413F, venstrestilt + vertikalt sentrert "REISENDE OG FLY", hvit Montserrat 8pt, spenner alle 5 kol
+  const row1 = `<a:tr h="320000">${makeMergedCell('REISENDE OG FLY', { bg: '46413F', fontColor: 'FFFFFF', font: 'Montserrat', sz: '800', bold: false, algn: 'l' })}</a:tr>`;
+
+  // Rad 2: 2-delt rad — kol 1: "NAVN PÅ REISENDE" (label), kol 2-5 merged: tom verdicelle
+  // labelCell: F2F2F2 bakgrunn, mørk tekst, midtstilt; valueCell: F2F2F2 bakgrunn, tom
+  const labelCell =
+    `<a:tc>` +
+      `<a:txBody>` +
+        `<a:bodyPr anchor="ctr"/>` +
+        `<a:lstStyle/>` +
+        `<a:p><a:pPr algn="l"/>` +
+          `<a:r><a:rPr lang="nb-NO" sz="800" dirty="0">` +
+            `<a:solidFill><a:srgbClr val="2C2C2C"/></a:solidFill>` +
+            `<a:latin typeface="PT Sans"/>` +
+          `</a:rPr><a:t>NAVN P\u00C5 REISENDE</a:t></a:r>` +
+          `<a:endParaRPr lang="nb-NO" sz="800" dirty="0">` +
+            `<a:solidFill><a:srgbClr val="2C2C2C"/></a:solidFill>` +
+            `<a:latin typeface="PT Sans"/>` +
+          `</a:endParaRPr>` +
+        `</a:p>` +
+      `</a:txBody>` +
+      `<a:tcPr marL="114300" marR="114300" marT="45720" marB="45720">` +
+        `<a:lnL w="9525" cap="flat" cmpd="sng"><a:solidFill><a:srgbClr val="798D84"/></a:solidFill></a:lnL>` +
+        `<a:lnR w="9525" cap="flat" cmpd="sng"><a:solidFill><a:srgbClr val="798D84"/></a:solidFill></a:lnR>` +
+        `<a:lnT w="9525" cap="flat" cmpd="sng"><a:solidFill><a:srgbClr val="798D84"/></a:solidFill></a:lnT>` +
+        `<a:lnB w="9525" cap="flat" cmpd="sng"><a:solidFill><a:srgbClr val="798D84"/></a:solidFill></a:lnB>` +
+        `<a:solidFill><a:srgbClr val="F2F2F2"/></a:solidFill>` +
+      `</a:tcPr>` +
+    `</a:tc>`;
+  // Verdicellen er tom — bruker fyller inn navn manuelt
+  const valueCell =
+    `<a:tc gridSpan="4">` +
+      `<a:txBody>` +
+        `<a:bodyPr anchor="ctr"/>` +
+        `<a:lstStyle/>` +
+        `<a:p><a:pPr algn="l"/></a:p>` +
+      `</a:txBody>` +
+      `<a:tcPr marL="114300" marR="114300" marT="45720" marB="45720">` +
+        `<a:lnL w="9525" cap="flat" cmpd="sng"><a:solidFill><a:srgbClr val="798D84"/></a:solidFill></a:lnL>` +
+        `<a:lnR w="9525" cap="flat" cmpd="sng"><a:solidFill><a:srgbClr val="798D84"/></a:solidFill></a:lnR>` +
+        `<a:lnT w="9525" cap="flat" cmpd="sng"><a:solidFill><a:srgbClr val="798D84"/></a:solidFill></a:lnT>` +
+        `<a:lnB w="9525" cap="flat" cmpd="sng"><a:solidFill><a:srgbClr val="798D84"/></a:solidFill></a:lnB>` +
+        `<a:solidFill><a:srgbClr val="F2F2F2"/></a:solidFill>` +
+      `</a:tcPr>` +
+    `</a:tc>` +
+    Array(3).fill(`<a:tc hMerge="1"><a:txBody><a:bodyPr/><a:lstStyle/><a:p/></a:txBody><a:tcPr><a:lnL w="0"><a:noFill/></a:lnL><a:lnR w="0"><a:noFill/></a:lnR><a:lnT w="0"><a:noFill/></a:lnT><a:lnB w="0"><a:noFill/></a:lnB><a:noFill/></a:tcPr></a:tc>`).join('');
+  const row2 = `<a:tr h="320000">${labelCell}${valueCell}</a:tr>`;
+
+  // Rad 3: #798D84, midtstilt + vertikalt sentrert, hvit Montserrat 8pt, IKKE fet
+  const colHeaders = ['DATO', 'FRA', 'TIL', 'TID', 'SELSKAP'];
+  const row3 = `<a:tr h="320000">${colHeaders.map(h => makeCell(h, { bg: '798D84', fontColor: 'FFFFFF', font: 'Montserrat', sz: '800', bold: false, algn: 'ctr' })).join('')}</a:tr>`;
+
+  // Datarader: vekslende #F2F2F2/#D9D9D9, midtstilt (horisontal+vertikal), PT Sans 9pt, bunnlinje #BFBFBF
+  const dataRows = segments.map((seg, i) => {
+    const bg = i % 2 === 0 ? 'F2F2F2' : 'D9D9D9';
+    const cells = [
+      seg.date || '',
+      expandAirport(seg.from),
+      expandAirport(seg.to),
+      seg.time || '',
+      expandAirline(seg.airline),
+    ];
+    return `<a:tr h="300000">${cells.map(c => makeCell(c, { bg, fontColor: '2C2C2C', font: 'PT Sans', sz: '800', bold: false, algn: 'ctr', bottomBorder: true })).join('')}</a:tr>`;
+  }).join('');
+
+  // Høyde: 3 header-rader à 320000 + datarader à 300000
+  const tableHeight = 3 * 320000 + segments.length * 300000;
+  // Gapet mellom tekstboks 7 (bunn y=3715321) og Rektangel 10 (topp y=7631482)
+  const gapTop = 3715321;
+  const gapBottom = 7631482;
+  const yPos = Math.round(((gapTop + gapBottom) / 2) - tableHeight / 2);
+
+  const tableFrame =
+    `<p:graphicFrame>` +
+      `<p:nvGraphicFramePr>` +
+        `<p:cNvPr id="99" name="Flytabell"/>` +
+        `<p:cNvGraphicFramePr><a:graphicFrameLocks noChangeAspect="1"/></p:cNvGraphicFramePr>` +
+        `<p:nvPr/>` +
+      `</p:nvGraphicFramePr>` +
+      `<p:xfrm><a:off x="479425" y="${yPos}"/><a:ext cx="6567488" cy="${tableHeight}"/></p:xfrm>` +
+      `<a:graphic><a:graphicData uri="http://schemas.openxmlformats.org/drawingml/2006/table">` +
+        `<a:tbl>` +
+          `<a:tblPr firstRow="0" bandRow="0"/>` +
+          `<a:tblGrid>${colDefs}</a:tblGrid>` +
+          row1 + row2 + row3 + dataRows +
+        `</a:tbl>` +
+      `</a:graphicData></a:graphic>` +
+    `</p:graphicFrame>`;
+
+  for (const slideFile of slideFiles) {
+    let xml = await zip.files[slideFile].async('string');
+
+    // Fjern innebygd Excel OLE-objekt
+    xml = xml.replace(/<p:graphicFrame>(?:(?!<p:graphicFrame>)[\s\S])*?progId="Excel\.Sheet\.12"[\s\S]*?<\/p:graphicFrame>/g, '');
+
+    // Injiser tabell rett før </p:spTree>
+    xml = xml.replace('</p:spTree>', tableFrame + '</p:spTree>');
+
+    zip.file(slideFile, xml);
+    console.log(`✈️ Injected flight table into ${slideFile} (${segments.length} rows, 3 header rows)`);
+    break;
+  }
+
+  return zip.generateAsync({ type: 'nodebuffer', compression: 'DEFLATE' });
+}
+
+async function buildFlightPptxFromScratch(segments) {
+  // Kalles bare hvis ingen mal-buffer finnes (fallback)
+  // Hjelpefunksjon: lag én tabell-celle med tekst
+  function tc(text, bold = false, isHeader = false) {
+    const bgFill = isHeader
+      ? `<a:solidFill><a:srgbClr val="1F3864"/></a:solidFill>`
+      : `<a:solidFill><a:srgbClr val="FFFFFF"/></a:solidFill>`;
+    const fontColor = isHeader ? `<a:solidFill><a:srgbClr val="FFFFFF"/></a:solidFill>` : `<a:solidFill><a:srgbClr val="333333"/></a:solidFill>`;
+    const boldAttr = bold || isHeader ? ' b="1"' : '';
+    return `<a:tc><a:txBody><a:bodyPr/><a:lstStyle/><a:p><a:r><a:rPr lang="nb-NO" sz="1200"${boldAttr} dirty="0"><a:latin typeface="PT Sans"/>${fontColor}</a:rPr><a:t>${text}</a:t></a:r></a:p></a:txBody><a:tcPr><a:lnL w="6350" cap="flat" cmpd="sng" algn="ctr"><a:solidFill><a:srgbClr val="CCCCCC"/></a:solidFill></a:lnL><a:lnR w="6350" cap="flat" cmpd="sng" algn="ctr"><a:solidFill><a:srgbClr val="CCCCCC"/></a:solidFill></a:lnR><a:lnT w="6350" cap="flat" cmpd="sng" algn="ctr"><a:solidFill><a:srgbClr val="CCCCCC"/></a:solidFill></a:lnT><a:lnB w="6350" cap="flat" cmpd="sng" algn="ctr"><a:solidFill><a:srgbClr val="CCCCCC"/></a:solidFill></a:lnB>${bgFill}</a:tcPr></a:tc>`;
+  }
+
+  // Kolonnebredder i EMU (totalt ~6 567 488 ≈ slide-bredde minus marginer)
+  const colWidths = [1313498, 1313498, 1313498, 1313498, 1313496];
+  const colDefs = colWidths.map(w => `<a:gridCol w="${w}"/>`).join('');
+
+  // Overskriftsrad
+  const headers = ['Dato', 'Fra', 'Til', 'Tid', 'Flyselskap'];
+  const headerRow = `<a:tr h="500000">${headers.map(h => tc(h, true, true)).join('')}</a:tr>`;
+
+  // Datarader
+  const dataRows = segments.map(seg => {
+    const cells = [
+      seg.date    || '',
+      seg.from    || '',
+      seg.to      || '',
+      seg.time    || '',
+      seg.airline || '',
+    ];
+    return `<a:tr h="450000">${cells.map(c => tc(c)).join('')}</a:tr>`;
+  }).join('');
+
+  // Komplett tabelldefinisjon
+  const tableXml = `<a:tbl><a:tblPr firstRow="1" bandRow="0"><a:tableStyleId>{5C22544A-7EE6-4342-B048-85BDC9FD1C3A}</a:tableStyleId></a:tblPr><a:tblGrid>${colDefs}</a:tblGrid>${headerRow}${dataRows}</a:tbl>`;
+
+  // Slide XML
+  const slideXml = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<p:sld xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main"
+       xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"
+       xmlns:p="http://schemas.openxmlformats.org/presentationml/2006/main">
+  <p:cSld>
+    <p:spTree>
+      <p:nvGrpSpPr><p:cNvPr id="1" name=""/><p:cNvGrpSpPr/><p:nvPr/></p:nvGrpSpPr>
+      <p:grpSpPr><a:xfrm><a:off x="0" y="0"/><a:ext cx="0" cy="0"/><a:chOff x="0" y="0"/><a:chExt cx="0" cy="0"/></a:xfrm></p:grpSpPr>
+      <!-- Tittel -->
+      <p:sp>
+        <p:nvSpPr><p:cNvPr id="2" name="Tittel"/><p:cNvSpPr txBox="1"/><p:nvPr/></p:nvSpPr>
+        <p:spPr><a:xfrm><a:off x="479425" y="274638"/><a:ext cx="6567488" cy="600000"/></a:xfrm><a:prstGeom prst="rect"><a:avLst/></a:prstGeom><a:noFill/></p:spPr>
+        <p:txBody><a:bodyPr wrap="square" anchor="ctr"><a:noAutofit/></a:bodyPr><a:lstStyle/>
+          <a:p><a:r><a:rPr lang="nb-NO" sz="2400" b="1" dirty="0"><a:solidFill><a:srgbClr val="1F3864"/></a:solidFill><a:latin typeface="PT Sans"/></a:rPr><a:t>Flyinformasjon</a:t></a:r></a:p>
+        </p:txBody>
+      </p:sp>
+      <!-- Flytabell -->
+      <p:graphicFrame>
+        <p:nvGraphicFramePr>
+          <p:cNvPr id="3" name="Flytabell"/>
+          <p:cNvGraphicFramePr><a:graphicFrameLocks noChangeAspect="1"/></p:cNvGraphicFramePr>
+          <p:nvPr/>
+        </p:nvGraphicFramePr>
+        <p:xfrm><a:off x="479425" y="950000"/><a:ext cx="6567488" cy="${500000 + segments.length * 450000}"/></p:xfrm>
+        <a:graphic><a:graphicData uri="http://schemas.openxmlformats.org/drawingml/2006/table">
+          ${tableXml}
+        </a:graphicData></a:graphic>
+      </p:graphicFrame>
+    </p:spTree>
+  </p:cSld>
+  <p:clrMapOvr><a:masterClrMapping/></p:clrMapOvr>
+</p:sld>`;
+
+  // slideRels — ingen relasjoner trengs (ingen bilder/lenker)
+  const slideRelsXml = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
+  <Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/slideLayout" Target="../slideLayouts/slideLayout1.xml"/>
+</Relationships>`;
+
+  // Minimal presentasjon — 1 slide, standard A4-landscape (9144000 × 6858000 EMU)
+  const presentationXml = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<p:presentation xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main"
+                xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"
+                xmlns:p="http://schemas.openxmlformats.org/presentationml/2006/main"
+                saveSubsetFonts="1">
+  <p:sldMasterIdLst><p:sldMasterId id="2147483648" r:id="rId1"/></p:sldMasterIdLst>
+  <p:sldSz cx="9144000" cy="6858000" type="custom"/>
+  <p:notesSz cx="6858000" cy="9144000"/>
+  <p:sldIdLst><p:sldId id="256" r:id="rId2"/></p:sldIdLst>
+</p:presentation>`;
+
+  const presRelsXml = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
+  <Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/slideMaster" Target="slideMasters/slideMaster1.xml"/>
+  <Relationship Id="rId2" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/slide" Target="slides/slide1.xml"/>
+</Relationships>`;
+
+  const contentTypesXml = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">
+  <Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/>
+  <Default Extension="xml"  ContentType="application/xml"/>
+  <Override PartName="/ppt/presentation.xml"        ContentType="application/vnd.openxmlformats-officedocument.presentationml.presentation.main+xml"/>
+  <Override PartName="/ppt/slides/slide1.xml"       ContentType="application/vnd.openxmlformats-officedocument.presentationml.slide+xml"/>
+  <Override PartName="/ppt/slideMasters/slideMaster1.xml" ContentType="application/vnd.openxmlformats-officedocument.presentationml.slideMaster+xml"/>
+  <Override PartName="/ppt/slideLayouts/slideLayout1.xml" ContentType="application/vnd.openxmlformats-officedocument.presentationml.slideLayout+xml"/>
+</Types>`;
+
+  const rootRelsXml = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
+  <Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="ppt/presentation.xml"/>
+</Relationships>`;
+
+  // Minimal slideLayout og slideMaster (tomme, men PPTX-validatoren krever dem)
+  const slideLayoutXml = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<p:sldLayout xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main"
+             xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"
+             xmlns:p="http://schemas.openxmlformats.org/presentationml/2006/main" type="blank" preserve="1">
+  <p:cSld><p:spTree><p:nvGrpSpPr><p:cNvPr id="1" name=""/><p:cNvGrpSpPr/><p:nvPr/></p:nvGrpSpPr><p:grpSpPr><a:xfrm><a:off x="0" y="0"/><a:ext cx="0" cy="0"/><a:chOff x="0" y="0"/><a:chExt cx="0" cy="0"/></a:xfrm></p:grpSpPr></p:spTree></p:cSld>
+  <p:clrMapOvr><a:masterClrMapping/></p:clrMapOvr>
+</p:sldLayout>`;
+
+  const slideLayoutRelsXml = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
+  <Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/slideMaster" Target="../slideMasters/slideMaster1.xml"/>
+</Relationships>`;
+
+  const slideMasterXml = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<p:sldMaster xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main"
+             xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"
+             xmlns:p="http://schemas.openxmlformats.org/presentationml/2006/main">
+  <p:cSld><p:spTree><p:nvGrpSpPr><p:cNvPr id="1" name=""/><p:cNvGrpSpPr/><p:nvPr/></p:nvGrpSpPr><p:grpSpPr><a:xfrm><a:off x="0" y="0"/><a:ext cx="0" cy="0"/><a:chOff x="0" y="0"/><a:chExt cx="0" cy="0"/></a:xfrm></p:grpSpPr></p:spTree></p:cSld>
+  <p:clrMap bg1="lt1" tx1="dk1" bg2="lt2" tx2="dk2" accent1="accent1" accent2="accent2" accent3="accent3" accent4="accent4" accent5="accent5" accent6="accent6" hlink="hlink" folHlink="folHlink"/>
+  <p:sldLayoutIdLst><p:sldLayoutId id="2147483649" r:id="rId1"/></p:sldLayoutIdLst>
+</p:sldMaster>`;
+
+  const slideMasterRelsXml = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
+  <Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/slideLayout" Target="../slideLayouts/slideLayout1.xml"/>
+</Relationships>`;
+
+  // Bygg ZIP
+  const zip = new JSZip();
+  zip.file('[Content_Types].xml', contentTypesXml);
+  zip.file('_rels/.rels', rootRelsXml);
+  zip.file('ppt/presentation.xml', presentationXml);
+  zip.file('ppt/_rels/presentation.xml.rels', presRelsXml);
+  zip.file('ppt/slides/slide1.xml', slideXml);
+  zip.file('ppt/slides/_rels/slide1.xml.rels', slideRelsXml);
+  zip.file('ppt/slideLayouts/slideLayout1.xml', slideLayoutXml);
+  zip.file('ppt/slideLayouts/_rels/slideLayout1.xml.rels', slideLayoutRelsXml);
+  zip.file('ppt/slideMasters/slideMaster1.xml', slideMasterXml);
+  zip.file('ppt/slideMasters/_rels/slideMaster1.xml.rels', slideMasterRelsXml);
+
+  console.log(`✈️ Built Flyinformasjon PPTX from scratch — ${segments.length} segment(s)`);
+  return zip.generateAsync({ type: 'nodebuffer', compression: 'DEFLATE' });
+}
+
 ipcMain.handle("ppt:generate", async (_, payload) => {
   const { base, modules, departureDate, language, flightData, baseTemplateName } = payload;
   
@@ -546,11 +956,35 @@ ipcMain.handle("ppt:generate", async (_, payload) => {
     // Skriv base-fil
     fs.writeFileSync(basePath, Buffer.from(base));
     
-    // Skriv modul-filer
+    // Skriv modul-filer (behold originalt filnavn for å støtte flyinformasjon-deteksjon i PS1)
     const modulePaths = [];
     for (let i = 0; i < modules.length; i++) {
-      const modPath = path.join(tmpDir, `mod${i + 1}.pptx`);
-      fs.writeFileSync(modPath, Buffer.from(modules[i].buffer));
+      const safeName = (modules[i].name || `mod${i + 1}`)
+        .replace(/[^a-zA-Z0-9æøåÆØÅ\-_. ]/g, '_')
+        .replace(/\s+/g, '_');
+      const modPath = path.join(tmpDir, safeName.endsWith('.pptx') ? safeName : `${safeName}.pptx`);
+
+      // Flyinformasjon: erstatt {{DATO}}, {{FRA}} etc. direkte i PPTX XML før fil skrives
+      const isFlight = modules[i].name && (
+        modules[i].name.toLowerCase().includes('flyinformasjon') ||
+        modules[i].name.toLowerCase().includes('flyinformation')
+      );
+      if (isFlight && flightData?.flights?.[0]?.segments?.length > 0) {
+        const segments = flightData.flights[0].segments;
+        const srcBuffer = Buffer.from(modules[i].buffer);
+        let finalBuffer;
+        if (srcBuffer.length > 100) {
+          // Mal finnes — injiser tabell i eksisterende PPTX (bevarer design)
+          finalBuffer = await injectFlightTable(srcBuffer, segments, flightData.passengers);
+        } else {
+          // Ingen mal — bygg fra scratch
+          finalBuffer = await buildFlightPptxFromScratch(segments);
+        }
+        fs.writeFileSync(modPath, finalBuffer);
+        console.log(`✈️ Flyinformasjon injected: ${modules[i].name} (${segments.length} segments)`);
+      } else {
+        fs.writeFileSync(modPath, Buffer.from(modules[i].buffer));
+      }
       modulePaths.push(modPath);
     }
     

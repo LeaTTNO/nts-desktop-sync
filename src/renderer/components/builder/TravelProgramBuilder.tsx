@@ -57,7 +57,7 @@ export default function TravelProgramBuilder({ language = 'no' }: TravelProgramB
     slides, // <-- bring in slides from global state
   } = useTemplateStore();
 
-  const { categories: userCategories, getCategoriesForUser } = useUserCategoryStore();
+  const { categories: userCategories, getCategoriesForUser, isBuiltinCategoryVisible } = useUserCategoryStore();
   const myUserCategories = userEmail ? getCategoriesForUser(userEmail) : [];
 
   // Dynamically get category names from store
@@ -109,7 +109,7 @@ export default function TravelProgramBuilder({ language = 'no' }: TravelProgramB
   const [departureDate, setDepartureDate] = useState("");
   const [departureDateInput, setDepartureDateInput] = useState("");
   const [baseProgramId, setBaseProgramId] = useState<string | null>(null);
-  const [manualBaseOverride, setManualBaseOverride] = useState<string | null>(null);
+
   const [firstNightId, setFirstNightId] = useState<string | null>(null);
   const [lastNightId, setLastNightId] = useState<string | null>(null);
   const [selectedSafariPeriod, setSelectedSafariPeriod] = useState<string | null>(null);
@@ -153,40 +153,34 @@ export default function TravelProgramBuilder({ language = 'no' }: TravelProgramB
     loadFromDB();
   }, [loadFromDB]);
 
-  /* =========================
-     AUTOMATISK BASEFIL-VALG
-  ========================= */
+  /* ==================================
+     DEFAULT BASEFIL VED FØRSTE LASTING
+  ================================== */
 
   useEffect(() => {
-    // Ikke endre hvis brukeren har manuelt overstyrt
-    if (manualBaseOverride) return;
+    // Allerede valgt — ikke overskriv
+    if (baseProgramId) return;
 
-    // Bestem hvilke destinasjoner som er valgt
-    const hasSafari = !!safariTemplateId;
-    const hasZanzibar = zanzibarMain || zanzibarHotel2;
-    const hasKilimanjaro = kilimanjaro;
+    const baseTemplates = getUserBaseTemplates();
+    if (baseTemplates.length === 0) return; // Ikke lastet ennå — vent
 
-    // Beregn riktig basefil-navn (uten bruker-prefix siden filene ligger i brukerspesifikke mapper)
-    const baseFileName = getBaseTemplateFileName(
-      { hasSafari, hasZanzibar, hasKilimanjaro },
+    // Finn "Safari & Zanzibar"-basefilen som standard
+    const defaultFileName = getBaseTemplateFileName(
+      { hasSafari: false, hasZanzibar: false, hasKilimanjaro: false },
       userLanguage
     );
 
-    // Finn template med dette navnet i brukerens basefil-kategori
-    const baseTemplates = getUserBaseTemplates();
-    const matchingTemplate = baseTemplates.find(t => 
-      t.name === baseFileName || t.name.includes(baseFileName)
-    );
+    const defaultTemplate =
+      baseTemplates.find(t => t.name === defaultFileName) ??
+      baseTemplates.find(t => t.name.includes(defaultFileName)) ??
+      baseTemplates.find(t => t.name.toLowerCase().includes("safari") && t.name.toLowerCase().includes("zanzibar"));
 
-    if (matchingTemplate && matchingTemplate.id !== baseProgramId) {
-      // Bytt basefil
-      if (baseProgramId) {
-        removeSelectedTemplate(baseProgramId);
-      }
-      setBaseProgramId(matchingTemplate.id);
-      addSelectedTemplate(matchingTemplate.id);
+    if (defaultTemplate) {
+      setBaseProgramId(defaultTemplate.id);
+      addSelectedTemplate(defaultTemplate.id);
     }
-  }, [safariTemplateId, zanzibarMain, zanzibarHotel2, kilimanjaro, userLanguage, userPrefix, manualBaseOverride, baseProgramId, addSelectedTemplate, removeSelectedTemplate]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [templates, userLanguage, userPrefix]);
 
   /* =========================
      HELPERS
@@ -272,10 +266,16 @@ export default function TravelProgramBuilder({ language = 'no' }: TravelProgramB
       }
 
       // Hent alle valgte moduler (unntatt basefil)
+      // Flyinformasjon skal alltid settes inn sist (= nest siste side i basefilen)
       const moduleTemplates = selectedTemplateIds
         .filter(id => id !== baseProgramId)
         .map((id) => templates.find((t) => t.id === id))
-        .filter(Boolean) as typeof templates;
+        .filter(Boolean)
+        .sort((a, b) => {
+          const aFlight = (a!.category === FLIGHT || a!.name.toLowerCase().includes('flyinformasjon')) ? 1 : 0;
+          const bFlight = (b!.category === FLIGHT || b!.name.toLowerCase().includes('flyinformasjon')) ? 1 : 0;
+          return aFlight - bFlight;
+        }) as typeof templates;
 
       // Konverter blobs til ArrayBuffers
       const baseBuffer = baseTemplate.blob instanceof Blob 
@@ -293,6 +293,30 @@ export default function TravelProgramBuilder({ language = 'no' }: TravelProgramB
       const flightReady = localStorage.getItem('flyinformasjon-ready');
       const flightData = flightDataStr && flightReady === 'true' ? JSON.parse(flightDataStr) : null;
 
+      // Hvis flightData finnes, sørg for at en Flyinformasjon-modul er inkludert
+      // Hent den faktiske malen fra biblioteket slik at design og layout bevares
+      const hasFlightModule = moduleBuffers.some(m =>
+        m.name.toLowerCase().includes('flyinformasjon') ||
+        m.name.toLowerCase().includes('flyinformation')
+      );
+      if (flightData?.flights?.[0]?.segments?.length > 0 && !hasFlightModule) {
+        // Finn Flyinformasjon-malen i biblioteket
+        const flightTemplate = templates.find(t =>
+          t.name.toLowerCase().includes('flyinformasjon') ||
+          t.name.toLowerCase().includes('flyinformation') ||
+          t.category === FLIGHT
+        );
+        if (flightTemplate) {
+          const flightBuffer = flightTemplate.blob instanceof Blob
+            ? await flightTemplate.blob.arrayBuffer()
+            : flightTemplate.blob;
+          moduleBuffers.push({ name: flightTemplate.name, buffer: flightBuffer });
+        } else {
+          // Ingen mal funnet — bruk tom buffer (electron-main lager noe enkelt)
+          moduleBuffers.push({ name: 'Flyinformasjon.pptx', buffer: new ArrayBuffer(0) });
+        }
+      }
+
       // Kall Electron API for å bygge PowerPoint
       if (!window.electron?.generatePpt) {
         throw new Error('generatePpt API ikke tilgjengelig');
@@ -309,10 +333,7 @@ export default function TravelProgramBuilder({ language = 'no' }: TravelProgramB
 
       console.log('🗓️ generatePowerPoint called with departureDate:', JSON.stringify(departureDate));
 
-      if (result && result.ok) {
-        toast.success(`PowerPoint åpnet med ${moduleTemplates.length + 1} slides`);
-      } else if (result && result.error) {
-        console.warn('PowerPoint post-processing advarsel:', result.error);
+      if (result) {
         toast.success(`PowerPoint åpnet med ${moduleTemplates.length + 1} slides`);
       } else {
         toast.success(`PowerPoint åpnet med ${moduleTemplates.length + 1} slides`);
@@ -757,18 +778,13 @@ export default function TravelProgramBuilder({ language = 'no' }: TravelProgramB
             <Label className="text-base font-semibold">
               {userLanguage === 'da' ? 'Rejseprogram og Tilbud' : 'Reiseprogram og Tilbud'}
             </Label>
-            {!manualBaseOverride && (
-              <span className="text-xs text-muted-foreground italic">
-                {/* Automatisk tekst fjernet etter ønske */}
-              </span>
-            )}
+            <span />
           </div>
           <Select
             value={baseProgramId ?? ""}
             onValueChange={(value) => {
               replaceTemplate(baseProgramId, value || null);
               setBaseProgramId(value || null);
-              setManualBaseOverride(value || null);
             }}
           >
             <SelectTrigger className="bg-gray-50">
@@ -784,20 +800,7 @@ export default function TravelProgramBuilder({ language = 'no' }: TravelProgramB
                 ))}
             </SelectContent>
           </Select>
-          {manualBaseOverride && (
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={() => {
-                setManualBaseOverride(null);
-                toast.info("Automatisk valg aktivert");
-              }}
-              className="text-xs"
-            >
-              <RotateCcw className="h-3 w-3 mr-1" />
-              Tilbakestill til automatisk
-            </Button>
-          )}
+
         </div>
 
         {/* 2. Utreisedato */}
@@ -877,6 +880,7 @@ export default function TravelProgramBuilder({ language = 'no' }: TravelProgramB
         </div>
 
         {/* 3. Arusha første natt */}
+        {isBuiltinCategoryVisible("arusha_first_night") && (
         <div className="space-y-2">
           <Label>Arusha første natt</Label>
           <Select
@@ -900,11 +904,13 @@ export default function TravelProgramBuilder({ language = 'no' }: TravelProgramB
             </SelectContent>
           </Select>
         </div>
+        )}
       </div>
 
       {/* Rad 2: Safariperiode + Siste natt safari */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
         {/* 4. Safariperiode - To-trinns i SAMME dropdown med Popover */}
+        {isBuiltinCategoryVisible("safari_period_group") && (
         <div className="space-y-2">
           <Label>Safariperiode</Label>
           <SafariDropdown
@@ -914,8 +920,10 @@ export default function TravelProgramBuilder({ language = 'no' }: TravelProgramB
             setSelectedTemplateId={setSafariTemplateId}
           />
         </div>
+        )}
 
         {/* 5. Siste natt safari */}
+        {isBuiltinCategoryVisible("last_safari_night") && (
         <div className="space-y-2">
           <Label>Siste natt safari</Label>
           <Select
@@ -939,11 +947,13 @@ export default function TravelProgramBuilder({ language = 'no' }: TravelProgramB
             </SelectContent>
           </Select>
         </div>
+        )}
       </div>
 
         {/* Rad 3: Zanzibar Hotel 1 + Zanzibar & Stone Town */}
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          {/* 6. Zanzibar Hotel 1 - to-trinns dropdown uten sjekkboks */}
+          {/* 6. Zanzibar Hotel 1 */}
+          {isBuiltinCategoryVisible("zanzibar_hotel_1") && (
           <div className="space-y-2">
             <Label>Zanzibar Hotel 1</Label>
             <CheckboxWithDropdown
@@ -958,8 +968,10 @@ export default function TravelProgramBuilder({ language = 'no' }: TravelProgramB
               hideCheckbox={true}
             />
           </div>
+          )}
 
           {/* 7. Zanzibar & Stone Town */}
+          {isBuiltinCategoryVisible("zanzibar_stone_town") && (
           <div className="space-y-2">
             <Label>Zanzibar & Stone Town</Label>
             <Select
@@ -983,6 +995,7 @@ export default function TravelProgramBuilder({ language = 'no' }: TravelProgramB
               </SelectContent>
             </Select>
           </div>
+          )}
         </div>
 
         {/* Rad 4: Tilleggsmoduler - 2 rader med checkbokser */}
@@ -992,6 +1005,7 @@ export default function TravelProgramBuilder({ language = 'no' }: TravelProgramB
           {/* Første rad tilleggsmoduler */}
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             {/* Zanzibar Hotel 2 */}
+            {isBuiltinCategoryVisible("zanzibar_hotel_2") && (
             <CheckboxWithDropdown
               id="zanzibar-hotel-2"
               label="Zanzibar Hotel 2"
@@ -1002,8 +1016,10 @@ export default function TravelProgramBuilder({ language = 'no' }: TravelProgramB
               onSelectChange={setZanzibarHotel2Id}
               groupByHotel
             />
+            )}
 
             {/* Kilimanjaro */}
+            {isBuiltinCategoryVisible("kilimanjaro") && (
             <CheckboxWithDropdown
               id="kilimanjaro"
               label="Kilimanjaro"
@@ -1013,11 +1029,13 @@ export default function TravelProgramBuilder({ language = 'no' }: TravelProgramB
               selectedId={kilimanjaroId}
               onSelectChange={setKilimanjaroId}
             />
+            )}
           </div>
 
           {/* Andre rad tilleggsmoduler */}
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             {/* Aktiviteter Arusha - Slides */}
+            {isBuiltinCategoryVisible("arusha_activities_slides") && (
             <CheckboxWithDropdown
               id="arusha-slides"
               label="Aktiviteter Arusha - Slides"
@@ -1027,11 +1045,13 @@ export default function TravelProgramBuilder({ language = 'no' }: TravelProgramB
               selectedId={arushaSlidesId}
               onSelectChange={setArushaSlidesId}
             />
+            )}
           </div>
 
           {/* Tredje rad tilleggsmoduler */}
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             {/* Diverse Fastland */}
+            {isBuiltinCategoryVisible("diverse_mainland") && (
             <CheckboxWithDropdown
               id="fastland"
               label="Diverse Fastland"
@@ -1041,8 +1061,10 @@ export default function TravelProgramBuilder({ language = 'no' }: TravelProgramB
               selectedId={fastlandId}
               onSelectChange={setFastlandId}
             />
+            )}
 
             {/* Ekstra Slides */}
+            {isBuiltinCategoryVisible("extra_slides") && (
             <CheckboxWithDropdown
               id="extra-slides"
               label="Ekstra Slides"
@@ -1052,6 +1074,7 @@ export default function TravelProgramBuilder({ language = 'no' }: TravelProgramB
               selectedId={extraSlidesId}
               onSelectChange={setExtraSlidesId}
             />
+            )}
           </div>
 
           {/* Dynamic user-defined categories */}

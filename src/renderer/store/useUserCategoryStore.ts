@@ -17,6 +17,8 @@ interface UserCategoryStore {
   deleteCategory: (id: string) => void;
   updateCategory: (id: string, updates: Partial<UserCategory>) => void;
   getCategoriesForUser: (userId: string) => UserCategory[];
+  setBuiltinCategoryVisible: (catId: string, visible: boolean) => void;
+  isBuiltinCategoryVisible: (catId: string) => boolean;
 }
 
 export const useUserCategoryStore = create<UserCategoryStore>()(
@@ -55,6 +57,39 @@ export const useUserCategoryStore = create<UserCategoryStore>()(
 
       getCategoriesForUser: (userId) => {
         return get().categories.filter((c) => c.userId === userId);
+      },
+
+      setBuiltinCategoryVisible: (catId, visible) => {
+        const BUILTIN_USER = "builtin-visibility";
+        const existing = get().categories.find(c => c.id === catId && c.userId === BUILTIN_USER);
+        if (existing) {
+          set(state => ({
+            categories: state.categories.map(c =>
+              c.id === catId && c.userId === BUILTIN_USER ? { ...c, isVisible: visible } : c
+            ),
+          }));
+        } else {
+          set(state => ({
+            categories: [
+              ...state.categories,
+              {
+                id: catId,
+                name: catId,
+                userId: BUILTIN_USER,
+                createdAt: Date.now(),
+                order: 0,
+                hasCheckbox: true,
+                isVisible: visible,
+              },
+            ],
+          }));
+        }
+      },
+
+      isBuiltinCategoryVisible: (catId) => {
+        const BUILTIN_USER = "builtin-visibility";
+        const entry = get().categories.find(c => c.id === catId && c.userId === BUILTIN_USER);
+        return entry ? entry.isVisible : true; // default visible
       },
     }),
     {
