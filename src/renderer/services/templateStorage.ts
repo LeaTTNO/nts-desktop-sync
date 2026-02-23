@@ -29,7 +29,7 @@ export interface TemplateEntry {
 ========================= */
 
 const DB_NAME = "nts-template-db";
-const DB_VERSION = 2;
+const DB_VERSION = 4;
 const STORE_NAME = "templates";
 
 interface TemplateDB extends DBSchema {
@@ -48,13 +48,20 @@ interface TemplateDB extends DBSchema {
 
 async function getDB() {
   return openDB<TemplateDB>(DB_NAME, DB_VERSION, {
-    upgrade(db, oldVersion) {
-      if (!db.objectStoreNames.contains(STORE_NAME)) {
-        const store = db.createObjectStore(STORE_NAME, {
-          keyPath: "id",
-        });
-        store.createIndex("category", "category");
+    upgrade(db, oldVersion, newVersion, transaction) {
+      // Versjon 1->2: Initial setup
+      if (oldVersion < 2) {
+        if (!db.objectStoreNames.contains(STORE_NAME)) {
+          const store = db.createObjectStore(STORE_NAME, {
+            keyPath: "id",
+          });
+          store.createIndex("category", "category");
+        }
       }
+      
+      // Versjon 3 la til market field - vi trenger ikke det feltet nå
+      // Versjon 4: Clean version uten market field (ingen endringer nødvendig)
+      // Data fortsetter å fungere som normalt
     },
   });
 }
