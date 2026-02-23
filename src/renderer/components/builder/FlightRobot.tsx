@@ -1501,9 +1501,10 @@ function saveToPowerPointSingle(flight: ProcessedFlight, title: string) {
 
       // 2. FLEXIBLE DATES SEARCH (±X days, same number of nights) - Sequential to avoid rate limiting
       if (flexibleDates && flexibleNights > 0) {
-        let cheapestFlex: ProcessedFlight | null = null;
+        let bestFlex: ProcessedFlight | null = null;
         const allFlexFlights: ProcessedFlight[] = []; // Collect all flights for preferred airline search
 
+        // Search ALL date variations to find BEST option using SCORE (not just price!)
         for (let i = -flexibleNights; i <= flexibleNights; i++) {
           if (i === 0) continue;
           const newDepDate = addDays(departureDateStr, i);
@@ -1524,9 +1525,11 @@ function saveToPowerPointSingle(flight: ProcessedFlight, title: string) {
 
             allFlexFlights.push(...valid); // Store for preferred airline search
 
+            // Find BEST AND CHEAPEST (lowest score) across all date variations
             for (const flight of valid) {
-              if (!cheapestFlex || flight.price < cheapestFlex.price) {
-                cheapestFlex = { ...flight, searchDate: newDepDate };
+              const flightScore = calculateFlightScore(flight);
+              if (!bestFlex || flightScore < calculateFlightScore(bestFlex)) {
+                bestFlex = { ...flight, searchDate: newDepDate };
               }
             }
           } catch (err) {
@@ -1534,9 +1537,11 @@ function saveToPowerPointSingle(flight: ProcessedFlight, title: string) {
           }
         }
 
-        // ALWAYS show the best flexible option - even if same price or more expensive
-        if (cheapestFlex) {
-          setFlexibleResult({ ...cheapestFlex, recommendReason: t.cheapest });
+        // ALWAYS show the best flexible option (by score) - even if more expensive!
+        // User wants to see the result if the checkbox is enabled
+        if (bestFlex) {
+          const dateLabel = format(new Date(bestFlex.searchDate), 'dd.MM.yyyy');
+          addFlight(toFlightInfo(bestFlex, `${t.cheaperFlexible} (${dateLabel})`));
           setSearchProgress(prev => ({ ...prev, current: prev.current + 1 }));
         }
         
@@ -1720,7 +1725,7 @@ function saveToPowerPointSingle(flight: ProcessedFlight, title: string) {
       // 4. DATE INTERVAL SEARCH (search all dates in range with same number of nights)
       if (useDateInterval && earliestDeparture && latestDeparture) {
         const tripNights = calculateNights(departureDateStr, returnDateStr);
-        let cheapestInterval: ProcessedFlight | null = null;
+        let bestInterval: ProcessedFlight | null = null;
         const allIntervalFlights: ProcessedFlight[] = []; // Collect all flights for preferred airline search
 
         // Calculate number of days in the interval
@@ -1728,6 +1733,7 @@ function saveToPowerPointSingle(flight: ProcessedFlight, title: string) {
         const endDate = new Date(latestDeparture);
         const daysDiff = Math.round((endDate.getTime() - startDate.getTime()) / (1000 * 60 * 60 * 24));
 
+        // Search ALL dates in interval to find BEST option using SCORE (not just price!)
         for (let i = 0; i <= daysDiff; i++) {
           const searchDepDate = format(new Date(startDate.getTime() + i * 24 * 60 * 60 * 1000), 'yyyy-MM-dd');
           const searchRetDate = addDays(searchDepDate, tripNights);
@@ -1750,9 +1756,11 @@ function saveToPowerPointSingle(flight: ProcessedFlight, title: string) {
 
             allIntervalFlights.push(...valid); // Store for preferred airline search
 
+            // Find BEST AND CHEAPEST (lowest score) across all dates in interval
             for (const flight of valid) {
-              if (!cheapestInterval || flight.price < cheapestInterval.price) {
-                cheapestInterval = { ...flight, searchDate: searchDepDate };
+              const flightScore = calculateFlightScore(flight);
+              if (!bestInterval || flightScore < calculateFlightScore(bestInterval)) {
+                bestInterval = { ...flight, searchDate: searchDepDate };
               }
             }
           } catch (err) {
@@ -1760,9 +1768,11 @@ function saveToPowerPointSingle(flight: ProcessedFlight, title: string) {
           }
         }
 
-        // ALWAYS show the best interval option - even if same price or more expensive
-        if (cheapestInterval) {
-          setDateIntervalResult({ ...cheapestInterval, recommendReason: t.searchInInterval });
+        // ALWAYS show the best interval option (by score) - even if more expensive!
+        // User wants to see the result if the checkbox is enabled
+        if (bestInterval) {
+          const dateLabel = format(new Date(bestInterval.searchDate), 'dd.MM.yyyy');
+          addFlight(toFlightInfo(bestInterval, `${t.searchInInterval} (${dateLabel})`));
           setSearchProgress(prev => ({ ...prev, current: prev.current + 1 }));
         }
         
