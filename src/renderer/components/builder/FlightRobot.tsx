@@ -1572,6 +1572,7 @@ function saveToPowerPointSingle(flight: ProcessedFlight, title: string) {
         let cheapestAdd: ProcessedFlight | null = null;
         const allAddFlights: ProcessedFlight[] = []; // Collect all flights for preferred airline search
 
+        // Search ALL variations (1, 2, 3, ... addNightsCount) to find the BEST option
         for (let i = 1; i <= addNightsCount; i++) {
           const newRetDate = addDays(returnDateStr, i);
 
@@ -1589,8 +1590,9 @@ function saveToPowerPointSingle(flight: ProcessedFlight, title: string) {
 
             allAddFlights.push(...valid); // Store for preferred airline search
 
+            // Find cheapest across ALL night variations
             for (const flight of valid) {
-              flight.nightsDiff = i;
+              flight.nightsDiff = i; // Tag with number of extra nights
               if (!cheapestAdd || flight.price < cheapestAdd.price) {
                 cheapestAdd = flight;
               }
@@ -1600,10 +1602,12 @@ function saveToPowerPointSingle(flight: ProcessedFlight, title: string) {
           }
         }
 
-        // ALWAYS show the best option from extended stay search - even if same price or more expensive
-        // It confirms this is the best option for that number of nights!
-        if (cheapestAdd) {
-          setExtendedStayResult({ ...cheapestAdd, recommendReason: t.cheapest });
+        // Show ONLY the single best option with info about how many nights were added
+        if (cheapestAdd && cheapestAdd.price < basePrice) {
+          const nightsLabel = language === 'no' 
+            ? `${t.addNights} +${cheapestAdd.nightsDiff} ${cheapestAdd.nightsDiff === 1 ? 'natt' : 'netter'}`
+            : `${t.addNights} +${cheapestAdd.nightsDiff} ${cheapestAdd.nightsDiff === 1 ? 'nat' : 'nætter'}`;
+          setExtendedStayResult({ ...cheapestAdd, recommendReason: nightsLabel });
           setSearchProgress(prev => ({ ...prev, current: prev.current + 1 }));
         }
         
@@ -1639,6 +1643,7 @@ function saveToPowerPointSingle(flight: ProcessedFlight, title: string) {
         let cheapestRemove: ProcessedFlight | null = null;
         const allRemoveFlights: ProcessedFlight[] = []; // Collect all flights for preferred airline search
 
+        // Search ALL variations (-1, -2, -3, ... -removeNightsCount) to find the BEST option
         for (let i = 1; i <= removeNightsCount; i++) {
           const newRetDate = addDays(returnDateStr, -i);
 
@@ -1656,8 +1661,9 @@ function saveToPowerPointSingle(flight: ProcessedFlight, title: string) {
 
             allRemoveFlights.push(...valid); // Store for preferred airline search
 
+            // Find cheapest across ALL night variations
             for (const flight of valid) {
-              flight.nightsDiff = -i;
+              flight.nightsDiff = -i; // Tag with number of removed nights (negative)
               if (!cheapestRemove || flight.price < cheapestRemove.price) {
                 cheapestRemove = flight;
               }
@@ -1667,11 +1673,16 @@ function saveToPowerPointSingle(flight: ProcessedFlight, title: string) {
           }
         }
 
-        // ALWAYS show the best option - even if same price or more expensive
-        // If we already have addNights result, keep the cheapest one
-        if (cheapestRemove) {
+        // Show ONLY if cheaper than original - compare with extendedStayResult if exists
+        if (cheapestRemove && cheapestRemove.price < basePrice) {
+          const absNights = Math.abs(cheapestRemove.nightsDiff || 0);
+          const nightsLabel = language === 'no' 
+            ? `${t.removeNights} -${absNights} ${absNights === 1 ? 'natt' : 'netter'}`
+            : `${t.removeNights} -${absNights} ${absNights === 1 ? 'nat' : 'nætter'}`;
+          
+          // If we have addNights result, only show removeNights if it's cheaper
           if (!extendedStayResult || cheapestRemove.price < extendedStayResult.price) {
-            setExtendedStayResult({ ...cheapestRemove, recommendReason: t.cheapest });
+            setExtendedStayResult({ ...cheapestRemove, recommendReason: nightsLabel });
             setSearchProgress(prev => ({ ...prev, current: prev.current + 1 }));
           }
         }
