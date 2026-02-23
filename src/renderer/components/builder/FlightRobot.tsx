@@ -43,6 +43,7 @@ import {
   Trophy,
   FileDown,
   RotateCcw,
+  Info,
 } from "lucide-react";
 
 import { toast } from "sonner";
@@ -191,6 +192,7 @@ const translations = {
     seats: "seter",
     layover: "mellomland.",
     dateInterval: "Dato-intervall",
+    dateIntervalInfo: "Dette søket går over en lengre periode og vil derfor ta noe lengre tid siden det søkes på mange datoer.",
     earliestDeparture: "Tidligste avreise",
     latestDeparture: "Seneste avreise",
     searchInInterval: "Søk billigste i periode",
@@ -263,6 +265,7 @@ const translations = {
     seats: "sæder",
     layover: "mellemland.",
     dateInterval: "Datointervall",
+    dateIntervalInfo: "Denne søgning dækker en længere periode og vil derfor tage lidt længere tid, da der søges på mange datoer.",
     earliestDeparture: "Tidligste afrejse",
     latestDeparture: "Seneste afrejse",
     searchInInterval: "Søg billigste i periode",
@@ -2135,6 +2138,21 @@ function saveToPowerPointSingle(flight: ProcessedFlight, title: string) {
                   <Label htmlFor="dateInterval" className="cursor-pointer whitespace-nowrap">
                     {t.dateInterval}:
                   </Label>
+                  <Popover>
+                    <PopoverTrigger asChild>
+                      <button className="text-muted-foreground hover:text-foreground transition-colors">
+                        <Info className="h-4 w-4" />
+                      </button>
+                    </PopoverTrigger>
+                    <PopoverContent className="w-80">
+                      <div className="flex gap-2">
+                        <Info className="h-5 w-5 text-blue-500 flex-shrink-0 mt-0.5" />
+                        <p className="text-sm text-muted-foreground">
+                          {t.dateIntervalInfo}
+                        </p>
+                      </div>
+                    </PopoverContent>
+                  </Popover>
                 </div>
                 
                 {/* Earliest departure */}
