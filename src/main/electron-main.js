@@ -991,6 +991,13 @@ ipcMain.handle("ppt:generate", async (_, payload) => {
     // Kall eksisterende build-handler
     const result = await new Promise((resolve, reject) => {
       const scriptPath = path.join(__dirname, "ppt-build.ps1");
+      
+      console.log('🔧 Starting ppt-build.ps1...');
+      console.log('  Script path:', scriptPath);
+      console.log('  Base path:', basePath);
+      console.log('  Departure date:', departureDate || "(ingen)");
+      console.log('  Module count:', modulePaths.length);
+      
       execFile(
         "powershell.exe",
         [
@@ -1003,10 +1010,16 @@ ipcMain.handle("ppt:generate", async (_, payload) => {
           ...modulePaths
         ],
         (error, stdout, stderr) => {
+          // ALWAYS log output from PowerShell
+          if (stdout) console.log('📝 PowerShell (ppt-build) output:\n' + stdout);
+          if (stderr) console.warn('⚠️ PowerShell (ppt-build) warnings:\n' + stderr);
+          
           if (error) {
-            console.error("PowerPoint build error:", stderr || error);
+            console.error("❌ PowerPoint build error:", error);
             reject(stderr || error.message);
           } else {
+            console.log('✅ ppt-build.ps1 completed successfully');
+            console.log('✅ ppt-build.ps1 completed successfully');
             // After successful build, run post-processing
             const postProcessPath = path.join(__dirname, "ppt-post-process.ps1");
             const flightDataJson = flightData ? JSON.stringify(flightData) : "";
@@ -1031,6 +1044,13 @@ ipcMain.handle("ppt:generate", async (_, payload) => {
               console.log('📄 Flight data written to:', flightDataPath);
             }
             
+            console.log('🔧 Starting ppt-post-process.ps1...');
+            console.log('  Script path:', postProcessPath);
+            console.log('  Presentation path:', basePath);
+            console.log('  Departure date:', departureDate || "(ingen)");
+            console.log('  Flight data path:', flightDataPath || "(ingen)");
+            console.log('  Language:', language || "no");
+            
             execFile(
               "powershell.exe",
               [
@@ -1044,12 +1064,14 @@ ipcMain.handle("ppt:generate", async (_, payload) => {
                 language || "no"
               ],
               (postError, postStdout, postStderr) => {
-                // Log all output for debugging
-                if (postStdout) console.log("PowerShell output:", postStdout);
-                if (postStderr) console.log("PowerShell warnings:", postStderr);
+                // ALWAYS log all output for debugging
+                if (postStdout) console.log('📝 PowerShell (post-process) output:\n' + postStdout);
+                if (postStderr) console.warn('⚠️ PowerShell (post-process) warnings:\n' + postStderr);
                 
                 if (postError) {
-                  console.error("PowerPoint post-processing error:", postError);
+                  console.error("❌ PowerPoint post-processing error:", postError);
+                  console.error("Error code:", postError.code);
+                  console.error("Error message:", postError.message);
                   // Check if it's a critical error or just warnings
                   if (postStdout && postStdout.includes("Post-processing complete")) {
                     console.log("✅ Despite errors, post-processing completed successfully");
@@ -1058,7 +1080,7 @@ ipcMain.handle("ppt:generate", async (_, payload) => {
                     reject(postStderr || postError.message);
                   }
                 } else {
-                  console.log("✅ Post-processing complete:", postStdout);
+                  console.log("✅ ppt-post-process.ps1 complete");
                   resolve({ ok: true });
                 }
               }
@@ -1068,9 +1090,11 @@ ipcMain.handle("ppt:generate", async (_, payload) => {
       );
     });
     
+    console.log('🎁 Final result:', result);
     return result;
   } catch (error) {
-    console.error('ppt:generate error:', error);
+    console.error('❌ ppt:generate error:', error);
+    console.error('Error stack:', error.stack);
     return { ok: false, error: String(error) };
   }
 });

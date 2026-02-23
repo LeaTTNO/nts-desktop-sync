@@ -1,0 +1,30 @@
+﻿c71e762	2026-02-20 15:44:25 +0100	v1.0.8: Force UI re-render n├Ñr kategori navn endres
+ package.json                                        | 2 +-
+ src/renderer/components/builder/TemplateLibrary.tsx | 3 ++-
+ 2 files changed, 3 insertions(+), 2 deletions(-)
+
+15871f1	2026-02-20 15:12:51 +0100	v1.0.7: Fix kategori navn-redigering for 2-trinns kategorier (Stone Town)
+ package.json                                       |  2 +-
+ .../components/builder/TemplateLibrary.tsx         | 24 ++++++------
+ src/renderer/store/useUserCategoryStore.ts         | 43 ++++++++++++++++++++++
+ 3 files changed, 57 insertions(+), 12 deletions(-)
+
+8b2a4bb	2026-02-20 15:02:53 +0100	Bump version to 1.0.6 - Clean restore to 7288ac2 + Tembo dropdown
+ package.json | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+b8c51c5	2026-02-20 12:34:47 +0100	Restructure Zanzibar categories to 2-level hierarchy
+ .../components/builder/TemplateLibrary.tsx         | 22 ++++++++++++++++++++--
+ src/renderer/config/templateCategories.ts          | 11 ++++++++++-
+ 2 files changed, 30 insertions(+), 3 deletions(-)
+
+7288ac2	2026-02-19 16:33:55 +0100	v1.0.1: gjenopprett fungerende versjon fra kl 10:20
+ package.json | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+d068e8a	2026-02-19 10:20:12 +0100	Flyrobot: netter-sok bruker beste-kriterier; DK flytabell dansk tekst; NO/DK-knapper mer synlige; info om antall netter i resultater
+ src/main/electron-main.js                       |  15 +--
+ src/renderer/components/Header.css              |   8 +-
+ src/renderer/components/builder/FlightRobot.tsx | 138 ++++++++++++++++--------
+ src/renderer/index.css                          |   8 +-
+ 4 files changed, 113 insertions(+), 56 deletions(-)
