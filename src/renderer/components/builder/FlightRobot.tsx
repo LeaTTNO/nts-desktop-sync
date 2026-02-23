@@ -1569,10 +1569,10 @@ function saveToPowerPointSingle(flight: ProcessedFlight, title: string) {
 
       // 3A. ADD NIGHTS SEARCH (extend trip if cheaper)
       if (addNights && addNightsCount > 0) {
-        let cheapestAdd: ProcessedFlight | null = null;
+        let bestAdd: ProcessedFlight | null = null;
         const allAddFlights: ProcessedFlight[] = []; // Collect all flights for preferred airline search
 
-        // Search ALL variations (1, 2, 3, ... addNightsCount) to find the BEST option
+        // Search ALL variations (1, 2, 3, ... addNightsCount) to find the BEST option using SCORE (not just price!)
         for (let i = 1; i <= addNightsCount; i++) {
           const newRetDate = addDays(returnDateStr, i);
 
@@ -1590,11 +1590,12 @@ function saveToPowerPointSingle(flight: ProcessedFlight, title: string) {
 
             allAddFlights.push(...valid); // Store for preferred airline search
 
-            // Find cheapest across ALL night variations
+            // Find BEST AND CHEAPEST (lowest score) across ALL night variations
             for (const flight of valid) {
               flight.nightsDiff = i; // Tag with number of extra nights
-              if (!cheapestAdd || flight.price < cheapestAdd.price) {
-                cheapestAdd = flight;
+              const flightScore = calculateFlightScore(flight);
+              if (!bestAdd || flightScore < calculateFlightScore(bestAdd)) {
+                bestAdd = flight;
               }
             }
           } catch (err) {
@@ -1602,12 +1603,14 @@ function saveToPowerPointSingle(flight: ProcessedFlight, title: string) {
           }
         }
 
-        // Show ONLY the single best option with info about how many nights were added
-        if (cheapestAdd && cheapestAdd.price < basePrice) {
+        // ALWAYS show the best option (by score) - even if more expensive!
+        // User wants to see the result if the checkbox is enabled
+        if (bestAdd) {
           const nightsLabel = language === 'no' 
-            ? `${t.addNights} +${cheapestAdd.nightsDiff} ${cheapestAdd.nightsDiff === 1 ? 'natt' : 'netter'}`
-            : `${t.addNights} +${cheapestAdd.nightsDiff} ${cheapestAdd.nightsDiff === 1 ? 'nat' : 'nætter'}`;
-          setExtendedStayResult({ ...cheapestAdd, recommendReason: nightsLabel });
+            ? `${t.addNights} +${bestAdd.nightsDiff} ${bestAdd.nightsDiff === 1 ? 'natt' : 'netter'}`
+            : `${t.addNights} +${bestAdd.nightsDiff} ${bestAdd.nightsDiff === 1 ? 'nat' : 'nætter'}`;
+          // Add directly to flight list instead of using setExtendedStayResult (which can be overwritten)
+          addFlight(toFlightInfo(bestAdd, nightsLabel));
           setSearchProgress(prev => ({ ...prev, current: prev.current + 1 }));
         }
         
@@ -1640,10 +1643,10 @@ function saveToPowerPointSingle(flight: ProcessedFlight, title: string) {
 
       // 3B. REMOVE NIGHTS SEARCH (shorten trip if cheaper)
       if (removeNights && removeNightsCount > 0) {
-        let cheapestRemove: ProcessedFlight | null = null;
+        let bestRemove: ProcessedFlight | null = null;
         const allRemoveFlights: ProcessedFlight[] = []; // Collect all flights for preferred airline search
 
-        // Search ALL variations (-1, -2, -3, ... -removeNightsCount) to find the BEST option
+        // Search ALL variations (-1, -2, -3, ... -removeNightsCount) to find the BEST option using SCORE (not just price!)
         for (let i = 1; i <= removeNightsCount; i++) {
           const newRetDate = addDays(returnDateStr, -i);
 
@@ -1661,11 +1664,12 @@ function saveToPowerPointSingle(flight: ProcessedFlight, title: string) {
 
             allRemoveFlights.push(...valid); // Store for preferred airline search
 
-            // Find cheapest across ALL night variations
+            // Find BEST AND CHEAPEST (lowest score) across ALL night variations
             for (const flight of valid) {
               flight.nightsDiff = -i; // Tag with number of removed nights (negative)
-              if (!cheapestRemove || flight.price < cheapestRemove.price) {
-                cheapestRemove = flight;
+              const flightScore = calculateFlightScore(flight);
+              if (!bestRemove || flightScore < calculateFlightScore(bestRemove)) {
+                bestRemove = flight;
               }
             }
           } catch (err) {
@@ -1673,18 +1677,17 @@ function saveToPowerPointSingle(flight: ProcessedFlight, title: string) {
           }
         }
 
-        // Show ONLY if cheaper than original - compare with extendedStayResult if exists
-        if (cheapestRemove && cheapestRemove.price < basePrice) {
-          const absNights = Math.abs(cheapestRemove.nightsDiff || 0);
+        // ALWAYS show the best option (by score) - even if more expensive!
+        // User wants to see the result if the checkbox is enabled
+        if (bestRemove) {
+          const absNights = Math.abs(bestRemove.nightsDiff || 0);
           const nightsLabel = language === 'no' 
             ? `${t.removeNights} -${absNights} ${absNights === 1 ? 'natt' : 'netter'}`
             : `${t.removeNights} -${absNights} ${absNights === 1 ? 'nat' : 'nætter'}`;
           
-          // If we have addNights result, only show removeNights if it's cheaper
-          if (!extendedStayResult || cheapestRemove.price < extendedStayResult.price) {
-            setExtendedStayResult({ ...cheapestRemove, recommendReason: nightsLabel });
-            setSearchProgress(prev => ({ ...prev, current: prev.current + 1 }));
-          }
+          // Add directly to flight list (both add and remove can be shown if both are enabled)
+          addFlight(toFlightInfo(bestRemove, nightsLabel));
+          setSearchProgress(prev => ({ ...prev, current: prev.current + 1 }));
         }
         
         // Find best remove nights option for each selected airline
