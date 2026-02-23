@@ -55,6 +55,7 @@ export default function TravelProgramBuilder({ language = 'no' }: TravelProgramB
     getTemplatesByCategoryName,
     loadFromDB,
     slides, // <-- bring in slides from global state
+    removeFlightSlides, // <-- add this
   } = useTemplateStore();
 
   const { categories: userCategories, getCategoriesForUser, isBuiltinCategoryVisible } = useUserCategoryStore();
@@ -288,10 +289,9 @@ export default function TravelProgramBuilder({ language = 'no' }: TravelProgramB
         }))
       );
 
-      // Hent flyinformasjon fra localStorage hvis tilgjengelig
-      const flightDataStr = localStorage.getItem('flyinformasjon-data');
-      const flightReady = localStorage.getItem('flyinformasjon-ready');
-      const flightData = flightDataStr && flightReady === 'true' ? JSON.parse(flightDataStr) : null;
+      // Hent flyinformasjon fra global slides state
+      const flightSlide = slides.find(s => typeof s === "object" && s.type === "flight");
+      const flightData = flightSlide ? (flightSlide as any).data : null;
 
       // Hvis flightData finnes, sørg for at en Flyinformasjon-modul er inkludert
       // Hent den faktiske malen fra biblioteket slik at design og layout bevares
@@ -1159,7 +1159,15 @@ export default function TravelProgramBuilder({ language = 'no' }: TravelProgramB
                       <div key={"flight-slide-" + idx} className="flex items-center gap-2 p-2 rounded bg-background border border-blue-400 bg-blue-50">
                         <span className="flex-1 text-sm font-semibold text-blue-900">✈️ Flyreise (fra Flyrobott)</span>
                         <span className="text-xs text-muted-foreground">{slide.language === 'da' ? 'Flyinfo (DK)' : 'Flyinfo (NO)'}</span>
-                        {/* Optionally: Add a remove button for flight slide */}
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => removeFlightSlides()}
+                          className="h-6 w-6 p-0"
+                          title="Fjern flyinformasjon"
+                        >
+                          <X className="h-3 w-3" />
+                        </Button>
                       </div>
                     );
                   }

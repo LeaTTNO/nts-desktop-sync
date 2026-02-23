@@ -676,10 +676,45 @@ function categorizeFlights(
   const bestAndCheapest = scoredStrict[0] ? { ...scoredStrict[0], isRecommended: true } : null;
 
   // RESULT 2: Best overall by quality alone (different from Result 1, or second-best if only one)
+  // BUT: Only show a different flight if it's significantly better OR similar price
+  // Don't show more expensive flight unless it's worth it
   let bestQuality: ProcessedFlight | null = null;
-  if (strictFlights.length > 1) {
-    // Find first flight with different ID
-    bestQuality = scoredStrict.find(f => f.id !== bestAndCheapest?.id) || null;
+  if (strictFlights.length > 1 && bestAndCheapest) {
+    const QUALITY_PRICE_TOLERANCE = 1000; // Max 1000 kr more expensive for "best quality"
+    
+    // Find best quality flight that's different from bestAndCheapest
+    const qualityCandidates = scoredStrict.filter(f => f.id !== bestAndCheapest.id);
+    
+    if (qualityCandidates.length > 0) {
+      const topQualityFlight = qualityCandidates[0];
+      
+      // Only show as separate "best" if:
+      // 1. Same price or cheaper (always show)
+      // 2. Slightly more expensive BUT significantly better (shorter duration, fewer stops)
+      const priceDiff = topQualityFlight.price - bestAndCheapest.price;
+      
+      if (priceDiff <= 0) {
+        // Same price or cheaper - always show as best
+        bestQuality = topQualityFlight;
+      } else if (priceDiff <= QUALITY_PRICE_TOLERANCE) {
+        // More expensive - check if it's worth it
+        const durationDiff = (bestAndCheapest.combinedDurationMinutes || bestAndCheapest.totalDurationMinutes) - 
+                            (topQualityFlight.combinedDurationMinutes || topQualityFlight.totalDurationMinutes);
+        const stopsDiff = (bestAndCheapest.outbound.stops + (bestAndCheapest.inbound?.stops || 0)) - 
+                         (topQualityFlight.outbound.stops + (topQualityFlight.inbound?.stops || 0));
+        
+        // Show if significantly better: >2 hours shorter OR 1+ fewer stops
+        if (durationDiff >= 120 || stopsDiff >= 1) {
+          bestQuality = topQualityFlight;
+        } else {
+          // Not worth the extra cost - show same as bestAndCheapest
+          bestQuality = null; // Will default to showing bestAndCheapest in both slots
+        }
+      } else {
+        // Too expensive - show same as bestAndCheapest
+        bestQuality = null;
+      }
+    }
   }
 
   // RESULT 3: Cheapest extended (≤25h, allows night flights) - prioritize NEGOTIATED fares
@@ -1202,9 +1237,16 @@ function saveToPowerPointSingle(flight: ProcessedFlight, title: string) {
         price: `${flight.price} ${flight.currency}`,
         segments
       });
-      localStorage.setItem('flyinformasjon-data', JSON.stringify(flightData));
-      localStorage.setItem('flyinformasjon-ready', 'true');
-      toast.success(language === "no" ? "Flyinformasjon lagret! Gå til 'Bygg reiseprogram' og inkluder 'Flyinformasjon' i presentasjonen." : "Flyinformation gemt! Gå til 'Byg rejseprogram' og inkluder 'Flyinformation' i præsentationen.");
+      
+      // Add flight slide to global store instead of localStorage
+      // This makes it show up in "Valgte slides" in Bygg Reiseprogram
+      addFlightSlide(flightData, language);
+      
+      toast.success(
+        language === "no" 
+          ? "Flyinformasjon lagt til! Se under 'Valgte slides' i Bygg reiseprogram." 
+          : "Flyinformation tilføjet! Se under 'Valgte slides' i Byg rejseprogram."
+      );
     } catch (error) {
       console.error("Flight save error:", error);
       toast.error(language === "no" ? "Feil ved lagring" : "Fejl ved gemning");
