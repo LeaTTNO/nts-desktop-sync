@@ -87,181 +87,136 @@ if (-not $presentation) {
 }
 
 Write-Host "Working with presentation: $($presentation.FullName)"
-Write-Host "Total slides: $($presentation.Slides.Count)"
-
 # =====================================================
-# 1. DG/DTO REPLACEMENT (VBA-STYLE DETERMINISTIC TRAVERSAL)
+# 1. DG/DTO REPLACEMENT (COLLECT → SORT → PAIR)
 # =====================================================
 
-Write-Host "Processing DG/DTO replacements (VBA-style pairwise)..."
+Write-Host "Processing DG/DTO replacements (collect-sort-pair algorithm)..."
 Write-Host "DepartureDate parameter received: '$DepartureDate'"
 
-$dayNr = 1
 $baseDate = $null
+$hasDate = $false
 
 if ($DepartureDate -and $DepartureDate.Trim() -ne '') {
     $cleanDate = $DepartureDate.Trim()
     try {
         $baseDate = [DateTime]::ParseExact($cleanDate, "yyyy-MM-dd", [System.Globalization.CultureInfo]::InvariantCulture)
+        $hasDate = $true
         Write-Host "SUCCESS: Parsed departure date: $baseDate"
     } catch {
         try {
             $baseDate = [DateTime]::Parse($cleanDate, [System.Globalization.CultureInfo]::InvariantCulture)
+            $hasDate = $true
             Write-Host "SUCCESS (fallback): Parsed departure date: $baseDate"
         } catch {
             Write-Warning "All date parsing failed for: '$cleanDate'"
         }
     }
 } else {
-    Write-Host "No departure date provided - DTO will be cleared"
+    Write-Host "No departure date provided - DTO will be removed"
 }
 
-# Recursive function to process shapes in traversal order
-function ProcessShape {
-    param($shape, $currentDayNr)
-    
-    $localDayNr = $currentDayNr
-    
-    # Process tables
-    if ($shape.HasTable) {
-        $table = $shape.Table
-        Write-Host "  Processing table: $($table.Rows.Count) rows x $($table.Columns.Count) cols"
-        
-        # Traverse table cells in row-major order
-        for ($r = 1; $r -le $table.Rows.Count; $r++) {
-            for ($c = 1; $c -le $table.Columns.Count; $c++) {
-                $cell = $table.Cell($r, $c)
-                $rawText = $cell.Shape.TextFrame.TextRange.Text
-                
-                # Clean whitespace (PowerPoint uses char(11) as line break in cells)
-                $cellText = $rawText.Trim() -replace [char]13, "" -replace [char]11, "" -replace "`n", "" -replace "`r", ""
-                $cellText = $cellText.Trim()
-                
-                # Process DG/DTO pairs in this cell
-                $text = $cell.Shape.TextFrame.TextRange.Text
-                $modified = $false
-                
-                while ($text -match '\bDG\b') {
-                    $dgIndex = $text.IndexOf("DG")
-                    if ($dgIndex -ge 0) {
-                        # Replace DG with "Dag X"
-                        $text = $text.Substring(0, $dgIndex) + "Dag $localDayNr" + $text.Substring($dgIndex + 2)
-                        Write-Host "    R${r}C${c}: DG → Dag $localDayNr"
-                        $modified = $true
-                        
-                        # Now find next DTO in same cell
-                        $dtoIndex = $text.IndexOf("DTO", $dgIndex)
-                        if ($dtoIndex -ge 0) {
-                            if ($baseDate) {
-                                $currentDate = $baseDate.AddDays($localDayNr - 1)
-                                $formatted = Format-NorwegianDate -Date $currentDate -Lang $Language
-                                $text = $text.Substring(0, $dtoIndex) + $formatted + $text.Substring($dtoIndex + 3)
-                                Write-Host "    R${r}C${c}: DTO → $formatted"
-                            } else {
-                                $text = $text.Substring(0, $dtoIndex) + $text.Substring($dtoIndex + 3)
-                                Write-Host "    R${r}C${c}: DTO → (cleared)"
-                            }
-                        }
-                        
-                        # Increment day counter AFTER processing the pair
-                        $localDayNr++
-                    } else {
-                        break
-                    }
-                }
-                
-                # Also check for standalone DTO (no paired DG)
-                if ($text -match '\bDTO\b' -and -not $modified) {
-                    $dtoIndex = $text.IndexOf("DTO")
-                    if ($dtoIndex -ge 0) {
-                        if ($baseDate) {
-                            # Use previous day number (last processed DG)
-                            $currentDate = $baseDate.AddDays($localDayNr - 2)
-                            $formatted = Format-NorwegianDate -Date $currentDate -Lang $Language
-                            $text = $text.Substring(0, $dtoIndex) + $formatted + $text.Substring($dtoIndex + 3)
-                            Write-Host "    R${r}C${c}: Standalone DTO → $formatted (using day $($localDayNr - 1))"
-                        } else {
-                            $text = $text.Substring(0, $dtoIndex) + $text.Substring($dtoIndex + 3)
-                        }
-                        $modified = $true
-                    }
-                }
-                
-                if ($modified) {
-                    $cell.Shape.TextFrame.TextRange.Text = $text
-                }
-            }
-        }
-    }
-    # Process groups recursively
-    elseif ($shape.Type -eq 6) { # msoGroup
-        Write-Host "  Processing group with $($shape.GroupItems.Count) items"
-        foreach ($item in $shape.GroupItems) {
-            $localDayNr = ProcessShape -shape $item -currentDayNr $localDayNr
-        }
-    }
-    # Process text frames
-    elseif ($shape.HasTextFrame -and $shape.TextFrame.HasText) {
-        $textRange = $shape.TextFrame.TextRange
-        $text = $textRange.Text
-        $modified = $false
-        
-        while ($text -match '\bDG\b') {
-            $dgIndex = $text.IndexOf("DG")
-            if ($dgIndex -ge 0) {
-                # Replace DG with "Dag X"
-                $text = $text.Substring(0, $dgIndex) + "Dag $localDayNr" + $text.Substring($dgIndex + 2)
-                Write-Host "    TextFrame: DG → Dag $localDayNr"
-                $modified = $true
-                
-                # Find next DTO after this DG
-                $dtoIndex = $text.IndexOf("DTO", $dgIndex)
-                if ($dtoIndex -ge 0) {
-                    if ($baseDate) {
-                        $currentDate = $baseDate.AddDays($localDayNr - 1)
-                        $formatted = Format-NorwegianDate -Date $currentDate -Lang $Language
-                        $text = $text.Substring(0, $dtoIndex) + $formatted + $text.Substring($dtoIndex + 3)
-                        Write-Host "    TextFrame: DTO → $formatted"
-                    } else {
-                        $text = $text.Substring(0, $dtoIndex) + $text.Substring($dtoIndex + 3)
-                    }
-                }
-                
-                # Increment AFTER processing pair
-                $localDayNr++
-            } else {
-                break
-            }
-        }
-        
-        if ($modified) {
-            $textRange.Text = $text
-        }
-    }
-    
-    return $localDayNr
-}
+# STEP 1: COLLECT all DG and DTO shapes from entire presentation
+$dgShapes = @()
+$dtoShapes = @()
 
-# Main traversal: slides → shapes sorted by visual position (Top, then Left)
 foreach ($slide in $presentation.Slides) {
-    Write-Host "Slide $($slide.SlideIndex):"
+    Write-Host "  Scanning slide $($slide.SlideIndex)..."
     
-    # Convert shapes to array and sort by Top position (then Left)
-    # This ensures shapes at top of slide are processed before shapes at bottom
-    $shapesArray = @()
     foreach ($shape in $slide.Shapes) {
-        $shapesArray += $shape
-    }
-    
-    # Sort by Top (vertical position), then Left (horizontal position)
-    $sortedShapes = $shapesArray | Sort-Object { $_.Top }, { $_.Left }
-    
-    foreach ($shape in $sortedShapes) {
-        $dayNr = ProcessShape -shape $shape -currentDayNr $dayNr
+        # Check text frames
+        if ($shape.HasTextFrame -and $shape.TextFrame.HasText) {
+            $txt = $shape.TextFrame.TextRange.Text
+            if ($txt -like "*DG*") { 
+                $dgShapes += @{Shape = $shape; Top = $shape.Top; Left = $shape.Left; Slide = $slide.SlideIndex}
+            }
+            if ($txt -like "*DTO*") { 
+                $dtoShapes += @{Shape = $shape; Top = $shape.Top; Left = $shape.Left; Slide = $slide.SlideIndex}
+            }
+        }
+        
+        # Check groups
+        if ($shape.Type -eq 6) {
+            foreach ($item in $shape.GroupItems) {
+                if ($item.HasTextFrame -and $item.TextFrame.HasText) {
+                    $txt = $item.TextFrame.TextRange.Text
+                    if ($txt -like "*DG*") { 
+                        $dgShapes += @{Shape = $item; Top = $item.Top; Left = $item.Left; Slide = $slide.SlideIndex}
+                    }
+                    if ($txt -like "*DTO*") { 
+                        $dtoShapes += @{Shape = $item; Top = $item.Top; Left = $item.Left; Slide = $slide.SlideIndex}
+                    }
+                }
+            }
+        }
+        
+        # Check tables
+        if ($shape.HasTable) {
+            $tbl = $shape.Table
+            for ($r = 1; $r -le $tbl.Rows.Count; $r++) {
+                for ($c = 1; $c -le $tbl.Columns.Count; $c++) {
+                    $cell = $tbl.Cell($r, $c).Shape
+                    if ($cell.HasTextFrame -and $cell.TextFrame.HasText) {
+                        $txt = $cell.TextFrame.TextRange.Text
+                        if ($txt -like "*DG*") { 
+                            $dgShapes += @{Shape = $cell; Top = $cell.Top; Left = $cell.Left; Slide = $slide.SlideIndex}
+                        }
+                        if ($txt -like "*DTO*") { 
+                            $dtoShapes += @{Shape = $cell; Top = $cell.Top; Left = $cell.Left; Slide = $slide.SlideIndex}
+                        }
+                    }
+                }
+            }
+        }
     }
 }
 
-Write-Host "DG/DTO processing complete. Final day counter: $dayNr"
+Write-Host "  Found $($dgShapes.Count) DG shapes and $($dtoShapes.Count) DTO shapes"
+
+# STEP 2: SORT by visual position (Slide → Top → Left) - ENSURES CHRONOLOGICAL ORDER
+# This guarantees first DG visually = Dag 1, regardless of PowerPoint z-order
+$dgShapes = $dgShapes | Sort-Object { $_.Slide }, { $_.Top }, { $_.Left }
+$dtoShapes = $dtoShapes | Sort-Object { $_.Slide }, { $_.Top }, { $_.Left }
+
+Write-Host "  Shapes sorted by position (Slide, Top, Left)"
+
+# STEP 3: PAIR and replace in chronological order
+$pairCount = [Math]::Min($dgShapes.Count, $dtoShapes.Count)
+$day = 1
+
+Write-Host "  Processing $pairCount DG/DTO pairs..."
+
+for ($i = 0; $i -lt $pairCount; $i++) {
+    $dgObj = $dgShapes[$i]
+    $dtoObj = $dtoShapes[$i]
+    
+    # Replace DG with "Dag X"
+    if ($dgObj.Shape.HasTextFrame) {
+        $dgObj.Shape.TextFrame.TextRange.Text = 
+            $dgObj.Shape.TextFrame.TextRange.Text -replace "DG", ("Dag " + $day)
+        Write-Host "    [$i] DG (Slide $($dgObj.Slide), Top $([int]$dgObj.Top)) → Dag $day"
+    }
+    
+    # Replace or remove DTO
+    if ($dtoObj.Shape.HasTextFrame) {
+        if ($hasDate) {
+            $currentDate = $baseDate.AddDays($day - 1)
+            $formatted = Format-NorwegianDate -Date $currentDate -Lang $Language
+            $dtoObj.Shape.TextFrame.TextRange.Text = 
+                $dtoObj.Shape.TextFrame.TextRange.Text -replace "DTO", $formatted
+            Write-Host "    [$i] DTO (Slide $($dtoObj.Slide), Top $([int]$dtoObj.Top)) → $formatted"
+        } else {
+            # NO DATE: Remove DTO completely
+            $dtoObj.Shape.TextFrame.TextRange.Text = 
+                $dtoObj.Shape.TextFrame.TextRange.Text -replace "DTO", ""
+            Write-Host "    [$i] DTO (Slide $($dtoObj.Slide), Top $([int]$dtoObj.Top)) → (removed)"
+        }
+    }
+    
+    $day++
+}
+
+Write-Host "DG/DTO processing complete: $pairCount pairs processed"
 
 # =====================================================
 # 2. FLIGHT TABLE POPULATION (SEGMENTS-BASED)
