@@ -60,6 +60,17 @@ if ($flightModulePath -and (Test-Path $flightModulePath)) {
 }
 
 # STEG 2: Sett inn alle ANDRE moduler FØR de siste 2 slidene (Flyinformasjon + siste slide)
+# Start posisjonen beregnes FØR flyinformasjon ble lagt til
+$moduleInsertStart = if ($flightModulePath) {
+    # Hvis flyinformasjon finnes: sett inn FØR den (som nå er nest sist)
+    [Math]::Max(1, $presentation.Slides.Count - 2)
+} else {
+    # Ingen flyinformasjon: sett inn FØR siste slide
+    [Math]::Max(1, $presentation.Slides.Count - 1)
+}
+
+$currentInsertPos = $moduleInsertStart
+
 foreach ($modulePath in $ModulePaths) {
 
     if (-not (Test-Path $modulePath)) { continue }
@@ -75,13 +86,11 @@ foreach ($modulePath in $ModulePaths) {
         $false
     )
 
-    # Vanlige moduler: sett inn FØR de siste 2 slidene
-    # (nest siste er nå flyinformasjon hvis den finnes, ellers original nest siste)
-    $insertPosition = [Math]::Max(1, $presentation.Slides.Count - 1)
+    # Sett inn slides sekvensielt fra $currentInsertPos
     foreach ($slide in $modulePres.Slides) {
         $slide.Copy()
-        $presentation.Slides.Paste($insertPosition)
-        $insertPosition++
+        $presentation.Slides.Paste($currentInsertPos)
+        $currentInsertPos++  # Øk posisjonen for neste slide
     }
 
     $modulePres.Close()
