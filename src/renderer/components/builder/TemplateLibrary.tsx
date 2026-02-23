@@ -4,7 +4,6 @@ import { useUserCategoryStore } from "@/store/useUserCategoryStore";
 import { useAuth } from "@/contexts/AuthContext";
 import { getUploadableCategories, getUserPersonalCategory, getAllUserBaseCategories } from "@/config/templateCategories";
 import { getUserPrefix } from "@/config/userConfig";
-import { saveTemplate, type TemplateEntry } from "@/services/templateStorage";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -33,7 +32,7 @@ import {
   AccordionItem,
   AccordionTrigger,
 } from "@/components/ui/accordion";
-import { Upload, Trash2, Eye, EyeOff, Plus, Edit2, FolderPlus, RefreshCw, Save, CheckSquare, Square } from "lucide-react";
+import { Upload, Trash2, Eye, EyeOff, Plus, Edit2, FolderPlus, RefreshCw, Save } from "lucide-react";
 import { toast } from "sonner";
 
 export default function TemplateLibrary() {
@@ -44,9 +43,6 @@ export default function TemplateLibrary() {
   const [isSyncing, setIsSyncing] = useState(false);
   const [editingCategoryId, setEditingCategoryId] = useState<string | null>(null);
   const [editingCategoryName, setEditingCategoryName] = useState<string>("");
-  const [hiddenCategories, setHiddenCategories] = useState<string[]>([]);
-  // State for innebygde kategoriers synlighet og checkbox for admin
-  const [builtInCategorySettings, setBuiltInCategorySettings] = useState<Record<string, { isVisible?: boolean; hasCheckbox?: boolean }>>({});;
 
   const { user, userEmail, userLanguage, isAdmin: userIsAdmin } = useAuth();
   const userPrefix = userEmail ? getUserPrefix(userEmail) : undefined;
@@ -65,9 +61,7 @@ export default function TemplateLibrary() {
     addCategory: addUserCategory,
     deleteCategory: deleteUserCategory,
     getCategoriesForUser,
-    updateCategory: updateUserCategory,
-    setBuiltinCategoryVisible,
-    isBuiltinCategoryVisible,
+    updateCategory: updateUserCategory
   } = useUserCategoryStore();
 
   // Håndter lagring av nytt navn på kategori
@@ -76,19 +70,22 @@ export default function TemplateLibrary() {
     setEditingCategoryName(currentName);
   };
 
-  const handleSaveCategoryName = (catId?: string) => {
+  const handleSaveCategoryName = (catId: string) => {
     if (!editingCategoryName.trim()) {
       toast.error("Kategorinavn kan ikke være tomt");
       return;
     }
+    // Update user category if it exists, otherwise update default category
     const userCat = userCategories.find(c => c.id === catId);
     if (userCat) {
-      updateUserCategory(catId!, { name: editingCategoryName.trim() });
+      updateUserCategory(catId, editingCategoryName.trim());
     } else {
+      // Update default category name in Zustand store
       const idx = uploadableCategories.findIndex(c => c.id === catId);
       if (idx !== -1) {
         uploadableCategories[idx].name = editingCategoryName.trim();
       }
+      // Also update in allCategories for immediate frontend update
       const idxAll = allCategories.findIndex(c => c.id === catId);
       if (idxAll !== -1) {
         allCategories[idxAll].name = editingCategoryName.trim();
@@ -97,87 +94,13 @@ export default function TemplateLibrary() {
     toast.success("Kategorinavn oppdatert");
     setEditingCategoryId(null);
     setEditingCategoryName("");
+    // Force reload to reflect changes everywhere
     loadFromDB();
-  };
-
-  const handleToggleCategoryCheckbox = (catId: string) => {
-    const userCat = userCategories.find(c => c.id === catId);
-    if (userCat) {
-      updateUserCategory(catId, { hasCheckbox: !userCat.hasCheckbox });
-      toast.success(userCat.hasCheckbox ? "Vises alltid" : "Vises med checkbox");
-    } else if (userIsAdmin) {
-      // For innebygde kategorier - kun admin kan endre
-      const currentHasCheckbox = builtInCategorySettings[catId]?.hasCheckbox ?? true;
-      setBuiltInCategorySettings(prev => ({
-        ...prev,
-        [catId]: { ...prev[catId], hasCheckbox: !currentHasCheckbox }
-      }));
-      toast.success(currentHasCheckbox ? "Vises alltid" : "Vises med checkbox");
-    } else {
-      toast.error("Checkbox kan kun endres for egendefinerte kategorier");
-    }
-  };
-
-  const handleToggleCategoryVisibility = (catId: string) => {
-    const userCat = userCategories.find(c => c.id === catId);
-    if (userCat) {
-      updateUserCategory(catId, { isVisible: !userCat.isVisible });
-      toast.success(userCat.isVisible ? "Kategori skjult i frontend" : "Kategori synlig i frontend");
-    } else if (userIsAdmin) {
-      // For innebygde kategorier - lagre i useUserCategoryStore (persistent)
-      const currentIsVisible = isBuiltinCategoryVisible(catId);
-      setBuiltinCategoryVisible(catId, !currentIsVisible);
-      // Speil i lokal state for umiddelbar UI-oppdatering
-      setBuiltInCategorySettings(prev => ({
-        ...prev,
-        [catId]: { ...prev[catId], isVisible: !currentIsVisible }
-      }));
-      toast.success(currentIsVisible ? "Kategori skjult i frontend" : "Kategori synlig i frontend");
-    } else {
-      toast.error("Synlighet kan kun endres for egendefinerte kategorier");
-    }
-  };
-
-  const handleDeleteCategory = (catId: string) => {
-    const category = allCategories.find(c => c.id === catId);
-    if (!category) return;
-    
-    const userCat = userCategories.find(c => c.id === catId);
-    if (userCat) {
-      if (confirm(`Er du sikker på at du vil slette kategorien "${category.name}"?`)) {
-        deleteUserCategory(catId);
-        toast.success("Kategori slettet");
-        setEditingCategoryId(null);
-      }
-    } else {
-      // For innebygde kategorier - fjern alle maler og skjul kategorien
-      if (confirm(`Er du sikker på at du vil slette kategorien "${category.name}" og alle malene i den?`)) {
-        const templatesToDelete = templates.filter(t => t.category === catId);
-        templatesToDelete.forEach(t => deleteTemplate(t.id));
-        setHiddenCategories(prev => [...prev, catId]);
-        toast.success(`Kategori "${category.name}" og ${templatesToDelete.length} mal(er) slettet`);
-        setEditingCategoryId(null);
-      }
-    }
   };
 
   useEffect(() => {
     loadFromDB();
   }, [loadFromDB]);
-
-  // Synkroniser innebygd kategori-synlighet fra store ved oppstart
-  useEffect(() => {
-    const uploadable = getUploadableCategories();
-    const newSettings: Record<string, { isVisible?: boolean; hasCheckbox?: boolean }> = {};
-    uploadable.forEach(cat => {
-      newSettings[cat.id] = {
-        isVisible: isBuiltinCategoryVisible(cat.id),
-        hasCheckbox: builtInCategorySettings[cat.id]?.hasCheckbox,
-      };
-    });
-    setBuiltInCategorySettings(newSettings);
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [userCategories.length]);
 
   // Legg til brukerens personlige kategori
   const personalCategory = userPrefix
@@ -185,7 +108,7 @@ export default function TemplateLibrary() {
     : null;
 
   // Get uploadable categories
-  const uploadableCategories = getUploadableCategories();
+  const uploadableCategories = getUploadableCategories(userLanguage);
 
   // Get base categories for all users (kun for admin)
   const baseCategories = userIsAdmin ? getAllUserBaseCategories(userLanguage) : [];
@@ -202,10 +125,8 @@ export default function TemplateLibrary() {
       kind: "dropdown" as const,
       order: uc.order,
       isUserCategory: true,
-      isVisible: uc.isVisible ?? true, // Default to true if not set
-      hasCheckbox: uc.hasCheckbox ?? true, // Default to true if not set
     }))
-  ].filter(cat => !hiddenCategories.includes(cat.id)).sort((a, b) => a.order - b.order);
+  ].sort((a, b) => a.order - b.order);
   
   // Filtrer templates basert på bruker
   const filteredTemplates = userIsAdmin 
@@ -259,88 +180,24 @@ export default function TemplateLibrary() {
     toast.success(`Kategori "${categoryName}" ble slettet`);
   };
 
-  async function handleUpload(category: string) {
-    try {
-      // @ts-ignore - Electron IPC
-      const dialogResult = await window.electron.invoke("dialog:select-file");
-      
-      if (dialogResult.canceled) {
-        return; // User canceled
-      }
-      
-      const filePaths = dialogResult.filePaths; // Now an array of paths
-      let successCount = 0;
-      let failCount = 0;
-      
-      // Process each selected file
-      for (const filePath of filePaths) {
-        try {
-          const fileName = filePath.split(/[\\/]/).pop() || 'unknown.pptx';
-          
-          // Read file content via IPC
-          // @ts-ignore - Electron IPC
-          const fileResult = await window.electron.invoke("file:read", filePath);
-          
-          if (!fileResult.success) {
-            console.error(`Kunne ikke lese ${fileName}:`, fileResult.error);
-            failCount++;
-            continue;
-          }
-          
-          const buf = fileResult.data.buffer; // Convert Node Buffer to ArrayBuffer
-          
-          // Save to IndexedDB (local)
-          await addTemplate({
-            name: fileName.replace(/\.pptx?$/i, ""),
-            fileName: fileName,
-            blob: buf,
-            category,
-          });
-          
-          // If admin: Register file in OneDrive manifest (file already exists in OneDrive folder)
-          if (userIsAdmin) {
-            try {
-              // @ts-ignore - Electron IPC
-              const result = await window.electron.invoke("onedrive:upload-template", {
-                filePath: filePath,
-                category: category,
-                order: 999,
-                language: userLanguage,
-              });
-              
-              if (result.success) {
-                console.log(`✅ Admin registered ${fileName} in OneDrive manifest`);
-              } else {
-                console.error(`❌ Failed to register ${fileName}:`, result.error);
-                failCount++;
-                continue;
-              }
-            } catch (error) {
-              console.error(`OneDrive registration error for ${fileName}:`, error);
-              failCount++;
-              continue;
-            }
-          }
-          
-          successCount++;
-        } catch (error) {
-          console.error('File processing error:', error);
-          failCount++;
-        }
-      }
-      
-      // Show summary toast
-      if (successCount > 0 && failCount === 0) {
-        toast.success(`${successCount} fil${successCount > 1 ? 'er' : ''} lastet opp til ${category}`);
-      } else if (successCount > 0 && failCount > 0) {
-        toast.warning(`${successCount} fil${successCount > 1 ? 'er' : ''} lastet opp, ${failCount} feilet`);
-      } else if (failCount > 0) {
-        toast.error(`Kunne ikke laste opp ${failCount} fil${failCount > 1 ? 'er' : ''}`);
-      }
-    } catch (error) {
-      console.error('Upload error:', error);
-      toast.error('Feil ved opplasting');
+  async function handleUpload(
+    e: React.ChangeEvent<HTMLInputElement>,
+    category: string
+  ) {
+    const files = Array.from(e.target.files || []);
+    
+    for (const f of files) {
+      const buf = await f.arrayBuffer();
+      await addTemplate({
+        name: f.name.replace(/\.pptx?$/i, ""),
+        fileName: f.name,
+        blob: buf,
+        category,
+      });
     }
+    
+    toast.success(`${files.length} fil(er) lastet opp til ${category}`);
+    e.target.value = "";
   }
 
   function handleDelete(id: string, name: string) {
@@ -356,82 +213,21 @@ export default function TemplateLibrary() {
   async function handleSyncNow() {
     setIsSyncing(true);
     try {
-      console.log("🔄 Starting OneDrive sync (local filesystem)...");
-      console.log("📁 User language:", userLanguage);
-      toast.info("Synkroniserer fra OneDrive-mappe...");
-      
-      // Call main process to read files from local OneDrive folder
       // @ts-ignore - Electron IPC
-      const result = await window.electron.invoke("onedrive:sync-now", { language: userLanguage });
-      
-      if (!result.success) {
-        toast.error(result.error || "Kunne ikke synkronisere");
-        setIsSyncing(false);
-        return;
+      const result = await window.electron.invoke("onedrive:sync-now");
+      if (result.success) {
+        toast.success("OneDrive synkronisering startet!");
+        // Reload templates after a short delay
+        setTimeout(() => {
+          loadFromDB();
+          toast.info("Maler oppdatert");
+        }, 2000);
+      } else {
+        toast.error("Synkronisering feilet: " + result.error);
       }
-      
-      const { files, count } = result;
-      console.log(`📁 Received ${count} files from OneDrive`);
-      
-      if (count === 0) {
-        toast.info("Ingen PowerPoint-filer funnet i OneDrive");
-        setIsSyncing(false);
-        return;
-      }
-      
-      toast.info(`Lagrer ${count} fil${count > 1 ? 'er' : ''}...`);
-      
-      // Save each file to IndexedDB
-      let successCount = 0;
-      let errorCount = 0;
-      
-      for (const file of files) {
-        try {
-          // Convert base64 back to ArrayBuffer
-          const binaryString = atob(file.data);
-          const bytes = new Uint8Array(binaryString.length);
-          for (let i = 0; i < binaryString.length; i++) {
-            bytes[i] = binaryString.charCodeAt(i);
-          }
-          const arrayBuffer = bytes.buffer;
-          
-          // Create template entry using category from manifest
-          const template: TemplateEntry = {
-            id: `onedrive-${file.name}`,
-            name: file.name.replace(/\.pptx?$/i, ''),
-            category: file.category || 'onedrive-sync', // Use category from manifest
-            order: file.order || 999,
-            visibleInBuilder: true,
-            blob: arrayBuffer,
-            fileName: file.name,
-            createdAt: Date.now(),
-          };
-          
-          await saveTemplate(template);
-          successCount++;
-          console.log(`✅ Saved: ${file.name} (category: ${file.category})`);
-        } catch (error) {
-          console.error(`❌ Failed to save ${file.name}:`, error);
-          errorCount++;
-        }
-      }
-      
-      // Reload UI
-      await loadFromDB();
-      
-      // Show result
-      if (successCount > 0) {
-        toast.success(`✅ Synkronisert ${successCount} mal${successCount > 1 ? 'er' : ''} fra OneDrive`);
-      }
-      if (errorCount > 0) {
-        toast.error(`⚠️ ${errorCount} feil under synkronisering`);
-      }
-      
-      console.log(`🎉 Sync complete: ${successCount} success, ${errorCount} errors`);
-      
     } catch (error) {
-      console.error("❌ Sync error:", error);
-      toast.error("Kunne ikke synkronisere: " + (error instanceof Error ? error.message : 'Ukjent feil'));
+      console.error("Sync error:", error);
+      toast.error("Kunne ikke starte synkronisering");
     } finally {
       setIsSyncing(false);
     }
@@ -448,38 +244,36 @@ export default function TemplateLibrary() {
           value={openCategories}
           onValueChange={setOpenCategories}
         >
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-2 mb-4 items-start">
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-2 mb-4">
           {allCategories.map((cat) => {
-              let list = filteredTemplates.filter((t) => t.category === cat.name);
+            let list = filteredTemplates.filter((t) => t.category === cat.name);
 
-              // Safari-sortering: tall først numerisk, så resten alfabetisk, så de uten tall til sist
-              if (cat.name.toLowerCase().includes('safari')) {
-                const withNumber = list.filter(t => /^\d+/.test(t.name));
-                const withoutNumber = list.filter(t => !/^\d+/.test(t.name));
-                withNumber.sort((a, b) => {
-                  const numA = parseInt(a.name.match(/^\d+/)?.[0] || '0', 10);
-                  const numB = parseInt(b.name.match(/^\d+/)?.[0] || '0', 10);
-                  return numA - numB;
-                });
-                // De uten tall sorteres alfabetisk og legges til sist
-                withoutNumber.sort((a, b) => a.name.localeCompare(b.name));
-                list = [...withNumber, ...withoutNumber];
-              }
+            // Safari-sortering: tall først numerisk, så resten alfabetisk, så de uten tall til sist
+            if (cat.name.toLowerCase().includes('safari')) {
+              const withNumber = list.filter(t => /^\d+/.test(t.name));
+              const withoutNumber = list.filter(t => !/^\d+/.test(t.name));
+              withNumber.sort((a, b) => {
+                const numA = parseInt(a.name.match(/^\d+/)?.[0] || '0', 10);
+                const numB = parseInt(b.name.match(/^\d+/)?.[0] || '0', 10);
+                return numA - numB;
+              });
+              // De uten tall sorteres alfabetisk og legges til sist
+              withoutNumber.sort((a, b) => a.name.localeCompare(b.name));
+              list = [...withNumber, ...withoutNumber];
+            }
 
-              const isUserCategory = 'isUserCategory' in cat && cat.isUserCategory;
-              const isPersonalCategory = cat.kind === 'user';
-              const userOwnsCategory = isUserCategory && userCategories.find(c => c.id === cat.id)?.userId === userEmail;
-              const canEdit = userIsAdmin || isPersonalCategory || userOwnsCategory;
+            const isUserCategory = 'isUserCategory' in cat && cat.isUserCategory;
+            const isPersonalCategory = cat.kind === 'user';
 
-              return (
-                <AccordionItem
-                  key={cat.id}
-                  value={cat.id}
-                  className="border rounded-md px-3 py-1"
-                >
-                  <AccordionTrigger className="hover:no-underline py-2">
-                    <div className="flex items-center justify-between w-full pr-2">
-                      <div className="flex items-center gap-2">
+            return (
+              <AccordionItem
+                key={cat.id}
+                value={cat.id}
+                className="border rounded-md px-3 py-1"
+              >
+                <AccordionTrigger className="hover:no-underline py-2">
+                  <div className="flex items-center justify-between w-full pr-2">
+                    <div className="flex items-center gap-2">
                       {editingCategoryId === cat.id ? (
                         <>
                           <Input
@@ -493,72 +287,19 @@ export default function TemplateLibrary() {
                             className="w-36 h-7 text-sm"
                             autoFocus
                           />
-                          <span 
-                            className="inline-flex items-center justify-center h-7 w-7 rounded-md hover:bg-accent hover:text-accent-foreground cursor-pointer" 
-                            onClick={e => { e.stopPropagation(); handleSaveCategoryName(cat.id); }} 
-                            title="Lagre"
-                          >
+                          <Button size="icon" variant="ghost" className="h-7 w-7 p-0" onClick={e => { e.stopPropagation(); handleSaveCategoryName(cat.id); }} title="Lagre">
                             <Save className="h-4 w-4 text-green-600" />
-                          </span>
-                          {(userIsAdmin || isUserCategory) && (
-                            <>
-                              <span 
-                                className="inline-flex items-center justify-center h-7 w-7 rounded-md hover:bg-accent hover:text-accent-foreground cursor-pointer" 
-                                onClick={e => { 
-                                  e.stopPropagation(); 
-                                  handleToggleCategoryVisibility(cat.id); 
-                                }} 
-                                title={(userCategories.find(c => c.id === cat.id)?.isVisible ?? builtInCategorySettings[cat.id]?.isVisible ?? true) ? "Synlig i frontend" : "Skjult i frontend"}
-                              >
-                                {(userCategories.find(c => c.id === cat.id)?.isVisible ?? builtInCategorySettings[cat.id]?.isVisible ?? true) ? (
-                                  <Eye className="h-4 w-4 text-blue-600" />
-                                ) : (
-                                  <EyeOff className="h-4 w-4 text-gray-600" />
-                                )}
-                              </span>
-                              <span 
-                                className="inline-flex items-center justify-center h-7 w-7 rounded-md hover:bg-accent hover:text-accent-foreground cursor-pointer" 
-                                onClick={e => { 
-                                  e.stopPropagation(); 
-                                  handleToggleCategoryCheckbox(cat.id); 
-                                }} 
-                                title={(userCategories.find(c => c.id === cat.id)?.hasCheckbox ?? builtInCategorySettings[cat.id]?.hasCheckbox ?? true) ? "Vises med checkbox" : "Vises alltid"}
-                              >
-                                {(userCategories.find(c => c.id === cat.id)?.hasCheckbox ?? builtInCategorySettings[cat.id]?.hasCheckbox ?? true) ? (
-                                  <CheckSquare className="h-4 w-4 text-purple-600" />
-                                ) : (
-                                  <Square className="h-4 w-4 text-gray-600" />
-                                )}
-                              </span>
-                            </>
-                          )}
-                          <span 
-                            className="inline-flex items-center justify-center h-7 w-7 rounded-md hover:bg-accent hover:text-accent-foreground cursor-pointer" 
-                            onClick={e => { e.stopPropagation(); handleDeleteCategory(cat.id); }} 
-                            title="Slett kategori"
-                          >
-                            <Trash2 className="h-4 w-4 text-red-600" />
-                          </span>
-                          <span 
-                            className="inline-flex items-center justify-center h-7 w-7 rounded-md hover:bg-accent hover:text-accent-foreground cursor-pointer" 
-                            onClick={e => { e.stopPropagation(); setEditingCategoryId(null); }} 
-                            title="Avbryt"
-                          >
+                          </Button>
+                          <Button size="icon" variant="ghost" className="h-7 w-7 p-0" onClick={e => { e.stopPropagation(); setEditingCategoryId(null); }} title="Avbryt">
                             ✕
-                          </span>
+                          </Button>
                         </>
                       ) : (
                         <>
                           <span className="font-medium text-sm">{cat.name}</span>
-                          {canEdit && (
-                            <span 
-                              className="inline-flex items-center justify-center h-7 w-7 rounded-md hover:bg-accent hover:text-accent-foreground cursor-pointer" 
-                              onClick={e => { e.stopPropagation(); handleEditCategory(cat.id, cat.name); }} 
-                              title="Endre navn"
-                            >
-                              <Edit2 className="h-4 w-4 text-blue-600" />
-                            </span>
-                          )}
+                          <Button size="icon" variant="ghost" className="h-7 w-7 p-0" onClick={e => { e.stopPropagation(); handleEditCategory(cat.id, cat.name); }} title="Endre navn">
+                            <Edit2 className="h-4 w-4 text-blue-600" />
+                          </Button>
                           {isPersonalCategory && (
                             <span className="text-xs px-1.5 py-0.5 bg-blue-100 text-blue-700 rounded">
                               Personlig
@@ -568,39 +309,23 @@ export default function TemplateLibrary() {
                       )}
                     </div>
                     <div className="flex items-center gap-2">
-                      {/* Visibility toggle - vises alltid for admin eller brukerkategorier */}
-                      {!editingCategoryId && (userIsAdmin || isUserCategory) && (
-                        <span 
-                          className="inline-flex items-center justify-center h-7 w-7 rounded-md hover:bg-accent hover:text-accent-foreground cursor-pointer" 
-                          onClick={e => { 
-                            e.stopPropagation(); 
-                            handleToggleCategoryVisibility(cat.id); 
-                          }} 
-                          title={(userCategories.find(c => c.id === cat.id)?.isVisible ?? builtInCategorySettings[cat.id]?.isVisible ?? true) ? "Synlig i Bygg reiseprogram" : "Skjult i Bygg reiseprogram"}
-                        >
-                          {(userCategories.find(c => c.id === cat.id)?.isVisible ?? builtInCategorySettings[cat.id]?.isVisible ?? true) ? (
-                            <Eye className="h-4 w-4 text-green-600" />
-                          ) : (
-                            <EyeOff className="h-4 w-4 text-gray-400" />
-                          )}
-                        </span>
-                      )}
-                      {/* Delete category - vises alltid for admin eller brukerkategorier */}
-                      {!editingCategoryId && (userIsAdmin || isUserCategory) && (
-                        <span 
-                          className="inline-flex items-center justify-center h-7 w-7 rounded-md hover:bg-accent hover:text-accent-foreground cursor-pointer" 
-                          onClick={e => { 
-                            e.stopPropagation(); 
-                            handleDeleteCategory(cat.id); 
-                          }} 
-                          title="Slett kategori"
-                        >
-                          <Trash2 className="h-4 w-4 text-red-600" />
-                        </span>
-                      )}
                       <span className="text-xs text-muted-foreground">
                         {list.length} filer
                       </span>
+                      {isUserCategory && userIsAdmin && (
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleDeleteUserCategory(cat.id, cat.name);
+                          }}
+                          className="h-5 w-5 p-0 text-destructive hover:text-destructive"
+                          title="Slett kategori"
+                        >
+                          <Trash2 className="h-3 w-3" />
+                        </Button>
+                      )}
                     </div>
                   </div>
                 </AccordionTrigger>
@@ -610,15 +335,21 @@ export default function TemplateLibrary() {
                     {/* Upload button - kun for admin eller brukerens personlige kategori */}
                     {(userIsAdmin || isPersonalCategory) && (
                       <div>
-                        <Button 
-                          variant="outline" 
-                          size="sm"
-                          onClick={() => handleUpload(cat.name)}
-                          className="gap-2"
-                        >
-                          <Upload className="h-4 w-4" />
-                          Last opp filer
-                        </Button>
+                        <label className="cursor-pointer">
+                          <input
+                            type="file"
+                            multiple
+                            accept=".ppt,.pptx"
+                            onChange={(e) => handleUpload(e, cat.name)}
+                            className="hidden"
+                          />
+                          <Button variant="outline" size="sm" asChild>
+                            <span className="gap-2">
+                              <Upload className="h-4 w-4" />
+                              Last opp filer
+                            </span>
+                          </Button>
+                        </label>
                       </div>
                     )}
 
@@ -652,7 +383,7 @@ export default function TemplateLibrary() {
                                   <SelectTrigger className="h-8 w-[140px] text-xs">
                                     <SelectValue />
                                   </SelectTrigger>
-                                  <SelectContent position="popper" className="max-h-[300px] overflow-y-auto">
+                                  <SelectContent>
                                     {allCategories.map((c) => (
                                       <SelectItem key={c.id} value={c.name}>
                                         {c.name}

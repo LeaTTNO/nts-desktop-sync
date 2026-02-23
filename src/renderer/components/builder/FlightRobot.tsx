@@ -676,10 +676,12 @@ function categorizeFlights(
     });
 
   // RESULT 1: Best and cheapest (combines best score with lowest price among strict)
+  // This is the BASE PRICE - all other categories must be same price or more expensive!
   const bestAndCheapest = scoredStrict[0] ? { ...scoredStrict[0], isRecommended: true } : null;
+  const basePrice = bestAndCheapest?.price || 0;
 
-  // RESULT 2: Best by QUALITY ONLY (shortest duration + fewest stops, ignoring price)
-  // Sort strict flights purely by quality with package fare preference
+  // RESULT 2: Best by QUALITY ONLY (shortest duration + fewest stops)
+  // MUST be same price or MORE EXPENSIVE than bestAndCheapest!
   const packageTolerance = language === 'da' ? 300 : 400;
   const qualitySorted = strictFlights
     .map(f => ({
@@ -707,18 +709,18 @@ function categorizeFlights(
   if (qualitySorted.length > 0 && bestAndCheapest) {
     const topQuality = qualitySorted[0];
     
-    // Rule: "Bedste" can NEVER be cheaper than "Bedste og billigste"
-    // If it is, show "Bedste og billigste" in both categories
+    // CRITICAL RULE: "Beste" can NEVER be cheaper than "Beste og billigste"
+    // If it would be cheaper, show bestAndCheapest in both categories (confirms it's the best!)
     if (topQuality.price < bestAndCheapest.price) {
-      bestQuality = null; // Will show bestAndCheapest in both slots
+      bestQuality = bestAndCheapest; // Same flight in both categories
     } else {
-      // Same price or more expensive - show as "Bedste"
+      // Same price or more expensive - show as "Beste"
       bestQuality = topQuality;
     }
   }
 
-  // RESULT 3: Cheapest extended (≤25h, allows night flights) - prioritize NEGOTIATED fares
-  // ALWAYS find a different flight than bestAndCheapest and bestQuality
+  // RESULT 3: Cheapest extended (≤25h, allows night flights)
+  // This is the ABSOLUTE CHEAPEST - can be cheaper than bestAndCheapest because it allows night flights and longer duration!
   const sortedByPrice = [...validFlights].sort((a, b) => {
     // PRIORITY 1: Prefer NEGOTIATED (package) fares when comparable price
     const isANegotiated = a.fareType === 'NEGOTIATED';
@@ -743,19 +745,8 @@ function categorizeFlights(
     return a.price - b.price;
   });
   
-  // Find cheapest that's different from the other two results
-  let cheapestExtended: ProcessedFlight | null = null;
-  for (const flight of sortedByPrice) {
-    if (flight.id !== bestAndCheapest?.id && flight.id !== bestQuality?.id) {
-      cheapestExtended = flight;
-      break;
-    }
-  }
-  
-  // If we still haven't found 3 different flights, use the first available
-  if (!cheapestExtended && sortedByPrice.length > 0) {
-    cheapestExtended = sortedByPrice[0];
-  }
+  // ALWAYS show the absolute cheapest - no price restrictions!
+  const cheapestExtended: ProcessedFlight | null = sortedByPrice.length > 0 ? sortedByPrice[0] : null;
 
   return {
     bestAndCheapest,
@@ -1543,8 +1534,8 @@ function saveToPowerPointSingle(flight: ProcessedFlight, title: string) {
           }
         }
 
-        // Only show if cheaper than original
-        if (cheapestFlex && cheapestFlex.price < basePrice) {
+        // ALWAYS show the best flexible option - even if same price or more expensive
+        if (cheapestFlex) {
           setFlexibleResult({ ...cheapestFlex, recommendReason: t.cheapest });
           setSearchProgress(prev => ({ ...prev, current: prev.current + 1 }));
         }
@@ -1609,8 +1600,9 @@ function saveToPowerPointSingle(flight: ProcessedFlight, title: string) {
           }
         }
 
-        // Only show if cheaper than original
-        if (cheapestAdd && cheapestAdd.price < basePrice) {
+        // ALWAYS show the best option from extended stay search - even if same price or more expensive
+        // It confirms this is the best option for that number of nights!
+        if (cheapestAdd) {
           setExtendedStayResult({ ...cheapestAdd, recommendReason: t.cheapest });
           setSearchProgress(prev => ({ ...prev, current: prev.current + 1 }));
         }
@@ -1675,9 +1667,9 @@ function saveToPowerPointSingle(flight: ProcessedFlight, title: string) {
           }
         }
 
-        // Only show if cheaper than original - store separately
-        if (cheapestRemove && cheapestRemove.price < basePrice) {
-          // If we already have addNights result, keep the cheapest one
+        // ALWAYS show the best option - even if same price or more expensive
+        // If we already have addNights result, keep the cheapest one
+        if (cheapestRemove) {
           if (!extendedStayResult || cheapestRemove.price < extendedStayResult.price) {
             setExtendedStayResult({ ...cheapestRemove, recommendReason: t.cheapest });
             setSearchProgress(prev => ({ ...prev, current: prev.current + 1 }));
@@ -1754,8 +1746,8 @@ function saveToPowerPointSingle(flight: ProcessedFlight, title: string) {
           }
         }
 
-        // Only show if cheaper than original
-        if (cheapestInterval && cheapestInterval.price < basePrice) {
+        // ALWAYS show the best interval option - even if same price or more expensive
+        if (cheapestInterval) {
           setDateIntervalResult({ ...cheapestInterval, recommendReason: t.searchInInterval });
           setSearchProgress(prev => ({ ...prev, current: prev.current + 1 }));
         }
@@ -2407,8 +2399,8 @@ function saveToPowerPointSingle(flight: ProcessedFlight, title: string) {
             </Card>
           )}
           {/* CATEGORY 2: Best by Quality (≤22h, no night) */}
-
-          {bestQualityResult && bestQualityResult.id !== mainResults.bestAndCheapest?.id && (
+          {/* ALWAYS SHOW - even if same as bestAndCheapest (confirms it's the best!) */}
+          {bestQualityResult && (
             <div className="space-y-4">
               <div className="flex items-center gap-2">
                 <Trophy className="h-5 w-5 text-amber-500" />
