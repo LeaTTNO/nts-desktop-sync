@@ -242,11 +242,21 @@ function ProcessShape {
     return $localDayNr
 }
 
-# Main traversal: slides → shapes in order
+# Main traversal: slides → shapes sorted by visual position (Top, then Left)
 foreach ($slide in $presentation.Slides) {
     Write-Host "Slide $($slide.SlideIndex):"
     
+    # Convert shapes to array and sort by Top position (then Left)
+    # This ensures shapes at top of slide are processed before shapes at bottom
+    $shapesArray = @()
     foreach ($shape in $slide.Shapes) {
+        $shapesArray += $shape
+    }
+    
+    # Sort by Top (vertical position), then Left (horizontal position)
+    $sortedShapes = $shapesArray | Sort-Object { $_.Top }, { $_.Left }
+    
+    foreach ($shape in $sortedShapes) {
         $dayNr = ProcessShape -shape $shape -currentDayNr $dayNr
     }
 }
