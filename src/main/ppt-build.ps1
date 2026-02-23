@@ -68,7 +68,7 @@ foreach ($modulePath in $ModulePaths) {
 
 # STEG 3: NÅ sett inn Flyinformasjon FØR siste slide (nest sist)
 if ($flightModulePath -and (Test-Path $flightModulePath)) {
-    Write-Host "📍 Setter inn Flyinformasjon FØR siste basefil-slide..."
+    Write-Host "Setter inn Flyinformasjon FOR siste basefil-slide..."
     
     $modulePres = $ppApp.Presentations.Open(
         $flightModulePath,
@@ -87,7 +87,7 @@ if ($flightModulePath -and (Test-Path $flightModulePath)) {
     }
     
     $modulePres.Close()
-    Write-Host "✅ Flyinformasjon lagt til på posisjon $flightInsertPos (nest sist)"
+    Write-Host "Flyinformasjon lagt til pa posisjon $flightInsertPos (nest sist)"
 }
 
 
