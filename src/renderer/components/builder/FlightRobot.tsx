@@ -1411,9 +1411,8 @@ function saveToPowerPointSingle(flight: ProcessedFlight, title: string) {
         foundCount++;
         setSearchProgress(prev => ({ ...prev, current: prev.current + 1 }));
       }
-      if (flexibleResult) addFlight(toFlightInfo(flexibleResult, t.cheaperFlexible));
-      if (extendedStayResult) addFlight(toFlightInfo(extendedStayResult, t.cheaperExtended));
-      if (dateIntervalResult) addFlight(toFlightInfo(dateIntervalResult, t.searchInInterval));
+      // Note: Extra search results (flexible dates, add/remove nights, intervals) are added
+      // directly via addFlight() in their respective search functions below
 
       const basePrice = categories.bestAndCheapest?.price || Infinity;
 
