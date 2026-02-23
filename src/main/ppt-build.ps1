@@ -27,7 +27,7 @@ $presentation = $ppApp.Presentations.Open(
 # 📥 HENT MODULER – HELLIG METODE (VBA-ekvivalent)
 # --------------------------------------------------
 
-# STEG 1: Finn flyinformasjon-modulen og sett den inn FØRST på nest siste posisjon i BASEFILEN
+# STEG 1: Finn flyinformasjon-modulen (settes inn SIST, men fortsatt før siste basefil-slide)
 $flightModulePath = $null
 foreach ($modulePath in $ModulePaths) {
     if ($modulePath -match 'flyinformasjon' -or $modulePath -match 'flight') {
@@ -36,46 +36,16 @@ foreach ($modulePath in $ModulePaths) {
     }
 }
 
-if ($flightModulePath -and (Test-Path $flightModulePath)) {
-    Write-Host "📍 Setter inn Flyinformasjon på nest siste posisjon i basefilen..."
-    
-    $modulePres = $ppApp.Presentations.Open(
-        $flightModulePath,
-        $true,
-        $false,
-        $false
-    )
-    
-    # Sett inn på nest siste posisjon i BASEFILEN (før andre moduler legges til)
-    $flightInsertPos = [Math]::Max(1, $presentation.Slides.Count - 1)
-    $slideIndex = 0
-    foreach ($slide in $modulePres.Slides) {
-        $slide.Copy()
-        $presentation.Slides.Paste($flightInsertPos + $slideIndex)
-        $slideIndex++
-    }
-    
-    $modulePres.Close()
-    Write-Host "✅ Flyinformasjon lagt til på posisjon $flightInsertPos i basefilen"
-}
-
-# STEG 2: Sett inn alle ANDRE moduler FØR de siste 2 slidene (Flyinformasjon + siste slide)
-# Start posisjonen beregnes FØR flyinformasjon ble lagt til
-$moduleInsertStart = if ($flightModulePath) {
-    # Hvis flyinformasjon finnes: sett inn FØR den (som nå er nest sist)
-    [Math]::Max(1, $presentation.Slides.Count - 2)
-} else {
-    # Ingen flyinformasjon: sett inn FØR siste slide
-    [Math]::Max(1, $presentation.Slides.Count - 1)
-}
-
+# STEG 2: Sett inn alle ANDRE moduler FØR siste slide i basefilen
+# Dette er Safari, Zanzibar, osv. - de kommer FØRST
+$moduleInsertStart = [Math]::Max(1, $presentation.Slides.Count - 1)
 $currentInsertPos = $moduleInsertStart
 
 foreach ($modulePath in $ModulePaths) {
 
     if (-not (Test-Path $modulePath)) { continue }
     
-    # Hopp over flyinformasjon (allerede satt inn)
+    # Hopp over flyinformasjon (settes inn ETTER alle andre)
     $isFlight = ($modulePath -match 'flyinformasjon' -or $modulePath -match 'flight')
     if ($isFlight) { continue }
 
@@ -94,6 +64,30 @@ foreach ($modulePath in $ModulePaths) {
     }
 
     $modulePres.Close()
+}
+
+# STEG 3: NÅ sett inn Flyinformasjon FØR siste slide (nest sist)
+if ($flightModulePath -and (Test-Path $flightModulePath)) {
+    Write-Host "📍 Setter inn Flyinformasjon FØR siste basefil-slide..."
+    
+    $modulePres = $ppApp.Presentations.Open(
+        $flightModulePath,
+        $true,
+        $false,
+        $false
+    )
+    
+    # Sett inn på nest siste posisjon (FØR den opprinnelige siste basefil-sliden)
+    $flightInsertPos = [Math]::Max(1, $presentation.Slides.Count - 1)
+    $slideIndex = 0
+    foreach ($slide in $modulePres.Slides) {
+        $slide.Copy()
+        $presentation.Slides.Paste($flightInsertPos + $slideIndex)
+        $slideIndex++
+    }
+    
+    $modulePres.Close()
+    Write-Host "✅ Flyinformasjon lagt til på posisjon $flightInsertPos (nest sist)"
 }
 
 

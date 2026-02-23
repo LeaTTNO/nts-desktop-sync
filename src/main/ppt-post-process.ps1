@@ -340,9 +340,9 @@ Write-Output "Post-processing complete"
 try {
     # Give PowerPoint a moment to finalize any operations
     Start-Sleep -Milliseconds 500
-    Write-Output "Ô£à Script completed successfully"
+    Write-Output "Ô£ï¿½ Script completed successfully"
     exit 0
 } catch {
-    Write-Output "ÔÜá´©Å Minor issue during cleanup but main work completed"
+    Write-Output "ï¿½ï¿½á´©ï¿½ Minor issue during cleanup but main work completed"
     exit 0
 }
