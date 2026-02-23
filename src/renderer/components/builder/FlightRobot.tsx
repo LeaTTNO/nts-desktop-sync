@@ -675,45 +675,42 @@ function categorizeFlights(
   // RESULT 1: Best and cheapest (combines best score with lowest price among strict)
   const bestAndCheapest = scoredStrict[0] ? { ...scoredStrict[0], isRecommended: true } : null;
 
-  // RESULT 2: Best overall by quality alone (different from Result 1, or second-best if only one)
-  // BUT: Only show a different flight if it's significantly better OR similar price
-  // Don't show more expensive flight unless it's worth it
-  let bestQuality: ProcessedFlight | null = null;
-  if (strictFlights.length > 1 && bestAndCheapest) {
-    const QUALITY_PRICE_TOLERANCE = 1000; // Max 1000 kr more expensive for "best quality"
-    
-    // Find best quality flight that's different from bestAndCheapest
-    const qualityCandidates = scoredStrict.filter(f => f.id !== bestAndCheapest.id);
-    
-    if (qualityCandidates.length > 0) {
-      const topQualityFlight = qualityCandidates[0];
+  // RESULT 2: Best by QUALITY ONLY (shortest duration + fewest stops, ignoring price)
+  // Sort strict flights purely by quality with package fare preference
+  const packageTolerance = language === 'da' ? 300 : 400;
+  const qualitySorted = strictFlights
+    .map(f => ({
+      ...f,
+      qualityScore: (f.combinedDurationMinutes || f.totalDurationMinutes) + 
+                    (f.outbound.stops + (f.inbound?.stops || 0)) * 120
+    }))
+    .sort((a, b) => {
+      // PRIORITY 1: Prefer NEGOTIATED (package) fares when comparable price
+      const isANegotiated = a.fareType === 'NEGOTIATED';
+      const isBNegotiated = b.fareType === 'NEGOTIATED';
       
-      // Only show as separate "best" if:
-      // 1. Same price or cheaper (always show)
-      // 2. Slightly more expensive BUT significantly better (shorter duration, fewer stops)
-      const priceDiff = topQualityFlight.price - bestAndCheapest.price;
-      
-      if (priceDiff <= 0) {
-        // Same price or cheaper - always show as best
-        bestQuality = topQualityFlight;
-      } else if (priceDiff <= QUALITY_PRICE_TOLERANCE) {
-        // More expensive - check if it's worth it
-        const durationDiff = (bestAndCheapest.combinedDurationMinutes || bestAndCheapest.totalDurationMinutes) - 
-                            (topQualityFlight.combinedDurationMinutes || topQualityFlight.totalDurationMinutes);
-        const stopsDiff = (bestAndCheapest.outbound.stops + (bestAndCheapest.inbound?.stops || 0)) - 
-                         (topQualityFlight.outbound.stops + (topQualityFlight.inbound?.stops || 0));
-        
-        // Show if significantly better: >2 hours shorter OR 1+ fewer stops
-        if (durationDiff >= 120 || stopsDiff >= 1) {
-          bestQuality = topQualityFlight;
-        } else {
-          // Not worth the extra cost - show same as bestAndCheapest
-          bestQuality = null; // Will default to showing bestAndCheapest in both slots
-        }
-      } else {
-        // Too expensive - show same as bestAndCheapest
-        bestQuality = null;
+      if (isANegotiated && !isBNegotiated) {
+        if (a.price <= b.price + packageTolerance) return -1;
       }
+      if (!isANegotiated && isBNegotiated) {
+        if (b.price <= a.price + packageTolerance) return 1;
+      }
+      
+      // PRIORITY 2: Sort by quality score ONLY (duration + stops, NO price)
+      return a.qualityScore - b.qualityScore;
+    });
+
+  let bestQuality: ProcessedFlight | null = null;
+  if (qualitySorted.length > 0 && bestAndCheapest) {
+    const topQuality = qualitySorted[0];
+    
+    // Rule: "Bedste" can NEVER be cheaper than "Bedste og billigste"
+    // If it is, show "Bedste og billigste" in both categories
+    if (topQuality.price < bestAndCheapest.price) {
+      bestQuality = null; // Will show bestAndCheapest in both slots
+    } else {
+      // Same price or more expensive - show as "Bedste"
+      bestQuality = topQuality;
     }
   }
 
