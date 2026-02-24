@@ -267,21 +267,36 @@ export default function TravelProgramBuilder({ language = 'no' }: TravelProgramB
       }
 
       // Hent alle valgte moduler (unntatt basefil)
-      // Flyinformasjon skal alltid settes inn sist (= nest siste side i basefilen)
+      // VIKTIG: Modulene skal være i NØYAKTIG den rekkefølgen brukeren har valgt dem
+      // (kan endres via drag-and-drop i "Valgte slides"-listen)
+      // Kun flyinformasjon flyttes til slutten
       const moduleTemplates = selectedTemplateIds
         .filter(id => id !== baseProgramId)
         .map((id) => templates.find((t) => t.id === id))
         .filter(Boolean)
         .sort((a, b) => {
-          const aFlight = (a!.category === FLIGHT || a!.name.toLowerCase().includes('flyinformasjon')) ? 1 : 0;
-          const bFlight = (b!.category === FLIGHT || b!.name.toLowerCase().includes('flyinformasjon')) ? 1 : 0;
-          return aFlight - bFlight;
+          // Flyinformasjon skal alltid være sist
+          const aFlight = (a!.category === FLIGHT || a!.name.toLowerCase().includes('flyinformasjon'));
+          const bFlight = (b!.category === FLIGHT || b!.name.toLowerCase().includes('flyinformasjon'));
+          if (aFlight && !bFlight) return 1;  // a (flight) kommer etter b
+          if (!aFlight && bFlight) return -1; // b (flight) kommer etter a
+          
+          // Ellers: BEHOLD opprinnelig rekkefølge fra selectedTemplateIds
+          return 0;
         }) as typeof templates;
 
       // Konverter blobs til ArrayBuffers
       const baseBuffer = baseTemplate.blob instanceof Blob 
         ? await baseTemplate.blob.arrayBuffer() 
         : baseTemplate.blob;
+      
+      // DEBUG: Log module order being sent to PowerShell
+      console.log('📋 Module order being sent to PowerShell:');
+      moduleTemplates.forEach((m, idx) => {
+        const days = extractDaysFromName(m.name);
+        console.log(`  ${idx + 1}. ${m.name} ${days ? `(${days} dager)` : '(no days)'} [category: ${m.category}]`);
+      });
+      
       const moduleBuffers = await Promise.all(
         moduleTemplates.map(async (t) => ({
           name: t.name,

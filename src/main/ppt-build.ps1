@@ -60,7 +60,7 @@ foreach ($modulePath in $ModulePaths) {
     foreach ($slide in $modulePres.Slides) {
         $slide.Copy()
         $presentation.Slides.Paste($currentInsertPos)
-        $currentInsertPos++  # Øk posisjonen for neste slide
+        $currentInsertPos++
     }
 
     $modulePres.Close()
@@ -77,8 +77,8 @@ if ($flightModulePath -and (Test-Path $flightModulePath)) {
         $false
     )
     
-    # Sett inn på nest siste posisjon (FØR den opprinnelige siste basefil-sliden)
-    $flightInsertPos = [Math]::Max(1, $presentation.Slides.Count - 1)
+    # Sett inn på nest siste posisjon - Count gir oss nest sist siden innsetting skyver siste slide ned
+    $flightInsertPos = $presentation.Slides.Count
     $slideIndex = 0
     foreach ($slide in $modulePres.Slides) {
         $slide.Copy()
