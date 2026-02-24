@@ -6,8 +6,15 @@ directories:
   buildResources: build
 
 files:
-  - dist/**/*
+  - dist/main/**/*
+  - dist/renderer/**/*
   - package.json
+  - "!dist/*.exe"
+  - "!dist/*.exe.blockmap"
+  - "!dist/win-unpacked"
+  - "!dist/*.yml"
+  - "!dist/*.yaml"
+  - "!dist/*.7z"
 
 win:
   target:
