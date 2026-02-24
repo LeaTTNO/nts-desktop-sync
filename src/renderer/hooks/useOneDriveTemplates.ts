@@ -8,6 +8,8 @@ export interface OneDriveTemplate {
   category: string;
   fileId: string;
   order?: number;
+  folderName?: string;
+  fullPath?: string;
 }
 
 export interface TemplateCategory {
@@ -16,7 +18,36 @@ export interface TemplateCategory {
   includeInDropdown: boolean;
 }
 
-// Mapping fra filnavn til kategori
+// Mapping fra mappenavn til kategori ID
+const mapFolderToCategory = (folderName: string): string => {
+  const lower = folderName.toLowerCase().trim();
+  
+  // Exact folder name mapping (prefer these over partial matches)
+  if (lower === 'arusha første natt' || lower === 'arusha first night') return 'arushaFirstNight';
+  if (lower === 'siste natt safari' || lower === 'last night safari') return 'lastNightSafari';
+  if (lower === 'zanzibar hotel 1') return 'zanzibarHotel1';
+  if (lower === 'zanzibar hotel 2') return 'zanzibarHotel2';
+  if (lower === 'stone town') return 'stoneTownHotel';
+  if (lower === 'kilimanjaro') return 'kilimanjaro';
+  if (lower === 'arusha aktiviteter' || lower === 'arusha activities') return 'activitiesArusha';
+  if (lower === 'fastland' || lower === 'mainland') return 'diverseMainland';
+  if (lower === 'flyinformasjon' || lower === 'flight information') return 'flyinformasjon';
+  if (lower === 'reiseprogram og tilbud' || lower === 'base program') return 'baseProgram';
+  
+  // Safari periods
+  if (lower.includes('dec') || lower.includes('feb') || lower.includes('ndutu')) return 'safariDecFeb';
+  if (lower.includes('marts') || lower.includes('march')) return 'safariMarch';
+  if (lower.includes('april') || lower.includes('mai') || lower.includes('may')) return 'safariAprMay';
+  if (lower.includes('juni') || lower.includes('june')) return 'safariJunJul';
+  if (lower.includes('juli') || lower.includes('july') || lower.includes('sep')) return 'safariJulSep';
+  if (lower.includes('okt') || lower.includes('oct')) return 'safariOct';
+  if (lower.includes('nov')) return 'safariNovDec';
+  
+  console.log('  âš ï¸ No category mapping for folder:', folderName, '-> using folder name as category');
+  return folderName;
+};
+
+// Legacy: Mapping fra filnavn til kategori (brukes ikke lenger for OneDrive)
 const extractCategory = (filename: string): string => {
   const lower = filename.toLowerCase().replace(/\.pptx?$/i, '');
   console.log('🔍 Categorizing file:', filename, '→', lower);
@@ -355,12 +386,12 @@ export const useOneDriveTemplates = (language: 'no' | 'da') => {
     try {
       setIsLoading(true);
       
-      // First try to list all files in the folder to see what we get
-      console.log('🔍 Searching for PowerPoint files...');
-      const files = await oneDriveClient.searchPowerPointFiles(pathToUse);
-      console.log('📄 Found PowerPoint files:', files);
+      // Search recursively through subfolders
+      console.log('🔍 Searching for PowerPoint files recursively...');
+      const filesWithFolders = await oneDriveClient.searchPowerPointFilesRecursive(pathToUse);
+      console.log('📄 Found PowerPoint files:', filesWithFolders.length);
       
-      if (files.length === 0) {
+      if (filesWithFolders.length === 0) {
         const folderDisplay = pathToUse || 'root-mappen';
         toast.error(`Ingen PowerPoint-filer funnet i ${folderDisplay}. Bruk "Bla gjennom" for å velge riktig mappe.`);
         setTemplates([]);
@@ -368,13 +399,16 @@ export const useOneDriveTemplates = (language: 'no' | 'da') => {
         return;
       }
       
-      const newTemplates: OneDriveTemplate[] = files.map(file => {
-        const category = extractCategory(file.name);
+      const newTemplates: OneDriveTemplate[] = filesWithFolders.map(({ file, folderName, fullPath }) => {
+        const category = mapFolderToCategory(folderName);
+        console.log(`  📄 ${file.name} (folder: ${folderName}) → category: ${category}`);
         return {
           id: `${category}_${file.id}`,
           name: file.name,
           category,
           fileId: file.id,
+          folderName,
+          fullPath,
         };
       });
 

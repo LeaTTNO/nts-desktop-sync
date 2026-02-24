@@ -419,6 +419,40 @@ class OneDriveClient {
       return name.endsWith('.pptx') || name.endsWith('.ppt');
     });
   }
+
+  async searchPowerPointFilesRecursive(basePath: string = ''): Promise<Array<{ file: any; folderName: string; fullPath: string }>> {
+    const result: Array<{ file: any; folderName: string; fullPath: string }> = [];
+    
+    async function searchFolder(path: string, folderName: string) {
+      try {
+        const items = await oneDriveClient.listFilesInFolder(path);
+        
+        for (const item of items) {
+          if (item.folder) {
+            // It's a subfolder - search recursively
+            const subPath = path ? `${path}/${item.name}` : item.name;
+            await searchFolder(subPath, item.name);
+          } else if (item.file) {
+            // It's a file - check if PowerPoint
+            const name = item.name.toLowerCase();
+            if (name.endsWith('.pptx') || name.endsWith('.ppt')) {
+              const fullPath = path ? `${path}/${item.name}` : item.name;
+              result.push({ 
+                file: item, 
+                folderName: folderName || 'root', 
+                fullPath 
+              });
+            }
+          }
+        }
+      } catch (error) {
+        console.warn(`Could not access folder: ${path}`, error);
+      }
+    }
+    
+    await searchFolder(basePath, basePath || 'root');
+    return result;
+  }
 }
 
 export const oneDriveClient = new OneDriveClient();
