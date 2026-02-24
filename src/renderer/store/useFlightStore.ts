@@ -76,9 +76,9 @@ export const useFlightStore = create<FlightStoreState>()(
       setMainResults: (results) => set({ mainResults: results }),
       setBestQualityResult: (result) => set({ bestQualityResult: result }),
       setCheapestExtendedResult: (result) => set({ cheapestExtendedResult: result }),
+      setFlexibleResult: (result) => set({ flexibleResult: result }),
       setAddNightsResult: (result) => set({ addNightsResult: result }),
-      setRemoveNightsResult: (result) => set({ removeNightsresult }),
-      setExtendedStayResult: (result) => set({ extendedStayResult: result }),
+      setRemoveNightsResult: (result) => set({ removeNightsResult: result }),
       setDateIntervalResult: (result) => set({ dateIntervalResult: result }),
       setHasSearched: (searched) => set({ hasSearched: searched }),
       
