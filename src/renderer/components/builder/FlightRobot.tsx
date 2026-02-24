@@ -2734,6 +2734,67 @@ function saveToPowerPointSingle(flight: ProcessedFlight, title: string) {
         </div>
       )}
 
+      {/* ADDITIONAL SEARCH RESULTS (Extra nights, Date intervals, etc.) */}
+      {savedFlights.length > 0 && (
+        <div className="space-y-4 mt-6">
+          <div className="flex items-center gap-2">
+            <CalendarIcon className="h-5 w-5 text-emerald-500" />
+            <h3 className="font-semibold text-foreground">
+              {language === 'no' ? 'Tilleggssøk' : 'Yderligere søgninger'}
+            </h3>
+          </div>
+          <div className="space-y-4">
+            {savedFlights.map((flightInfo) => {
+              // Convert FlightInfo to ProcessedFlight format for FlightResultCard
+              const processedFlight: ProcessedFlight = {
+                id: flightInfo.id,
+                price: flightInfo.price,
+                currency: flightInfo.currency,
+                outbound: {
+                  departure: flightInfo.outbound.departure,
+                  arrival: flightInfo.outbound.arrival,
+                  departureTime: flightInfo.outbound.departureTime,
+                  arrivalTime: flightInfo.outbound.arrivalTime,
+                  duration: flightInfo.outbound.duration,
+                  stops: flightInfo.outbound.stops,
+                  airlines: [],
+                  segments: ""
+                },
+                inbound: flightInfo.inbound ? {
+                  departure: flightInfo.inbound.departure,
+                  arrival: flightInfo.inbound.arrival,
+                  departureTime: flightInfo.inbound.departureTime,
+                  arrivalTime: flightInfo.inbound.arrivalTime,
+                  duration: flightInfo.inbound.duration,
+                  stops: flightInfo.inbound.stops,
+                  airlines: [],
+                  segments: ""
+                } : undefined,
+                totalDurationMinutes: 0,
+                hasNightFlight: false,
+                isRecommended: false,
+              };
+
+              return (
+                <FlightResultCard
+                  key={flightInfo.id}
+                  flight={processedFlight}
+                  language={language}
+                  translations={t}
+                  formatTime={formatTime}
+                  formatDate={formatDate}
+                  formatDuration={formatDuration}
+                  onSave={saveToPowerPointSingle}
+                  title={flightInfo.title}
+                  childrenCount={parseInt(children)}
+                  hasNightFlight={false}
+                />
+              );
+            })}
+          </div>
+        </div>
+      )}
+
       {hasSearched && !mainResults.bestAndCheapest && !bestQualityResult && !cheapestExtendedResult && !isSearching && !error && (
         <Card className="border-border/50 bg-muted/20">
           <CardContent className="pt-6">
