@@ -156,7 +156,7 @@ const translations = {
     cheapest: "Billigste",
     beste: "Beste",
     bestQualityDesc: "Beste reise etter varighet og forbindelser",
-    cheapestWithFlexibility: "Billigste (opptil 25 timer)",
+    cheapestWithFlexibility: "Billigste (opptil 25 timer, ingen nattfly)",
     bestExtended: "Beste (utvidet)",
     cheapestExtended: "Billigste (utvidet)",
     outbound: "UTREISE",
@@ -229,7 +229,7 @@ const translations = {
     cheapest: "Billigste",
     beste: "Bedste",
     bestQualityDesc: "Bedste rejse efter varighed og forbindelser",
-    cheapestWithFlexibility: "Billigste (op til 25 timer)",
+    cheapestWithFlexibility: "Billigste (op til 25 timer, ingen natfly)",
     bestExtended: "Bedste (udvidet)",
     cheapestExtended: "Billigste (udvidet)",
     outbound: "UDREJSE",
@@ -599,8 +599,7 @@ function calculateFlightScore(flight: ProcessedFlight): number {
  * ALWAYS returns 3 main categories:
  * 1. Best and cheapest (≤22h, no night flights) 
  * 2. Best overall by quality (≤22h, no night flights)
- * 3. Cheapest extended (≤25h, allows night flights)
- * 4. Cheapest with night flights (any duration, but has night departure/arrival)
+ * 3. Cheapest (≤25h, NO night flights - longer time allowed but still no night departures/arrivals)
  */
 function categorizeFlights(
   flights: ProcessedFlight[], 
@@ -719,9 +718,13 @@ function categorizeFlights(
     }
   }
 
-  // RESULT 3: Cheapest extended (≤25h, allows night flights)
-  // This is the ABSOLUTE CHEAPEST - can be cheaper than bestAndCheapest because it allows night flights and longer duration!
-  const sortedByPrice = [...validFlights].sort((a, b) => {
+  // RESULT 3: Cheapest (≤25h, NO night flights)
+  // This is the CHEAPEST within extended time - allows longer duration but NO night flights!
+  const extendedFlights = validFlights.filter(f =>
+    f.totalDurationMinutes <= MAX_EXTENDED_DURATION_HOURS * 60 && !f.hasNightFlight
+  );
+  
+  const sortedByPrice = [...extendedFlights].sort((a, b) => {
     // PRIORITY 1: Prefer NEGOTIATED (package) fares when comparable price
     const isANegotiated = a.fareType === 'NEGOTIATED';
     const isBNegotiated = b.fareType === 'NEGOTIATED';
@@ -745,7 +748,7 @@ function categorizeFlights(
     return a.price - b.price;
   });
   
-  // ALWAYS show the absolute cheapest - no price restrictions!
+  // Show the cheapest (within extended time, but NO night flights)
   const cheapestExtended: ProcessedFlight | null = sortedByPrice.length > 0 ? sortedByPrice[0] : null;
 
   return {
@@ -2480,7 +2483,7 @@ function saveToPowerPointSingle(flight: ProcessedFlight, title: string) {
             </Card>
           )}
 
-          {/* CATEGORY 3: Cheapest Extended (≤25h, allows night flights) */}
+          {/* CATEGORY 3: Cheapest (≤25h, NO night flights) */}
           {cheapestExtendedResult && (
             <div className="space-y-4">
               <div className="flex items-center gap-2">
