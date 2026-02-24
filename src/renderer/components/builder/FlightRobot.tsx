@@ -1539,8 +1539,7 @@ function saveToPowerPointSingle(flight: ProcessedFlight, title: string) {
         // ALWAYS show the best flexible option (by score) - even if more expensive!
         // User wants to see the result if the checkbox is enabled
         if (bestFlex) {
-          const dateLabel = format(new Date(bestFlex.searchDate), 'dd.MM.yyyy');
-          addFlight(toFlightInfo(bestFlex, `${t.cheaperFlexible} (${dateLabel})`));
+          setFlexibleResult({ ...bestFlex, recommendReason: t.cheaperFlexible });
           setSearchProgress(prev => ({ ...prev, current: prev.current + 1 }));
         }
         
@@ -1610,11 +1609,7 @@ function saveToPowerPointSingle(flight: ProcessedFlight, title: string) {
         // ALWAYS show the best option (by score) - even if more expensive!
         // User wants to see the result if the checkbox is enabled
         if (bestAdd) {
-          const nightsLabel = language === 'no' 
-            ? `${t.addNights} +${bestAdd.nightsDiff} ${bestAdd.nightsDiff === 1 ? 'natt' : 'netter'}`
-            : `${t.addNights} +${bestAdd.nightsDiff} ${bestAdd.nightsDiff === 1 ? 'nat' : 'nætter'}`;
-          // Add directly to flight list instead of using setExtendedStayResult (which can be overwritten)
-          addFlight(toFlightInfo(bestAdd, nightsLabel));
+          setExtendedStayResult({ ...bestAdd, recommendReason: t.cheaperExtended });
           setSearchProgress(prev => ({ ...prev, current: prev.current + 1 }));
         }
         
@@ -1684,14 +1679,11 @@ function saveToPowerPointSingle(flight: ProcessedFlight, title: string) {
         // ALWAYS show the best option (by score) - even if more expensive!
         // User wants to see the result if the checkbox is enabled
         if (bestRemove) {
-          const absNights = Math.abs(bestRemove.nightsDiff || 0);
-          const nightsLabel = language === 'no' 
-            ? `${t.removeNights} -${absNights} ${absNights === 1 ? 'natt' : 'netter'}`
-            : `${t.removeNights} -${absNights} ${absNights === 1 ? 'nat' : 'nætter'}`;
-          
-          // Add directly to flight list (both add and remove can be shown if both are enabled)
-          addFlight(toFlightInfo(bestRemove, nightsLabel));
-          setSearchProgress(prev => ({ ...prev, current: prev.current + 1 }));
+          // If we already have addNights result, keep the cheapest one
+          if (!extendedStayResult || bestRemove.price < extendedStayResult.price) {
+            setExtendedStayResult({ ...bestRemove, recommendReason: t.cheaperExtended });
+            setSearchProgress(prev => ({ ...prev, current: prev.current + 1 }));
+          }
         }
         
         // Find best remove nights option for each selected airline
@@ -1770,8 +1762,7 @@ function saveToPowerPointSingle(flight: ProcessedFlight, title: string) {
         // ALWAYS show the best interval option (by score) - even if more expensive!
         // User wants to see the result if the checkbox is enabled
         if (bestInterval) {
-          const dateLabel = format(new Date(bestInterval.searchDate), 'dd.MM.yyyy');
-          addFlight(toFlightInfo(bestInterval, `${t.searchInInterval} (${dateLabel})`));
+          setDateIntervalResult({ ...bestInterval, recommendReason: t.searchInInterval });
           setSearchProgress(prev => ({ ...prev, current: prev.current + 1 }));
         }
         
@@ -2734,66 +2725,7 @@ function saveToPowerPointSingle(flight: ProcessedFlight, title: string) {
         </div>
       )}
 
-      {/* ADDITIONAL SEARCH RESULTS (Extra nights, Date intervals, etc.) */}
-      {savedFlights.length > 0 && (
-        <div className="space-y-4 mt-6">
-          <div className="flex items-center gap-2">
-            <CalendarIcon className="h-5 w-5 text-emerald-500" />
-            <h3 className="font-semibold text-foreground">
-              {language === 'no' ? 'Tilleggssøk' : 'Yderligere søgninger'}
-            </h3>
-          </div>
-          <div className="space-y-4">
-            {savedFlights.map((flightInfo) => {
-              // Convert FlightInfo to ProcessedFlight format for FlightResultCard
-              const processedFlight: ProcessedFlight = {
-                id: flightInfo.id,
-                price: flightInfo.price,
-                currency: flightInfo.currency,
-                outbound: {
-                  departure: flightInfo.outbound.departure,
-                  arrival: flightInfo.outbound.arrival,
-                  departureTime: flightInfo.outbound.departureTime,
-                  arrivalTime: flightInfo.outbound.arrivalTime,
-                  duration: flightInfo.outbound.duration,
-                  stops: flightInfo.outbound.stops,
-                  airlines: [],
-                  segments: ""
-                },
-                inbound: flightInfo.inbound ? {
-                  departure: flightInfo.inbound.departure,
-                  arrival: flightInfo.inbound.arrival,
-                  departureTime: flightInfo.inbound.departureTime,
-                  arrivalTime: flightInfo.inbound.arrivalTime,
-                  duration: flightInfo.inbound.duration,
-                  stops: flightInfo.inbound.stops,
-                  airlines: [],
-                  segments: ""
-                } : undefined,
-                totalDurationMinutes: 0,
-                hasNightFlight: false,
-                isRecommended: false,
-              };
 
-              return (
-                <FlightResultCard
-                  key={flightInfo.id}
-                  flight={processedFlight}
-                  language={language}
-                  translations={t}
-                  formatTime={formatTime}
-                  formatDate={formatDate}
-                  formatDuration={formatDuration}
-                  onSave={saveToPowerPointSingle}
-                  title={flightInfo.title}
-                  childrenCount={parseInt(children)}
-                  hasNightFlight={false}
-                />
-              );
-            })}
-          </div>
-        </div>
-      )}
 
       {hasSearched && !mainResults.bestAndCheapest && !bestQualityResult && !cheapestExtendedResult && !isSearching && !error && (
         <Card className="border-border/50 bg-muted/20">
