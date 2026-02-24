@@ -1363,14 +1363,15 @@ function saveToPowerPointSingle(flight: ProcessedFlight, title: string) {
     // Calculate max expected results based on enabled options
     let maxResults = 3; // 3 main categories always
     if (flexibleDates) maxResults += 1;
-    if (addNights || removeNights) maxResults += 1;
+    if (addNights) maxResults += 1;
+    if (removeNights) maxResults += 1;
     if (useDateInterval) maxResults += 1;
     if (usePreferredAirline && selectedAirlines.length > 0) {
       maxResults += 3; // Up to 3 preferred airline categories
     }
     
-    // Cap at 7 for display purposes
-    maxResults = Math.min(maxResults, 7);
+    // Cap at 9 for display purposes (3 main + flexible + add + remove + interval + 3 preferred)
+    maxResults = Math.min(maxResults, 9);
     
     setSearchProgress({ current: 0, max: maxResults });
     setIsSearching(true);
@@ -1632,7 +1633,6 @@ function saveToPowerPointSingle(flight: ProcessedFlight, title: string) {
         } else {
           console.log('⚠️ No valid add nights results found');
         }
-      }
         
         // Find best add nights option for each selected airline
         if (usePreferredAirline && selectedAirlines.length > 0 && allAddFlights.length > 0) {
@@ -1713,7 +1713,6 @@ function saveToPowerPointSingle(flight: ProcessedFlight, title: string) {
         } else {
           console.log('⚠️ No valid remove nights results found');
         }
-      }
         
         // Find best remove nights option for each selected airline
         if (usePreferredAirline && selectedAirlines.length > 0 && allRemoveFlights.length > 0) {

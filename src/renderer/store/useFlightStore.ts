@@ -91,8 +91,7 @@ export const useFlightStore = create<FlightStoreState>()(
         bestQualityResult: state.bestQualityResult,
         cheapestExtendedResult: state.cheapestExtendedResult,
         addNightsResult: state.addNightsResult,
-        removeNightsResult: state.removeNights
-        extendedStayResult: state.extendedStayResult,
+        removeNightsResult: state.removeNightsResult,
         dateIntervalResult: state.dateIntervalResult,
         hasSearched: state.hasSearched,
       }),
