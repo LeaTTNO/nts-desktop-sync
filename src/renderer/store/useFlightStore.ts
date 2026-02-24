@@ -38,7 +38,8 @@ interface FlightStoreState {
   bestQualityResult: ProcessedFlight | null;
   cheapestExtendedResult: ProcessedFlight | null;
   flexibleResult: ProcessedFlight | null;
-  extendedStayResult: ProcessedFlight | null;
+  addNightsResult: ProcessedFlight | null;
+  removeNightsResult: ProcessedFlight | null;
   dateIntervalResult: ProcessedFlight | null;
   
   // Search state
@@ -49,7 +50,8 @@ interface FlightStoreState {
   setBestQualityResult: (result: ProcessedFlight | null) => void;
   setCheapestExtendedResult: (result: ProcessedFlight | null) => void;
   setFlexibleResult: (result: ProcessedFlight | null) => void;
-  setExtendedStayResult: (result: ProcessedFlight | null) => void;
+  setAddNightsResult: (result: ProcessedFlight | null) => void;
+  setRemoveNightsResult: (result: ProcessedFlight | null) => void;
   setDateIntervalResult: (result: ProcessedFlight | null) => void;
   setHasSearched: (searched: boolean) => void;
   resetAll: () => void;
@@ -60,7 +62,8 @@ const initialState = {
   bestQualityResult: null,
   cheapestExtendedResult: null,
   flexibleResult: null,
-  extendedStayResult: null,
+  addNightsResult: null,
+  removeNightsResult: null,
   dateIntervalResult: null,
   hasSearched: false,
 };
@@ -73,7 +76,8 @@ export const useFlightStore = create<FlightStoreState>()(
       setMainResults: (results) => set({ mainResults: results }),
       setBestQualityResult: (result) => set({ bestQualityResult: result }),
       setCheapestExtendedResult: (result) => set({ cheapestExtendedResult: result }),
-      setFlexibleResult: (result) => set({ flexibleResult: result }),
+      setAddNightsResult: (result) => set({ addNightsResult: result }),
+      setRemoveNightsResult: (result) => set({ removeNightsresult }),
       setExtendedStayResult: (result) => set({ extendedStayResult: result }),
       setDateIntervalResult: (result) => set({ dateIntervalResult: result }),
       setHasSearched: (searched) => set({ hasSearched: searched }),
@@ -86,7 +90,8 @@ export const useFlightStore = create<FlightStoreState>()(
         mainResults: state.mainResults,
         bestQualityResult: state.bestQualityResult,
         cheapestExtendedResult: state.cheapestExtendedResult,
-        flexibleResult: state.flexibleResult,
+        addNightsResult: state.addNightsResult,
+        removeNightsResult: state.removeNights
         extendedStayResult: state.extendedStayResult,
         dateIntervalResult: state.dateIntervalResult,
         hasSearched: state.hasSearched,

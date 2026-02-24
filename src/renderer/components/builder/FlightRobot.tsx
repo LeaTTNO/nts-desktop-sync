@@ -900,13 +900,15 @@ export default function FlightRobot() {
     bestQualityResult,
     cheapestExtendedResult,
     flexibleResult,
-    extendedStayResult,
+    addNightsResult,
+    removeNightsResult,
     dateIntervalResult,
     setMainResults,
     setBestQualityResult,
     setCheapestExtendedResult,
     setFlexibleResult,
-    setExtendedStayResult,
+    setAddNightsResult,
+    setRemoveNightsResult,
     setDateIntervalResult,
     setHasSearched,
     resetAll: resetFlightStore,
@@ -919,14 +921,16 @@ export default function FlightRobot() {
     bestQuality: ProcessedFlight | null;
     cheapestExtended: ProcessedFlight | null;
     flexible: ProcessedFlight | null;
-    extendedStay: ProcessedFlight | null;
+    addNights: ProcessedFlight | null;
+    removeNights: ProcessedFlight | null;
     dateInterval: ProcessedFlight | null;
   }>({
     bestAndCheapest: null,
     bestQuality: null,
     cheapestExtended: null,
     flexible: null,
-    extendedStay: null,
+    addNights: null,
+    removeNights: null,
     dateInterval: null,
   });
 
@@ -999,7 +1003,8 @@ export default function FlightRobot() {
       bestQuality: null,
       cheapestExtended: null,
       flexible: null,
-      extendedStay: null,
+      addNights: null,
+      removeNights: null,
       dateInterval: null,
     });
     setHasPreferredAirlineResults(false);
@@ -1378,7 +1383,8 @@ function saveToPowerPointSingle(flight: ProcessedFlight, title: string) {
     setBestQualityResult(null);
     setCheapestExtendedResult(null);
     setFlexibleResult(null);
-    setExtendedStayResult(null);
+    setAddNightsResult(null);
+    setRemoveNightsResult(null);
     setDateIntervalResult(null);
 
     const currency = language === "da" ? "DKK" : "NOK";
@@ -1438,7 +1444,8 @@ function saveToPowerPointSingle(flight: ProcessedFlight, title: string) {
           bestQuality: null,
           cheapestExtended: null,
           flexible: null,
-          extendedStay: null,
+          addNights: null,
+          removeNights: null,
           dateInterval: null,
         };
 
@@ -1574,6 +1581,7 @@ function saveToPowerPointSingle(flight: ProcessedFlight, title: string) {
       }
 
       // 3A. ADD NIGHTS SEARCH (extend trip if cheaper)
+      console.log('🔍 ADD NIGHTS CHECK:', { addNights, addNightsCount, willRun: addNights && addNightsCount > 0 });
       if (addNights && addNightsCount > 0) {
         let bestAdd: ProcessedFlight | null = null;
         const allAddFlights: ProcessedFlight[] = []; // Collect all flights for preferred airline search
@@ -1581,17 +1589,22 @@ function saveToPowerPointSingle(flight: ProcessedFlight, title: string) {
         // Search ALL variations (1, 2, 3, ... addNightsCount) to find the BEST option using SCORE (not just price!)
         for (let i = 1; i <= addNightsCount; i++) {
           const newRetDate = addDays(returnDateStr, i);
+          console.log(`  📅 Searching +${i} nights, new return date: ${newRetDate}`);
 
           try {
             const offers = await searchFlightsApi(departure, destination, returnFrom, returnTo, departureDateStr, newRetDate, pax, currency);
             const processed = processFlightOffers(offers, { date: departureDateStr, nightsDiff: i }, pax);
+            console.log(`  ✈️ Found ${processed.length} processed flights for +${i} nights`);
+            
             let valid = processed.filter(f =>
               f.totalDurationMinutes <= MAX_EXTENDED_DURATION_HOURS * 60 && !f.hasNightFlight
             );
+            console.log(`  ✅ After filters: ${valid.length} valid flights (≤25h, no night flights)`);
             
             // Filter Oslo layover (NO only)
             if (language === 'no') {
               valid = valid.filter(f => f.hasInvalidOsloLayover !== true);
+              console.log(`  🇳🇴 After Oslo filter: ${valid.length} valid flights`);
             }
 
             allAddFlights.push(...valid); // Store for preferred airline search
@@ -1602,21 +1615,26 @@ function saveToPowerPointSingle(flight: ProcessedFlight, title: string) {
               const flightScore = calculateFlightScore(flight);
               if (!bestAdd || flightScore < calculateFlightScore(bestAdd)) {
                 bestAdd = flight;
+                console.log(`  🏆 New best add nights flight: +${i} nights, price: ${flight.price}, score: ${flightScore}`);
               }
             }
           } catch (err) {
-            console.log(`Add nights search for ${newRetDate} failed:`, err);
+            console.log(`❌ Add nights search for ${newRetDate} failed:`, err);
           }
         }
 
         // ALWAYS show the best option (by score) - even if more expensive!
         // User wants to see the result if the checkbox is enabled
         if (bestAdd) {
-          setExtendedStayResult({ ...bestAdd, recommendReason: t.cheaperExtended });
+          console.log('✅ Setting addNightsResult:', { nightsDiff: bestAdd.nightsDiff, price: bestAdd.price });
+          setAddNightsResult({ ...bestAdd, recommendReason: t.cheaperExtended });
           setSearchProgress(prev => ({ ...prev, current: prev.current + 1 }));
+        } else {
+          console.log('⚠️ No valid add nights results found');
         }
+      }
         
-        // Find best extended stay option for each selected airline
+        // Find best add nights option for each selected airline
         if (usePreferredAirline && selectedAirlines.length > 0 && allAddFlights.length > 0) {
           for (const airlineCode of selectedAirlines) {
             const airlineName = airlineNames[airlineCode];
@@ -1630,9 +1648,9 @@ function saveToPowerPointSingle(flight: ProcessedFlight, title: string) {
               if (preferredAdd.price < basePrice) {
                 setPreferredAirlineResults(prev => ({
                   ...prev,
-                  extendedStay: preferredAdd.price < (prev.extendedStay?.price || Infinity)
+                  addNights: preferredAdd.price < (prev.addNights?.price || Infinity)
                     ? { ...preferredAdd, recommendReason: `${airlineName} - ${t.cheaperExtended}` }
-                    : prev.extendedStay
+                    : prev.addNights
                 }));
                 setHasPreferredAirlineResults(true);
                 addFlight(toFlightInfo(preferredAdd, `${airlineName} - ${t.cheaperExtended}`));
@@ -1644,6 +1662,7 @@ function saveToPowerPointSingle(flight: ProcessedFlight, title: string) {
       }
 
       // 3B. REMOVE NIGHTS SEARCH (shorten trip if cheaper)
+      console.log('🔍 REMOVE NIGHTS CHECK:', { removeNights, removeNightsCount, willRun: removeNights && removeNightsCount > 0 });
       if (removeNights && removeNightsCount > 0) {
         let bestRemove: ProcessedFlight | null = null;
         const allRemoveFlights: ProcessedFlight[] = []; // Collect all flights for preferred airline search
@@ -1651,17 +1670,22 @@ function saveToPowerPointSingle(flight: ProcessedFlight, title: string) {
         // Search ALL variations (-1, -2, -3, ... -removeNightsCount) to find the BEST option using SCORE (not just price!)
         for (let i = 1; i <= removeNightsCount; i++) {
           const newRetDate = addDays(returnDateStr, -i);
+          console.log(`  📅 Searching -${i} nights, new return date: ${newRetDate}`);
 
           try {
             const offers = await searchFlightsApi(departure, destination, returnFrom, returnTo, departureDateStr, newRetDate, pax, currency);
             const processed = processFlightOffers(offers, { date: departureDateStr, nightsDiff: -i }, pax);
+            console.log(`  ✈️ Found ${processed.length} processed flights for -${i} nights`);
+            
             let valid = processed.filter(f =>
               f.totalDurationMinutes <= MAX_EXTENDED_DURATION_HOURS * 60 && !f.hasNightFlight
             );
+            console.log(`  ✅ After filters: ${valid.length} valid flights (≤25h, no night flights)`);
             
             // Filter Oslo layover (NO only)
             if (language === 'no') {
               valid = valid.filter(f => f.hasInvalidOsloLayover !== true);
+              console.log(`  🇳🇴 After Oslo filter: ${valid.length} valid flights`);
             }
 
             allRemoveFlights.push(...valid); // Store for preferred airline search
@@ -1672,22 +1696,24 @@ function saveToPowerPointSingle(flight: ProcessedFlight, title: string) {
               const flightScore = calculateFlightScore(flight);
               if (!bestRemove || flightScore < calculateFlightScore(bestRemove)) {
                 bestRemove = flight;
+                console.log(`  🏆 New best remove nights flight: -${i} nights, price: ${flight.price}, score: ${flightScore}`);
               }
             }
           } catch (err) {
-            console.log(`Remove nights search for ${newRetDate} failed:`, err);
+            console.log(`❌ Remove nights search for ${newRetDate} failed:`, err);
           }
         }
 
         // ALWAYS show the best option (by score) - even if more expensive!
         // User wants to see the result if the checkbox is enabled
         if (bestRemove) {
-          // If we already have addNights result, keep the cheapest one
-          if (!extendedStayResult || bestRemove.price < extendedStayResult.price) {
-            setExtendedStayResult({ ...bestRemove, recommendReason: t.cheaperExtended });
-            setSearchProgress(prev => ({ ...prev, current: prev.current + 1 }));
-          }
+          console.log('✅ Setting removeNightsResult:', { nightsDiff: bestRemove.nightsDiff, price: bestRemove.price });
+          setRemoveNightsResult({ ...bestRemove, recommendReason: t.cheaperExtended });
+          setSearchProgress(prev => ({ ...prev, current: prev.current + 1 }));
+        } else {
+          console.log('⚠️ No valid remove nights results found');
         }
+      }
         
         // Find best remove nights option for each selected airline
         if (usePreferredAirline && selectedAirlines.length > 0 && allRemoveFlights.length > 0) {
@@ -1703,9 +1729,9 @@ function saveToPowerPointSingle(flight: ProcessedFlight, title: string) {
               if (preferredRemove.price < basePrice) {
                 setPreferredAirlineResults(prev => ({
                   ...prev,
-                  extendedStay: preferredRemove.price < (prev.extendedStay?.price || Infinity)
+                  removeNights: preferredRemove.price < (prev.removeNights?.price || Infinity)
                     ? { ...preferredRemove, recommendReason: `${airlineName} - ${t.cheaperExtended}` }
-                    : prev.extendedStay
+                    : prev.removeNights
                 }));
                 setHasPreferredAirlineResults(true);
                 addFlight(toFlightInfo(preferredRemove, `${airlineName} - ${t.cheaperExtended}`));
@@ -2610,60 +2636,118 @@ function saveToPowerPointSingle(flight: ProcessedFlight, title: string) {
         </div>
       )}
 
-      {/* EXTENDED STAY RESULT */}
-      {extendedStayResult && (
+      {/* ADD NIGHTS RESULT */}
+      {addNightsResult && (
         <div className="space-y-4">
           <div className="flex items-center gap-2">
             <TrendingDown className="h-5 w-5 text-primary" />
             <div>
               <h3 className="font-semibold text-foreground">
-                {t.cheaperExtended} {Math.abs(extendedStayResult.nightsDiff || 0)} {(extendedStayResult.nightsDiff || 0) > 0 ? t.extraNights : t.fewerNights}
+                {t.cheaperExtended} {Math.abs(addNightsResult.nightsDiff || 0)} {t.extraNights}
               </h3>
               <p className="text-xs text-muted-foreground">
-                {(extendedStayResult.nightsDiff || 0) > 0 ? "Lengre opphold" : "Kortere opphold"}
+                Lengre opphold (+{Math.abs(addNightsResult.nightsDiff || 0)} netter)
               </p>
             </div>
           </div>
           <FlightResultCard
-            flight={extendedStayResult}
+            flight={addNightsResult}
             language={language}
             translations={t}
             formatTime={formatTime}
             formatDate={formatDate}
             formatDuration={formatDuration}
             onSave={saveToPowerPointSingle}
-            title={t.cheaperExtended}
+            title={`${t.cheaperExtended} ${Math.abs(addNightsResult.nightsDiff || 0)} ${t.extraNights}`}
             childrenCount={parseInt(children)}
-            hasNightFlight={extendedStayResult.hasNightFlight}
+            hasNightFlight={addNightsResult.hasNightFlight}
           />
         </div>
       )}
 
-      {/* PREFERRED AIRLINE: Extended Stay Result */}
-      {usePreferredAirline && selectedAirlines.length > 0 && preferredAirlineResults.extendedStay && (
+      {/* REMOVE NIGHTS RESULT */}
+      {removeNightsResult && (
+        <div className="space-y-4">
+          <div className="flex items-center gap-2">
+            <TrendingDown className="h-5 w-5 text-primary" />
+            <div>
+              <h3 className="font-semibold text-foreground">
+                {t.cheaperExtended} {Math.abs(removeNightsResult.nightsDiff || 0)} {t.fewerNights}
+              </h3>
+              <p className="text-xs text-muted-foreground">
+                Kortere opphold (-{Math.abs(removeNightsResult.nightsDiff || 0)} netter)
+              </p>
+            </div>
+          </div>
+          <FlightResultCard
+            flight={removeNightsResult}
+            language={language}
+            translations={t}
+            formatTime={formatTime}
+            formatDate={formatDate}
+            formatDuration={formatDuration}
+            onSave={saveToPowerPointSingle}
+            title={`${t.cheaperExtended} ${Math.abs(removeNightsResult.nightsDiff || 0)} ${t.fewerNights}`}
+            childrenCount={parseInt(children)}
+            hasNightFlight={removeNightsResult.hasNightFlight}
+          />
+        </div>
+      )}
+
+      {/* PREFERRED AIRLINE: Add Nights Result */}
+      {usePreferredAirline && selectedAirlines.length > 0 && preferredAirlineResults.addNights && (
         <div className="space-y-4">
           <div className="flex items-center gap-2">
             <TrendingDown className="h-5 w-5 text-blue-500" />
             <div>
               <h3 className="font-semibold text-foreground">
-                {preferredAirlineResults.extendedStay.recommendReason} {Math.abs(preferredAirlineResults.extendedStay.nightsDiff || 0)} {(preferredAirlineResults.extendedStay.nightsDiff || 0) > 0 ? t.extraNights : t.fewerNights}
+                {preferredAirlineResults.addNights.recommendReason} {Math.abs(preferredAirlineResults.addNights.nightsDiff || 0)} {t.extraNights}
               </h3>
               <p className="text-xs text-muted-foreground">
-                {(preferredAirlineResults.extendedStay.nightsDiff || 0) > 0 ? "Lengre opphold" : "Kortere opphold"}
+                Lengre opphold (+{Math.abs(preferredAirlineResults.addNights.nightsDiff || 0)} netter)
               </p>
             </div>
           </div>
           <FlightResultCard
-            flight={preferredAirlineResults.extendedStay}
+            flight={preferredAirlineResults.addNights}
             language={language}
             translations={t}
             formatTime={formatTime}
             formatDate={formatDate}
             formatDuration={formatDuration}
             onSave={saveToPowerPointSingle}
-            title={preferredAirlineResults.extendedStay.recommendReason || t.cheaperExtended}
+            title={preferredAirlineResults.addNights.recommendReason || t.cheaperExtended}
             childrenCount={parseInt(children)}
-            hasNightFlight={preferredAirlineResults.extendedStay.hasNightFlight}
+            hasNightFlight={preferredAirlineResults.addNights.hasNightFlight}
+          />
+        </div>
+      )}
+
+      {/* PREFERRED AIRLINE: Remove Nights Result */}
+      {usePreferredAirline && selectedAirlines.length > 0 && preferredAirlineResults.removeNights && (
+        <div className="space-y-4">
+          <div className="flex items-center gap-2">
+            <TrendingDown className="h-5 w-5 text-blue-500" />
+            <div>
+              <h3 className="font-semibold text-foreground">
+                {preferredAirlineResults.removeNights.recommendReason} {Math.abs(preferredAirlineResults.removeNights.nightsDiff || 0)} {t.fewerNights}
+              </h3>
+              <p className="text-xs text-muted-foreground">
+                Kortere opphold (-{Math.abs(preferredAirlineResults.removeNights.nightsDiff || 0)} netter)
+              </p>
+            </div>
+          </div>
+          <FlightResultCard
+            flight={preferredAirlineResults.removeNights}
+            language={language}
+            translations={t}
+            formatTime={formatTime}
+            formatDate={formatDate}
+            formatDuration={formatDuration}
+            onSave={saveToPowerPointSingle}
+            title={preferredAirlineResults.removeNights.recommendReason || t.cheaperExtended}
+            childrenCount={parseInt(children)}
+            hasNightFlight={preferredAirlineResults.removeNights.hasNightFlight}
           />
         </div>
       )}
