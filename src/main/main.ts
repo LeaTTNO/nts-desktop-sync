@@ -1,4 +1,5 @@
 import { app, BrowserWindow, ipcMain, shell } from "electron";
+import { autoUpdater } from "electron-updater";
 import path from "path";
 import { fileURLToPath } from "url";
 import fs from "fs";
@@ -46,7 +47,38 @@ function createWindow() {
 }
 
 /* --------------------------------------------------
-   📂 IPC – ÅPNE POWERPOINT MIDLERTIDIG
+   � AUTO UPDATE
+-------------------------------------------------- */
+function initAutoUpdate() {
+  if (isDev) return;
+
+  autoUpdater.logger = console;
+  autoUpdater.checkForUpdatesAndNotify();
+
+  autoUpdater.on("checking-for-update", () => {
+    console.log("🔍 Checking for updates...");
+  });
+
+  autoUpdater.on("update-available", () => {
+    console.log("⬇️ Update available");
+  });
+
+  autoUpdater.on("update-not-available", () => {
+    console.log("✅ No update available");
+  });
+
+  autoUpdater.on("error", (err) => {
+    console.error("❌ Auto-update error:", err);
+  });
+
+  autoUpdater.on("update-downloaded", () => {
+    console.log("🚀 Update downloaded – restarting");
+    autoUpdater.quitAndInstall();
+  });
+}
+
+/* --------------------------------------------------
+   �📂 IPC – ÅPNE POWERPOINT MIDLERTIDIG
 -------------------------------------------------- */
 ipcMain.handle("ppt:open-temp", async (_, { data, fileName }) => {
   try {
@@ -69,6 +101,7 @@ ipcMain.handle("ppt:open-temp", async (_, { data, fileName }) => {
 -------------------------------------------------- */
 app.whenReady().then(() => {
   createWindow();
+  initAutoUpdate();
 
   app.on("activate", () => {
     if (BrowserWindow.getAllWindows().length === 0) {
