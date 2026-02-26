@@ -178,6 +178,24 @@ export default function TemplateLibrary() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [userCategories.length]);
 
+  // 🔄 Auto-sync listener - triggered daily at 08:00 by main process
+  useEffect(() => {
+    if (!window.electron?.on) return;
+
+    console.log('🔔 TemplateLibrary: Setting up auto-sync listener');
+    
+    const unsubscribe = window.electron.on('onedrive:auto-sync-trigger', () => {
+      console.log('⏰ Auto-sync triggered at 08:00 - syncing templates');
+      handleSyncNow();
+      toast.info('Auto-synkronisering kl 08:00 startet...');
+    });
+
+    return () => {
+      if (unsubscribe) unsubscribe();
+    };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [userLanguage]); // Re-subscribe if language changes
+
   // Legg til brukerens personlige kategori
   const personalCategory = userPrefix
     ? getUserPersonalCategory(userPrefix, userLanguage)
