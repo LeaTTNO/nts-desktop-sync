@@ -119,10 +119,10 @@ interface ExtendedResults {
 // CONSTRAINTS (HARD LIMITS)
 // =============================================================================
 
-// 1. BESTE OG BILLIGSTE: Maks 22t (OSL/HAM/CPH) eller 23t (BLL, AAL, TRD, SVG, BGO, KRS, TRF)
+// 1. BESTE OG BILLIGSTE: Maks 21t (OSL/HAM/CPH) eller 23t (BLL, AAL, TRD, SVG, BGO, KRS, TRF)
 function getMaxBestAndCheapestDurationHours(departureAirport: string): number {
   const MAJOR_HUBS = ['OSL', 'HAM', 'CPH'];
-  return MAJOR_HUBS.includes(departureAirport.toUpperCase()) ? 22 : 23;
+  return MAJOR_HUBS.includes(departureAirport.toUpperCase()) ? 21 : 23;
 }
 
 // 2. BESTE KVALITET: Maks 19t (HAM/CPH) eller 20t (OSL, BLL, AAL) eller 21t (TRD, SVG, BGO, KRS, TRF)
@@ -184,13 +184,16 @@ const translations = {
     fillFields: "Fyll ut alle obligatoriske felt",
     duration: "Reisetid",
     flexibleDates: "Fleksible datoer ±",
+    flexibleDatesInfo: "Søker på alternative datoer før og etter valgt avreisedato. Bruker samme kriterier som 'Beste og billigste' (maks 21-23t, ingen nattfly). Viser det beste og billigste alternativet i perioden.",
     nights: "",
     addNights: "Legg til netter +",
+    addNightsInfo: "Søker flyreiser med lengre opphold (flere netter på destinasjonen). Bruker samme kriterier som 'Beste og billigste' (maks 21-23t, ingen nattfly). Viser det beste og billigste alternativet med ekstra netter.",
     removeNights: "Fjern netter -",
+    removeNightsInfo: "Søker flyreiser med kortere opphold (færre netter på destinasjonen). Bruker samme kriterier som 'Beste og billigste' (maks 21-23t, ingen nattfly). Viser det beste og billigste alternativet med færre netter.",
     nightsExtra: "",
     nightsLess: "",
     mainResults: "Hovedresultater",
-    mainResultsDesc: "Max 22t reisetid, ingen nattfly (00:30-05:50)",
+    mainResultsDesc: "Max 21t reisetid, ingen nattfly (00:30-05:50)",
     extendedResults: "Utvidede alternativer",
     extendedResultsDesc: "Max 25t reisetid, tillater nattfly",
     cheaperFlexible: "Billigere med andre datoer",
@@ -203,7 +206,7 @@ const translations = {
     seats: "seter",
     layover: "mellomland.",
     dateInterval: "Dato-intervall",
-    dateIntervalInfo: "Dette søket går over en lengre periode og vil derfor ta noe lengre tid siden det søkes på mange datoer.",
+    dateIntervalInfo: "Søker på alle datoer i perioden med valgt antall netter. Bruker samme kriterier som 'Beste og billigste' (maks 21-23t, ingen nattfly). Viser det beste og billigste alternativet i hele perioden, og andre datoer med lignende pris (±600 kr).",
     earliestDeparture: "Tidligste avreise",
     latestDeparture: "Seneste avreise",
     searchInInterval: "Søk billigste i periode",
@@ -211,10 +214,11 @@ const translations = {
     showDetails: "Vis detaljer",
     hideDetails: "Skjul detaljer",
     noFlightsFound: "Ingen flyreiser funnet som oppfyller kriteriene",
-    noFlightsMainCriteria: "Ingen flyreiser innenfor hovedkriterier (max 22t, ingen nattfly 00:30-05:50)",
+    noFlightsMainCriteria: "Ingen flyreiser innenfor hovedkriterier (max 21t, ingen nattfly 00:30-05:50)",
     onlyLongerFlights: "Det finnes kun flyreiser med lengre reisetid (over 25 timer)",
     tryExtendingSearch: "Prøv å utvide søket eller endre datoene",
     preferredAirline: "Velg flyselskap",
+    preferredAirlineInfo: "Filtrer søket til å kun vise resultater med valgte flyselskap. Du kan velge flere flyselskap. Resultatet vises som egne kategorier sammen med hovedresultatene.",
     selectAirline: "Velg flyselskap",
     noPreferredAirlineResults: "Ingen resultater funnet med valgt flyselskap som passer til kriteriene",
   },
@@ -257,13 +261,16 @@ const translations = {
     fillFields: "Udfyld alle obligatoriske felter",
     duration: "Rejsetid",
     flexibleDates: "Fleksible datoer ±",
+    flexibleDatesInfo: "Søger på alternative datoer før og efter valgt afrejsedato. Bruger samme kriterier som 'Bedste og billigste' (maks 21-23t, ingen natfly). Viser det bedste og billigste alternativ i perioden.",
     nights: "",
     addNights: "Tilføj nætter +",
+    addNightsInfo: "Søger flyrejser med længere ophold (flere nætter på destinationen). Bruger samme kriterier som 'Bedste og billigste' (maks 21-23t, ingen natfly). Viser det bedste og billigste alternativ med ekstra nætter.",
     removeNights: "Fjern nætter -",
+    removeNightsInfo: "Søger flyrejser med kortere ophold (færre nætter på destinationen). Bruger samme kriterier som 'Bedste og billigste' (maks 21-23t, ingen natfly). Viser det bedste og billigste alternativ med færre nætter.",
     nightsExtra: "",
     nightsLess: "",
     mainResults: "Hovedresultater",
-    mainResultsDesc: "Max 22t rejsetid, ingen natfly (00:30-05:50)",
+    mainResultsDesc: "Max 21t rejsetid, ingen natfly (00:30-05:50)",
     extendedResults: "Udvidede alternativer",
     extendedResultsDesc: "Max 25t rejsetid, tillader natfly",
     cheaperFlexible: "Billigere med andre datoer",
@@ -276,7 +283,7 @@ const translations = {
     seats: "sæder",
     layover: "mellemland.",
     dateInterval: "Datointervall",
-    dateIntervalInfo: "Denne søgning dækker en længere periode og vil derfor tage lidt længere tid, da der søges på mange datoer.",
+    dateIntervalInfo: "Søger på alle datoer i perioden med valgt antal nætter. Bruger samme kriterier som 'Bedste og billigste' (maks 21-23t, ingen natfly). Viser det bedste og billigste alternativ i hele perioden, og andre datoer med lignende pris (±600 kr).",
     earliestDeparture: "Tidligste afrejse",
     latestDeparture: "Seneste afrejse",
     searchInInterval: "Søg billigste i periode",
@@ -284,10 +291,11 @@ const translations = {
     showDetails: "Vis detaljer",
     hideDetails: "Skjul detaljer",
     noFlightsFound: "Ingen flyrejser fundet som opfylder kriterierne",
-    noFlightsMainCriteria: "Ingen flyrejser inden for hovedkriterier (max 22t, ingen natfly 00:30-05:50)",
+    noFlightsMainCriteria: "Ingen flyrejser inden for hovedkriterier (max 21t, ingen natfly 00:30-05:50)",
     onlyLongerFlights: "Der findes kun flyrejser med længere rejsetid (over 25 timer)",
     tryExtendingSearch: "Prøv at udvide søgningen eller ændre datoerne",
     preferredAirline: "Vælg flyselskab",
+    preferredAirlineInfo: "Filtrer søgningen til kun at vise resultater med valgte flyselskaber. Du kan vælge flere flyselskaber. Resultatet vises som egne kategorier sammen med hovedresultaterne.",
     selectAirline: "Vælg flyselskab",
     noPreferredAirlineResults: "Ingen resultater fundet med valgt flyselskab som passer til kriterierne",
   },
@@ -608,8 +616,8 @@ function calculateFlightScore(flight: ProcessedFlight): number {
 /**
  * Filter and categorize flights according to user's exact specifications:
  * ALWAYS returns 3 main categories:
- * 1. Best and cheapest (≤22h, no night flights) 
- * 2. Best overall by quality (≤22h, no night flights)
+ * 1. Best and cheapest (≤21h or ≤23h, no night flights) 
+ * 2. Best overall by quality (≤19h, ≤20h or ≤21h, no night flights)
  * 3. Cheapest (≤25h, NO night flights - longer time allowed but still no night departures/arrivals)
  */
 function categorizeFlights(
@@ -622,8 +630,9 @@ function categorizeFlights(
   bestQuality: ProcessedFlight | null;
   cheapestExtended: ProcessedFlight | null;
 } {
-  const MAX_STRICT_DURATION_HOURS = getMaxStrictDurationHours(departureAirport);
-  console.log(`🔍 CATEGORIZE: Received ${flights.length} total flights (max strict: ${MAX_STRICT_DURATION_HOURS}h for ${departureAirport})`);
+  const MAX_BEST_AND_CHEAPEST_HOURS = getMaxBestAndCheapestDurationHours(departureAirport);
+  const MAX_BEST_QUALITY_HOURS = getMaxBestQualityDurationHours(departureAirport);
+  console.log(`🔍 CATEGORIZE: ${flights.length} flights - BestAndCheapest≤${MAX_BEST_AND_CHEAPEST_HOURS}h, BestQuality≤${MAX_BEST_QUALITY_HOURS}h, Extended≤25h (${departureAirport})`);
   
   // HARD FILTER: Never show flights over 25 hours
   let validFlights = flights.filter(f =>
@@ -647,7 +656,7 @@ function categorizeFlights(
     return { bestAndCheapest: null, bestQuality: null, cheapestExtended: null };
   }
 
-  // Category 1: BESTE OG BILLIGSTE (≤22h or ≤23h depending on departure, no night flights)
+  // Category 1: BESTE OG BILLIGSTE (≤21h or ≤23h depending on departure, no night flights)
   const bestAndCheapestFlights = validFlights.filter(f =>
     f.totalDurationMinutes <= MAX_BEST_AND_CHEAPEST_HOURS * 60 && !f.hasNightFlight
   );
@@ -1149,7 +1158,7 @@ export default function FlightRobot() {
       return null;
     }
     
-    // For strict categories, prefer flights ≤22h/23h (based on departure) with no night flights, but fallback if none exist
+    // For strict categories, prefer flights ≤21h/23h (based on departure) with no night flights, but fallback if none exist
     if (category === 'strict') {
       const strictFiltered = filtered.filter(f => 
         f.totalDurationMinutes <= MAX_BEST_AND_CHEAPEST_HOURS * 60 && !f.hasNightFlight
@@ -1568,7 +1577,7 @@ function saveToPowerPointSingle(flight: ProcessedFlight, title: string) {
           try {
             const offers = await searchFlightsApi(departure, destination, returnFrom, returnTo, newDepDate, newRetDate, pax, currency);
             const processed = processFlightOffers(offers, { date: newDepDate, nightsDiff: 0 }, pax);
-            // Use BESTE OG BILLIGSTE criteria: Max 22-23h, no night flights
+            // Use BESTE OG BILLIGSTE criteria: Max 21-23h, no night flights
             let valid = processed.filter(f =>
               f.totalDurationMinutes <= MAX_BEST_AND_CHEAPEST_HOURS * 60 && !f.hasNightFlight
             );
@@ -1644,7 +1653,7 @@ function saveToPowerPointSingle(flight: ProcessedFlight, title: string) {
             const processed = processFlightOffers(offers, { date: departureDateStr, nightsDiff: i }, pax);
             console.log(`  ✈️ Found ${processed.length} processed flights for +${i} nights`);
             
-            // Use BESTE OG BILLIGSTE criteria: Max 22-23h, no night flights
+            // Use BESTE OG BILLIGSTE criteria: Max 21-23h, no night flights
             let valid = processed.filter(f =>
               f.totalDurationMinutes <= MAX_BEST_AND_CHEAPEST_HOURS * 60 && !f.hasNightFlight
             );
@@ -1727,7 +1736,7 @@ function saveToPowerPointSingle(flight: ProcessedFlight, title: string) {
             const processed = processFlightOffers(offers, { date: departureDateStr, nightsDiff: -i }, pax);
             console.log(`  ✈️ Found ${processed.length} processed flights for -${i} nights`);
             
-            // Use BESTE OG BILLIGSTE criteria: Max 22-23h, no night flights
+            // Use BESTE OG BILLIGSTE criteria: Max 21-23h, no night flights
             let valid = processed.filter(f =>
               f.totalDurationMinutes <= MAX_BEST_AND_CHEAPEST_HOURS * 60 && !f.hasNightFlight
             );
@@ -1831,7 +1840,7 @@ function saveToPowerPointSingle(flight: ProcessedFlight, title: string) {
           try {
             const offers = await searchFlightsApi(departure, destination, returnFrom, returnTo, searchDepDate, searchRetDate, pax, currency);
             const processed = processFlightOffers(offers, { date: searchDepDate, nightsDiff: 0 }, pax);
-            // Use BESTE OG BILLIGSTE criteria: Max 22-23h, no night flights
+            // Use BESTE OG BILLIGSTE criteria: Max 21-23h, no night flights
             let valid = processed.filter(f =>
               f.totalDurationMinutes <= MAX_BEST_AND_CHEAPEST_HOURS * 60 && !f.hasNightFlight
             );
@@ -2153,24 +2162,41 @@ function saveToPowerPointSingle(flight: ProcessedFlight, title: string) {
                 checked={flexibleDates}
                 onCheckedChange={(checked) => setFlexibleDates(checked === true)}
               />
-              <Label htmlFor="flexibleDates" className="flex items-center gap-2 cursor-pointer">
-                {t.flexibleDates}
-                <Select 
-                  value={String(flexibleNights)} 
-                  onValueChange={(v) => setFlexibleNights(parseInt(v))}
-                  disabled={!flexibleDates}
-                >
-                  <SelectTrigger className="w-16 h-8 bg-muted/30">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent position="popper" className="bg-background z-50 max-h-[200px] overflow-y-auto">
-                    {[1, 2, 3, 4, 5, 7].map((n) => (
-                      <SelectItem key={n} value={String(n)}>{n}</SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-                {t.nights}
-              </Label>
+              <div className="flex items-center gap-2">
+                <Label htmlFor="flexibleDates" className="flex items-center gap-2 cursor-pointer">
+                  {t.flexibleDates}
+                  <Select 
+                    value={String(flexibleNights)} 
+                    onValueChange={(v) => setFlexibleNights(parseInt(v))}
+                    disabled={!flexibleDates}
+                  >
+                    <SelectTrigger className="w-16 h-8 bg-muted/30">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent position="popper" className="bg-background z-50 max-h-[200px] overflow-y-auto">
+                      {[1, 2, 3, 4, 5, 7].map((n) => (
+                        <SelectItem key={n} value={String(n)}>{n}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  {t.nights}
+                </Label>
+                <Popover>
+                  <PopoverTrigger asChild>
+                    <button className="text-muted-foreground hover:text-foreground transition-colors">
+                      <Info className="h-4 w-4" />
+                    </button>
+                  </PopoverTrigger>
+                  <PopoverContent className="w-80">
+                    <div className="flex gap-2">
+                      <Info className="h-5 w-5 text-blue-500 flex-shrink-0 mt-0.5" />
+                      <p className="text-sm text-muted-foreground">
+                        {t.flexibleDatesInfo}
+                      </p>
+                    </div>
+                  </PopoverContent>
+                </Popover>
+              </div>
             </div>
 
             {/* Add Extra Nights */}
@@ -2180,24 +2206,41 @@ function saveToPowerPointSingle(flight: ProcessedFlight, title: string) {
                 checked={addNights}
                 onCheckedChange={(checked) => setAddNights(checked === true)}
               />
-              <Label htmlFor="addNights" className="flex items-center gap-2 cursor-pointer">
-                {t.addNights}
-                <Select 
-                  value={String(addNightsCount)} 
-                  onValueChange={(v) => setAddNightsCount(parseInt(v))}
-                  disabled={!addNights}
-                >
-                  <SelectTrigger className="w-16 h-8 bg-muted/30">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent position="popper" className="bg-background z-50 max-h-[200px] overflow-y-auto">
-                    {[1, 2, 3, 4, 5, 7].map((n) => (
-                      <SelectItem key={n} value={String(n)}>{n}</SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-                {t.nightsExtra}
-              </Label>
+              <div className="flex items-center gap-2">
+                <Label htmlFor="addNights" className="flex items-center gap-2 cursor-pointer">
+                  {t.addNights}
+                  <Select 
+                    value={String(addNightsCount)} 
+                    onValueChange={(v) => setAddNightsCount(parseInt(v))}
+                    disabled={!addNights}
+                  >
+                    <SelectTrigger className="w-16 h-8 bg-muted/30">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent position="popper" className="bg-background z-50 max-h-[200px] overflow-y-auto">
+                      {[1, 2, 3, 4, 5, 7].map((n) => (
+                        <SelectItem key={n} value={String(n)}>{n}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  {t.nightsExtra}
+                </Label>
+                <Popover>
+                  <PopoverTrigger asChild>
+                    <button className="text-muted-foreground hover:text-foreground transition-colors">
+                      <Info className="h-4 w-4" />
+                    </button>
+                  </PopoverTrigger>
+                  <PopoverContent className="w-80">
+                    <div className="flex gap-2">
+                      <Info className="h-5 w-5 text-blue-500 flex-shrink-0 mt-0.5" />
+                      <p className="text-sm text-muted-foreground">
+                        {t.addNightsInfo}
+                      </p>
+                    </div>
+                  </PopoverContent>
+                </Popover>
+              </div>
             </div>
 
             {/* Remove Nights */}
@@ -2207,24 +2250,41 @@ function saveToPowerPointSingle(flight: ProcessedFlight, title: string) {
                 checked={removeNights}
                 onCheckedChange={(checked) => setRemoveNights(checked === true)}
               />
-              <Label htmlFor="removeNights" className="flex items-center gap-2 cursor-pointer">
-                {t.removeNights}
-                <Select 
-                  value={String(removeNightsCount)} 
-                  onValueChange={(v) => setRemoveNightsCount(parseInt(v))}
-                  disabled={!removeNights}
-                >
-                  <SelectTrigger className="w-16 h-8 bg-muted/30">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent position="popper" className="bg-background z-50 max-h-[200px] overflow-y-auto">
-                    {[1, 2, 3, 4, 5, 7].map((n) => (
-                      <SelectItem key={n} value={String(n)}>{n}</SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-                {t.nightsLess}
-              </Label>
+              <div className="flex items-center gap-2">
+                <Label htmlFor="removeNights" className="flex items-center gap-2 cursor-pointer">
+                  {t.removeNights}
+                  <Select 
+                    value={String(removeNightsCount)} 
+                    onValueChange={(v) => setRemoveNightsCount(parseInt(v))}
+                    disabled={!removeNights}
+                  >
+                    <SelectTrigger className="w-16 h-8 bg-muted/30">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent position="popper" className="bg-background z-50 max-h-[200px] overflow-y-auto">
+                      {[1, 2, 3, 4, 5, 7].map((n) => (
+                        <SelectItem key={n} value={String(n)}>{n}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  {t.nightsLess}
+                </Label>
+                <Popover>
+                  <PopoverTrigger asChild>
+                    <button className="text-muted-foreground hover:text-foreground transition-colors">
+                      <Info className="h-4 w-4" />
+                    </button>
+                  </PopoverTrigger>
+                  <PopoverContent className="w-80">
+                    <div className="flex gap-2">
+                      <Info className="h-5 w-5 text-blue-500 flex-shrink-0 mt-0.5" />
+                      <p className="text-sm text-muted-foreground">
+                        {t.removeNightsInfo}
+                      </p>
+                    </div>
+                  </PopoverContent>
+                </Popover>
+              </div>
             </div>
 
             {/* Preferred Airline - Multi-Select with Checkboxes */}
@@ -2238,6 +2298,21 @@ function saveToPowerPointSingle(flight: ProcessedFlight, title: string) {
                 <Label htmlFor="preferredAirline" className="cursor-pointer font-semibold">
                   {t.preferredAirline}
                 </Label>
+                <Popover>
+                  <PopoverTrigger asChild>
+                    <button className="text-muted-foreground hover:text-foreground transition-colors">
+                      <Info className="h-4 w-4" />
+                    </button>
+                  </PopoverTrigger>
+                  <PopoverContent className="w-80">
+                    <div className="flex gap-2">
+                      <Info className="h-5 w-5 text-blue-500 flex-shrink-0 mt-0.5" />
+                      <p className="text-sm text-muted-foreground">
+                        {t.preferredAirlineInfo}
+                      </p>
+                    </div>
+                  </PopoverContent>
+                </Popover>
               </div>
               
               {usePreferredAirline && (
@@ -2492,10 +2567,10 @@ function saveToPowerPointSingle(flight: ProcessedFlight, title: string) {
         </Card>
       )}
 
-      {/* MAIN RESULTS - ALWAYS SHOW ALL 3 CATEGORIES (≤22h/≤25h, varying night restrictions) */}
+      {/* MAIN RESULTS - ALWAYS SHOW ALL 3 CATEGORIES (≤21h/≤25h, varying night restrictions) */}
       {hasSearched && (mainResults.bestAndCheapest || bestQualityResult || cheapestExtendedResult) && (
         <div className="space-y-6">
-          {/* CATEGORY 1: Best and Cheapest (≤22h, no night) */}
+          {/* CATEGORY 1: Best and Cheapest (≤21h, no night) */}
           {mainResults.bestAndCheapest && (
             <div className="space-y-4">
               <div className="flex items-center gap-2">
@@ -2565,7 +2640,7 @@ function saveToPowerPointSingle(flight: ProcessedFlight, title: string) {
               </CardContent>
             </Card>
           )}
-          {/* CATEGORY 2: Best by Quality (≤22h, no night) */}
+          {/* CATEGORY 2: Best by Quality (≤19h/≤20h/≤21h, no night) */}
           {/* ALWAYS SHOW - even if same as bestAndCheapest (confirms it's the best!) */}
           {bestQualityResult && (
             <div className="space-y-4">

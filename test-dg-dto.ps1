@@ -1,5 +1,4 @@
-# Test DG/DTO replacement logic - VBA-compliant deterministic traversal
-# This script tests the corrected DG/DTO algorithm
+# Deterministic DG/DTO test with explicit traversal order
 
 $testDate = "2026-02-20"
 $hasDate = $false
@@ -14,61 +13,66 @@ if ($testDate) {
   }
 }
 
-# Simulate slide structure with shapes containing DG/DTO in traversal order
+# Simulated Z-order traversal (explicit order)
 $testShapes = @(
-  "DG DTO",           # Slide 1, Shape 1
-  "Header",           # Slide 1, Shape 2
-  "DG DTO",           # Slide 2, Table Cell [1,1]
-  "DG DTO",           # Slide 2, Table Cell [1,2]
-  "DG",               # Slide 3, Shape 1 (no DTO)
-  "Footer",           # Slide 3, Shape 2
-  "DG DTO DG DTO"     # Slide 4, multiple pairs in same shape
+  @{ Slide=1; Shape=1; Text="DG DTO" },
+  @{ Slide=1; Shape=2; Text="Header" },
+  @{ Slide=2; Shape=1; Text="DG DTO" },
+  @{ Slide=2; Shape=2; Text="DG DTO" },
+  @{ Slide=3; Shape=1; Text="DG" },
+  @{ Slide=3; Shape=2; Text="Footer" },
+  @{ Slide=4; Shape=1; Text="DG DTO DG DTO" }
 )
 
-Write-Host "[TEST] Testing deterministic traversal with $($testShapes.Count) shapes"
+Write-Host ""
+Write-Host "[TEST] Deterministic traversal start"
 Write-Host ""
 
 $dayNr = 1
 
-foreach ($shapeText in $testShapes) {
-  $txt = $shapeText
+foreach ($entry in $testShapes) {
+
+  $txt = $entry.Text
   $originalText = $txt
-  $foundDG = $false
-  
-  # Process ALL DG/DTO pairs in this shape before moving to next shape
-  while ($txt -like "*DG*") {
-    $foundDG = $true
-    
+
+  Write-Host "Processing Slide $($entry.Slide), Shape $($entry.Shape)"
+  Write-Host "  Original: $txt"
+
+  # Process all DG/DTO pairs in same shape before moving on
+  while ($txt.Contains("DG")) {
+
+    $dgIndex = $txt.IndexOf("DG")
+    if ($dgIndex -lt 0) { break }
+
     # Replace first DG
-    $idx = $txt.IndexOf("DG")
-    if ($idx -ge 0) {
-      $txt = $txt.Substring(0, $idx) + ("Dag " + $dayNr) + $txt.Substring($idx + 2)
-      Write-Host "  [OK] DG replaced: 'DG' -> 'Dag $dayNr'"
-    }
-    
-    # Handle DTO in SAME shape
-    if ($txt -like "*DTO*") {
-      $dtoIdx = $txt.IndexOf("DTO")
-      if ($dtoIdx -ge 0) {
+    $txt = $txt.Substring(0, $dgIndex) + ("Dag " + $dayNr) + $txt.Substring($dgIndex + 2)
+
+    Write-Host "    DG -> Dag $dayNr"
+
+    # Immediately pair DTO in same shape
+    if ($txt.Contains("DTO")) {
+
+      $dtoIndex = $txt.IndexOf("DTO")
+      if ($dtoIndex -ge 0) {
+
         if ($hasDate) {
-          $d = $baseDate.AddDays($dayNr - 1)
-          $val = $d.ToString("dd MMM", [System.Globalization.CultureInfo]::GetCultureInfo("nb-NO")).ToLower()
-          $txt = $txt.Substring(0, $dtoIdx) + $val + $txt.Substring($dtoIdx + 3)
-          Write-Host "  [OK] DTO replaced: 'DTO' -> '$val'"
-        } else {
-          $txt = $txt.Substring(0, $dtoIdx) + $txt.Substring($dtoIdx + 3)
-          Write-Host "  [WARN] DTO cleared (no date)"
+          $dateValue = $baseDate.AddDays($dayNr - 1)
+          $formatted = $dateValue.ToString("dd MMM", [System.Globalization.CultureInfo]::GetCultureInfo("nb-NO")).ToLower()
+          $txt = $txt.Substring(0, $dtoIndex) + $formatted + $txt.Substring($dtoIndex + 3)
+          Write-Host "    DTO -> $formatted"
+        }
+        else {
+          $txt = $txt.Substring(0, $dtoIndex) + $txt.Substring($dtoIndex + 3)
+          Write-Host "    DTO cleared"
         }
       }
     }
-    
+
     $dayNr++
   }
-  
-  if ($foundDG) {
-    Write-Host "Shape: '$originalText' -> '$txt'"
-    Write-Host ""
-  }
+
+  Write-Host "  Result: $txt"
+  Write-Host ""
 }
 
-Write-Host "[COMPLETE] DG/DTO test completed! Total days processed: $($dayNr - 1)"
+Write-Host "[COMPLETE] Total days processed: $($dayNr - 1)"
