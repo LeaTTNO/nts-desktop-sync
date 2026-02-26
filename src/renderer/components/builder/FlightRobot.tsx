@@ -119,13 +119,24 @@ interface ExtendedResults {
 // CONSTRAINTS (HARD LIMITS)
 // =============================================================================
 
-// Helper function to get max strict duration based on departure airport
-function getMaxStrictDurationHours(departureAirport: string): number {
-  const MAJOR_HUBS = ['OSL', 'HAM', 'CPH']; // Major European hubs with better connections
-  return MAJOR_HUBS.includes(departureAirport.toUpperCase()) ? 20 : 22;
+// 1. BESTE OG BILLIGSTE: Maks 22t (OSL/HAM/CPH) eller 23t (BLL, AAL, TRD, SVG, BGO, KRS, TRF)
+function getMaxBestAndCheapestDurationHours(departureAirport: string): number {
+  const MAJOR_HUBS = ['OSL', 'HAM', 'CPH'];
+  return MAJOR_HUBS.includes(departureAirport.toUpperCase()) ? 22 : 23;
 }
 
-const MAX_EXTENDED_DURATION_HOURS = 25;  // Extended alternatives: max 25 hours
+// 2. BESTE KVALITET: Maks 19t (HAM/CPH) eller 20t (OSL, BLL, AAL) eller 21t (TRD, SVG, BGO, KRS, TRF)
+function getMaxBestQualityDurationHours(departureAirport: string): number {
+  const PREMIUM_HUBS = ['HAM', 'CPH'];
+  const MAJOR_HUBS = ['OSL', 'BLL', 'AAL'];
+  const code = departureAirport.toUpperCase();
+  
+  if (PREMIUM_HUBS.includes(code)) return 19;
+  if (MAJOR_HUBS.includes(code)) return 20;
+  return 21; // TRD, SVG, BGO, KRS, TRF
+}
+
+const MAX_EXTENDED_DURATION_HOURS = 25;  // 3. BILLIGSTE (UTVIDET): max 25 hours
 const NIGHT_START_MINUTES = 30;          // Night period starts 00:30 (30 minutes)
 const NIGHT_END_MINUTES = 350;           // Night period ends 05:50 (5*60 + 50 = 350 minutes)
 
@@ -636,19 +647,26 @@ function categorizeFlights(
     return { bestAndCheapest: null, bestQuality: null, cheapestExtended: null };
   }
 
-  // Category 1 & 2: Strict flights (≤20h or ≤22h depending on departure, no night flights)
-  const strictFlights = validFlights.filter(f =>
-    f.totalDurationMinutes <= MAX_STRICT_DURATION_HOURS * 60 && !f.hasNightFlight
+  // Category 1: BESTE OG BILLIGSTE (≤22h or ≤23h depending on departure, no night flights)
+  const bestAndCheapestFlights = validFlights.filter(f =>
+    f.totalDurationMinutes <= MAX_BEST_AND_CHEAPEST_HOURS * 60 && !f.hasNightFlight
   );
 
-  console.log(`✅ Strict flights (≤${MAX_STRICT_DURATION_HOURS}h, no night): ${strictFlights.length}`);
-  console.log(`🌙 Flights with night departures/arrivals: ${validFlights.filter(f => f.hasNightFlight).length}`);
-  console.log(`⏱️ Flights over ${MAX_STRICT_DURATION_HOURS}h (but under 25h): ${validFlights.filter(f => f.totalDurationMinutes > MAX_STRICT_DURATION_HOURS * 60).length}`);
+  // Category 2: BESTE KVALITET (≤19h, ≤20h or ≤21h depending on departure, no night flights)
+  const bestQualityFlights = validFlights.filter(f =>
+    f.totalDurationMinutes <= MAX_BEST_QUALITY_HOURS * 60 && !f.hasNightFlight
+  );
 
-  // Score strict flights with special handling for similar prices and fare types
-  const PACKAGE_FARE_TOLERANCE = 300; // Prefer NEGOTIATED if within 300 kr
+  console.log(`✅ BestAndCheapest flights (≤${MAX_BEST_AND_CHEAPEST_HOURS}h, no night): ${bestAndCheapestFlights.length}`);
+  console.log(`✅ BestQuality flights (≤${MAX_BEST_QUALITY_HOURS}h, no night): ${bestQualityFlights.length}`);
+  console.log(`🌙 Flights with night departures/arrivals: ${validFlights.filter(f => f.hasNightFlight).length}`);
+  console.log(`⏱️ Flights over ${MAX_BEST_AND_CHEAPEST_HOURS}h (but under 25h): ${validFlights.filter(f => f.totalDurationMinutes > MAX_BEST_AND_CHEAPEST_HOURS * 60).length}`);
+
+  // CATEGORY 1: BESTE OG BILLIGSTE
+  // Score flights with special handling for similar prices and fare types
+  const PACKAGE_FARE_TOLERANCE = language === 'da' ? 300 : 400; // Prefer NEGOTIATED if within 300-400 kr
   
-  const scoredStrict = strictFlights
+  const scoredBestAndCheapest = bestAndCheapestFlights
     .map(f => ({ ...f, score: calculateFlightScore(f) }))
     .sort((a, b) => {
       // PRIORITY 1: Prefer NEGOTIATED (package) fares when comparable price
@@ -656,11 +674,9 @@ function categorizeFlights(
       const isBNegotiated = b.fareType === 'NEGOTIATED';
       
       if (isANegotiated && !isBNegotiated) {
-        // A is package, B is public: choose A if within tolerance
         if (a.price <= b.price + PACKAGE_FARE_TOLERANCE) return -1;
       }
       if (!isANegotiated && isBNegotiated) {
-        // B is package, A is public: choose B if within tolerance
         if (b.price <= a.price + PACKAGE_FARE_TOLERANCE) return 1;
       }
       
@@ -674,15 +690,18 @@ function categorizeFlights(
       return a.score - b.score;
     });
 
-  // RESULT 1: Best and cheapest (combines best score with lowest price among strict)
-  // This is the BASE PRICE - all other categories must be same price or more expensive!
-  const bestAndCheapest = scoredStrict[0] ? { ...scoredStrict[0], isRecommended: true } : null;
+  // RESULT 1: BESTE OG BILLIGSTE (combines best score with lowest price)
+  // This is the BASE - all other categories should be same price or more expensive!
+  const bestAndCheapest = scoredBestAndCheapest[0] ? { ...scoredBestAndCheapest[0], isRecommended: true } : null;
   const basePrice = bestAndCheapest?.price || 0;
+  const baseDuration = bestAndCheapest?.totalDurationMinutes || 0;
 
-  // RESULT 2: Best by QUALITY ONLY (shortest duration + fewest stops)
-  // MUST be same price or MORE EXPENSIVE than bestAndCheapest!
-  const packageTolerance = language === 'da' ? 300 : 400;
-  const qualitySorted = strictFlights
+  // CATEGORY 2: BESTE KVALITET (shortest duration + fewest stops)
+  // CRITICAL RULES:
+  // - Can NEVER be cheaper than "Beste og billigste"
+  // - Can NEVER have longer duration than "Beste og billigste"
+  // - Must be within stricter time limits (19-21h vs 22-23h)
+  const qualitySorted = bestQualityFlights
     .map(f => ({
       ...f,
       qualityScore: (f.combinedDurationMinutes || f.totalDurationMinutes) + 
@@ -694,10 +713,10 @@ function categorizeFlights(
       const isBNegotiated = b.fareType === 'NEGOTIATED';
       
       if (isANegotiated && !isBNegotiated) {
-        if (a.price <= b.price + packageTolerance) return -1;
+        if (a.price <= b.price + PACKAGE_FARE_TOLERANCE) return -1;
       }
       if (!isANegotiated && isBNegotiated) {
-        if (b.price <= a.price + packageTolerance) return 1;
+        if (b.price <= a.price + PACKAGE_FARE_TOLERANCE) return 1;
       }
       
       // PRIORITY 2: Sort by quality score ONLY (duration + stops, NO price)
@@ -708,34 +727,37 @@ function categorizeFlights(
   if (qualitySorted.length > 0 && bestAndCheapest) {
     const topQuality = qualitySorted[0];
     
-    // CRITICAL RULE: "Beste" can NEVER be cheaper than "Beste og billigste"
-    // If it would be cheaper, show bestAndCheapest in both categories (confirms it's the best!)
-    if (topQuality.price < bestAndCheapest.price) {
-      bestQuality = bestAndCheapest; // Same flight in both categories
+    // CRITICAL RULES:
+    // 1. "Beste" can NEVER be cheaper than "Beste og billigste"
+    // 2. "Beste" can NEVER have longer duration than "Beste og billigste"
+    if (topQuality.price < bestAndCheapest.price || topQuality.totalDurationMinutes > baseDuration) {
+      bestQuality = null; // Don't show if it violates rules
     } else {
-      // Same price or more expensive - show as "Beste"
       bestQuality = topQuality;
     }
+  } else if (qualitySorted.length > 0) {
+    // No bestAndCheapest to compare with, just show the best quality
+    bestQuality = qualitySorted[0];
   }
 
-  // RESULT 3: Cheapest (≤25h, NO night flights)
+  // CATEGORY 3: BILLIGSTE (UTVIDET) - Cheapest (≤25h, NO night flights)
   // This is the CHEAPEST within extended time - allows longer duration but NO night flights!
+  // CRITICAL RULE: Can NEVER have shorter duration than "Beste og billigste" or "Beste"
   const extendedFlights = validFlights.filter(f =>
     f.totalDurationMinutes <= MAX_EXTENDED_DURATION_HOURS * 60 && !f.hasNightFlight
   );
   
+  const EXTENDED_PACKAGE_TOLERANCE = 300; // 300 kr tolerance for extended
   const sortedByPrice = [...extendedFlights].sort((a, b) => {
     // PRIORITY 1: Prefer NEGOTIATED (package) fares when comparable price
     const isANegotiated = a.fareType === 'NEGOTIATED';
     const isBNegotiated = b.fareType === 'NEGOTIATED';
     
     if (isANegotiated && !isBNegotiated) {
-      // A is package, B is public: choose A if within tolerance
-      if (a.price <= b.price + PACKAGE_FARE_TOLERANCE) return -1;
+      if (a.price <= b.price + EXTENDED_PACKAGE_TOLERANCE) return -1;
     }
     if (!isANegotiated && isBNegotiated) {
-      // B is package, A is public: choose B if within tolerance
-      if (b.price <= a.price + PACKAGE_FARE_TOLERANCE) return 1;
+      if (b.price <= a.price + EXTENDED_PACKAGE_TOLERANCE) return 1;
     }
     
     // PRIORITY 2: If prices are within 300 kr, prioritize by combined duration
@@ -748,8 +770,15 @@ function categorizeFlights(
     return a.price - b.price;
   });
   
-  // Show the cheapest (within extended time, but NO night flights)
-  const cheapestExtended: ProcessedFlight | null = sortedByPrice.length > 0 ? sortedByPrice[0] : null;
+  // CRITICAL RULE: "Billigste utvidet" can NEVER have shorter duration than "Beste og billigste"
+  let cheapestExtended: ProcessedFlight | null = null;
+  if (sortedByPrice.length > 0) {
+    const candidate = sortedByPrice[0];
+    // Only show if duration is >= baseDuration (from bestAndCheapest)
+    if (!bestAndCheapest || candidate.totalDurationMinutes >= baseDuration) {
+      cheapestExtended = candidate;
+    }
+  }
 
   return {
     bestAndCheapest,
@@ -793,13 +822,14 @@ export default function FlightRobot() {
   const [isSearching, setIsSearching] = useState(false);
   
   // Dynamic description based on departure airport (computed after departure state)
-  const maxStrictHours = getMaxStrictDurationHours(departure || 'OSL');
+  const maxBestAndCheapestHours = getMaxBestAndCheapestDurationHours(departure || 'OSL');
+  const maxBestQualityHours = getMaxBestQualityDurationHours(departure || 'OSL');
   const mainResultsDesc = language === 'da' 
-    ? `Max ${maxStrictHours}t rejsetid, ingen natfly (00:30-05:50)`
-    : `Max ${maxStrictHours}t reisetid, ingen nattfly (00:30-05:50)`;
+    ? `Beste og billigste: Max ${maxBestAndCheapestHours}t, Beste: Max ${maxBestQualityHours}t, ingen natfly (00:30-05:50)`
+    : `Beste og billigste: Maks ${maxBestAndCheapestHours}t, Beste: Maks ${maxBestQualityHours}t, ingen nattfly (00:30-05:50)`;
   const noMainResultsCriteria = language === 'da'
-    ? `Ingen flyrejser indenfor hovedkriterier (max ${maxStrictHours}t, ingen natfly 00:30-05:50)`
-    : `Ingen flyreiser innenfor hovedkriterier (max ${maxStrictHours}t, ingen nattfly 00:30-05:50)`;
+    ? `Ingen flyrejser indenfor hovedkriterier (Beste og billigste: max ${maxBestAndCheapestHours}t, Beste: max ${maxBestQualityHours}t, ingen natfly 00:30-05:50)`
+    : `Ingen flyreiser innenfor hovedkriterier (Beste og billigste: maks ${maxBestAndCheapestHours}t, Beste: maks ${maxBestQualityHours}t, ingen nattfly 00:30-05:50)`;
   const [error, setError] = useState<string | null>(null);
 
   // Calendar limits - only allow 1 year ahead
@@ -1085,7 +1115,7 @@ export default function FlightRobot() {
     departureAirport: string = departure,
     userLanguage: 'no' | 'da' = language
   ): ProcessedFlight | null {
-    const MAX_STRICT_DURATION_HOURS = getMaxStrictDurationHours(departureAirport);
+    const MAX_BEST_AND_CHEAPEST_HOURS = getMaxBestAndCheapestDurationHours(departureAirport);
     
     // Filter by airline first
     let filtered = flights.filter(f => hasPreferredAirline(f, airlineCode));
@@ -1106,12 +1136,12 @@ export default function FlightRobot() {
       return null;
     }
     
-    // For strict categories, prefer flights ≤20h/22h (based on departure) with no night flights, but fallback if none exist
+    // For strict categories, prefer flights ≤22h/23h (based on departure) with no night flights, but fallback if none exist
     if (category === 'strict') {
       const strictFiltered = filtered.filter(f => 
-        f.totalDurationMinutes <= MAX_STRICT_DURATION_HOURS * 60 && !f.hasNightFlight
+        f.totalDurationMinutes <= MAX_BEST_AND_CHEAPEST_HOURS * 60 && !f.hasNightFlight
       );
-      console.log(`    Strict flights (≤${MAX_STRICT_DURATION_HOURS}h, no night): ${strictFiltered.length}/${filtered.length}`);
+      console.log(`    Strict flights (≤${MAX_BEST_AND_CHEAPEST_HOURS}h, no night): ${strictFiltered.length}/${filtered.length}`);
       
       // Use strict flights if available, otherwise use all valid flights
       if (strictFiltered.length > 0) {
@@ -1510,7 +1540,9 @@ function saveToPowerPointSingle(flight: ProcessedFlight, title: string) {
       }
 
       // 2. FLEXIBLE DATES SEARCH (±X days, same number of nights) - Sequential to avoid rate limiting
+      // FOLLOWS "BESTE OG BILLIGSTE" CRITERIA
       if (flexibleDates && flexibleNights > 0) {
+        const MAX_BEST_AND_CHEAPEST_HOURS = getMaxBestAndCheapestDurationHours(departure);
         let bestFlex: ProcessedFlight | null = null;
         const allFlexFlights: ProcessedFlight[] = []; // Collect all flights for preferred airline search
 
@@ -1523,9 +1555,9 @@ function saveToPowerPointSingle(flight: ProcessedFlight, title: string) {
           try {
             const offers = await searchFlightsApi(departure, destination, returnFrom, returnTo, newDepDate, newRetDate, pax, currency);
             const processed = processFlightOffers(offers, { date: newDepDate, nightsDiff: 0 }, pax);
-            // Allow longer flights with night layovers, but exclude problematic endpoints
+            // Use BESTE OG BILLIGSTE criteria: Max 22-23h, no night flights
             let valid = processed.filter(f =>
-              f.totalDurationMinutes <= MAX_EXTENDED_DURATION_HOURS * 60 && !f.hasNightFlight
+              f.totalDurationMinutes <= MAX_BEST_AND_CHEAPEST_HOURS * 60 && !f.hasNightFlight
             );
             
             // Filter Oslo layover (NO only)
@@ -1582,8 +1614,10 @@ function saveToPowerPointSingle(flight: ProcessedFlight, title: string) {
       }
 
       // 3A. ADD NIGHTS SEARCH (extend trip if cheaper)
+      // FOLLOWS "BESTE OG BILLIGSTE" CRITERIA
       console.log('🔍 ADD NIGHTS CHECK:', { addNights, addNightsCount, willRun: addNights && addNightsCount > 0 });
       if (addNights && addNightsCount > 0) {
+        const MAX_BEST_AND_CHEAPEST_HOURS = getMaxBestAndCheapestDurationHours(departure);
         let bestAdd: ProcessedFlight | null = null;
         const allAddFlights: ProcessedFlight[] = []; // Collect all flights for preferred airline search
 
@@ -1597,10 +1631,11 @@ function saveToPowerPointSingle(flight: ProcessedFlight, title: string) {
             const processed = processFlightOffers(offers, { date: departureDateStr, nightsDiff: i }, pax);
             console.log(`  ✈️ Found ${processed.length} processed flights for +${i} nights`);
             
+            // Use BESTE OG BILLIGSTE criteria: Max 22-23h, no night flights
             let valid = processed.filter(f =>
-              f.totalDurationMinutes <= MAX_EXTENDED_DURATION_HOURS * 60 && !f.hasNightFlight
+              f.totalDurationMinutes <= MAX_BEST_AND_CHEAPEST_HOURS * 60 && !f.hasNightFlight
             );
-            console.log(`  ✅ After filters: ${valid.length} valid flights (≤25h, no night flights)`);
+            console.log(`  ✅ After filters: ${valid.length} valid flights (≤${MAX_BEST_AND_CHEAPEST_HOURS}h, no night flights)`);
             
             // Filter Oslo layover (NO only)
             if (language === 'no') {
@@ -1662,8 +1697,10 @@ function saveToPowerPointSingle(flight: ProcessedFlight, title: string) {
       }
 
       // 3B. REMOVE NIGHTS SEARCH (shorten trip if cheaper)
+      // FOLLOWS "BESTE OG BILLIGSTE" CRITERIA
       console.log('🔍 REMOVE NIGHTS CHECK:', { removeNights, removeNightsCount, willRun: removeNights && removeNightsCount > 0 });
       if (removeNights && removeNightsCount > 0) {
+        const MAX_BEST_AND_CHEAPEST_HOURS = getMaxBestAndCheapestDurationHours(departure);
         let bestRemove: ProcessedFlight | null = null;
         const allRemoveFlights: ProcessedFlight[] = []; // Collect all flights for preferred airline search
 
@@ -1677,10 +1714,11 @@ function saveToPowerPointSingle(flight: ProcessedFlight, title: string) {
             const processed = processFlightOffers(offers, { date: departureDateStr, nightsDiff: -i }, pax);
             console.log(`  ✈️ Found ${processed.length} processed flights for -${i} nights`);
             
+            // Use BESTE OG BILLIGSTE criteria: Max 22-23h, no night flights
             let valid = processed.filter(f =>
-              f.totalDurationMinutes <= MAX_EXTENDED_DURATION_HOURS * 60 && !f.hasNightFlight
+              f.totalDurationMinutes <= MAX_BEST_AND_CHEAPEST_HOURS * 60 && !f.hasNightFlight
             );
-            console.log(`  ✅ After filters: ${valid.length} valid flights (≤25h, no night flights)`);
+            console.log(`  ✅ After filters: ${valid.length} valid flights (≤${MAX_BEST_AND_CHEAPEST_HOURS}h, no night flights)`);
             
             // Filter Oslo layover (NO only)
             if (language === 'no') {
@@ -1742,7 +1780,9 @@ function saveToPowerPointSingle(flight: ProcessedFlight, title: string) {
       }
 
       // 4. DATE INTERVAL SEARCH (search all dates in range with same number of nights)
+      // FOLLOWS "BESTE OG BILLIGSTE" CRITERIA
       if (useDateInterval && earliestDeparture && latestDeparture) {
+        const MAX_BEST_AND_CHEAPEST_HOURS = getMaxBestAndCheapestDurationHours(departure);
         const tripNights = calculateNights(departureDateStr, returnDateStr);
         let bestInterval: ProcessedFlight | null = null;
         const allIntervalFlights: ProcessedFlight[] = []; // Collect all flights for preferred airline search
@@ -1763,9 +1803,9 @@ function saveToPowerPointSingle(flight: ProcessedFlight, title: string) {
           try {
             const offers = await searchFlightsApi(departure, destination, returnFrom, returnTo, searchDepDate, searchRetDate, pax, currency);
             const processed = processFlightOffers(offers, { date: searchDepDate, nightsDiff: 0 }, pax);
-            // Allow longer flights with night layovers, but exclude problematic endpoints
+            // Use BESTE OG BILLIGSTE criteria: Max 22-23h, no night flights
             let valid = processed.filter(f =>
-              f.totalDurationMinutes <= MAX_EXTENDED_DURATION_HOURS * 60 && !f.hasNightFlight
+              f.totalDurationMinutes <= MAX_BEST_AND_CHEAPEST_HOURS * 60 && !f.hasNightFlight
             );
             
             // Filter Oslo layover (NO only)
@@ -2063,7 +2103,11 @@ function saveToPowerPointSingle(flight: ProcessedFlight, title: string) {
               />
               <Label htmlFor="flexibleDates" className="flex items-center gap-2 cursor-pointer">
                 {t.flexibleDates}
-                <Select value={String(flexibleNights)} onValueChange={(v) => setFlexibleNights(parseInt(v))}>
+                <Select 
+                  value={String(flexibleNights)} 
+                  onValueChange={(v) => setFlexibleNights(parseInt(v))}
+                  disabled={!flexibleDates}
+                >
                   <SelectTrigger className="w-16 h-8 bg-muted/30">
                     <SelectValue />
                   </SelectTrigger>
@@ -2086,7 +2130,11 @@ function saveToPowerPointSingle(flight: ProcessedFlight, title: string) {
               />
               <Label htmlFor="addNights" className="flex items-center gap-2 cursor-pointer">
                 {t.addNights}
-                <Select value={String(addNightsCount)} onValueChange={(v) => setAddNightsCount(parseInt(v))}>
+                <Select 
+                  value={String(addNightsCount)} 
+                  onValueChange={(v) => setAddNightsCount(parseInt(v))}
+                  disabled={!addNights}
+                >
                   <SelectTrigger className="w-16 h-8 bg-muted/30">
                     <SelectValue />
                   </SelectTrigger>
@@ -2109,7 +2157,11 @@ function saveToPowerPointSingle(flight: ProcessedFlight, title: string) {
               />
               <Label htmlFor="removeNights" className="flex items-center gap-2 cursor-pointer">
                 {t.removeNights}
-                <Select value={String(removeNightsCount)} onValueChange={(v) => setRemoveNightsCount(parseInt(v))}>
+                <Select 
+                  value={String(removeNightsCount)} 
+                  onValueChange={(v) => setRemoveNightsCount(parseInt(v))}
+                  disabled={!removeNights}
+                >
                   <SelectTrigger className="w-16 h-8 bg-muted/30">
                     <SelectValue />
                   </SelectTrigger>
