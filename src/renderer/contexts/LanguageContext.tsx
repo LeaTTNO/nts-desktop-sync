@@ -2,6 +2,8 @@ import React, { createContext, useContext, useState, useEffect, ReactNode } from
 import { SupportedLanguage, translations, TranslationBlock } from "@/translations/translations";
 import { detectLanguageFromEmail, setManualLanguage } from "@/config/userConfig";
 import { useAuth } from "./AuthContext";
+import { useFlightStore } from "@/store/useFlightStore";
+import { useTemplateStore } from "@/store/useTemplateStore";
 
 interface LanguageContextType {
   language: SupportedLanguage;
@@ -24,6 +26,21 @@ export function LanguageProvider({ children }: { children: ReactNode }) {
   }, [account?.username]);
 
   const setLanguage = (lang: SupportedLanguage) => {
+    // Only reset if language is actually changing
+    if (lang !== language) {
+      // Reset flight search results
+      useFlightStore.getState().resetAll();
+      
+      // Reset template builder (selected slides and flight slides)
+      useTemplateStore.getState().clearSelectedTemplates();
+      useTemplateStore.getState().removeFlightSlides();
+      
+      // Clear saved flights from localStorage (used by FlightInfoContext)
+      localStorage.removeItem('saved-flights');
+      
+      console.log(`🔄 Language changed from ${language} to ${lang} - all data reset`);
+    }
+    
     setManualLanguage(lang);
     setLanguageState(lang);
   };

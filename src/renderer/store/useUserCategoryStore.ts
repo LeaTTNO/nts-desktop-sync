@@ -19,6 +19,8 @@ interface UserCategoryStore {
   getCategoriesForUser: (userId: string) => UserCategory[];
   setBuiltinCategoryVisible: (catId: string, visible: boolean) => void;
   isBuiltinCategoryVisible: (catId: string) => boolean;
+  setBuiltinCategoryName: (catId: string, name: string) => void;
+  getBuiltinCategoryName: (catId: string) => string | null;
 }
 
 export const useUserCategoryStore = create<UserCategoryStore>()(
@@ -90,6 +92,39 @@ export const useUserCategoryStore = create<UserCategoryStore>()(
         const BUILTIN_USER = "builtin-visibility";
         const entry = get().categories.find(c => c.id === catId && c.userId === BUILTIN_USER);
         return entry ? entry.isVisible : true; // default visible
+      },
+
+      setBuiltinCategoryName: (catId, name) => {
+        const BUILTIN_NAME_USER = "builtin-name-override";
+        const existing = get().categories.find(c => c.id === catId && c.userId === BUILTIN_NAME_USER);
+        if (existing) {
+          set(state => ({
+            categories: state.categories.map(c =>
+              c.id === catId && c.userId === BUILTIN_NAME_USER ? { ...c, name } : c
+            ),
+          }));
+        } else {
+          set(state => ({
+            categories: [
+              ...state.categories,
+              {
+                id: catId,
+                name,
+                userId: BUILTIN_NAME_USER,
+                createdAt: Date.now(),
+                order: 0,
+                hasCheckbox: true,
+                isVisible: true,
+              },
+            ],
+          }));
+        }
+      },
+
+      getBuiltinCategoryName: (catId) => {
+        const BUILTIN_NAME_USER = "builtin-name-override";
+        const entry = get().categories.find(c => c.id === catId && c.userId === BUILTIN_NAME_USER);
+        return entry ? entry.name : null;
       },
     }),
     {

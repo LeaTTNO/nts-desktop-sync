@@ -25,13 +25,6 @@ import { cn } from "@/lib/utils";
    KONSTANTER - KATEGORIER (språkavhengige)
 ========================= */
 
-
-// Helper to get category name by id from store
-function getCategoryNameById(categories, id) {
-  const cat = categories.find(c => c.id === id);
-  return cat ? cat.name : "";
-}
-
 /* =========================
    COMPONENT
 ========================= */
@@ -58,22 +51,33 @@ export default function TravelProgramBuilder({ language = 'no' }: TravelProgramB
     removeFlightSlides, // <-- add this
   } = useTemplateStore();
 
-  const { categories: userCategories, getCategoriesForUser, isBuiltinCategoryVisible } = useUserCategoryStore();
+  const { categories: userCategories, getCategoriesForUser, isBuiltinCategoryVisible, getBuiltinCategoryName } = useUserCategoryStore();
   const myUserCategories = userEmail ? getCategoriesForUser(userEmail) : [];
 
+  // Helper to get category name by id from store with override support
+  const getCategoryNameById = (id: string): string => {
+    const override = getBuiltinCategoryName(id);
+    if (override) return override;
+    
+    const cat = categories.find(c => c.id === id);
+    return cat ? cat.name : "";
+  };
+
   // Dynamically get category names from store
-  const AUTO_PROGRAM_CATEGORY = getCategoryNameById(categories, "base_program");
-  const SAFARI_PERIODS = categories.filter(c => c.parentId === "safari_period_group").map(c => c.name);
-  const FIRST_NIGHT_CATEGORY = getCategoryNameById(categories, "arusha_first_night");
-  const LAST_NIGHT_CATEGORY = getCategoryNameById(categories, "last_safari_night");
-  const ZANZIBAR_MAIN = getCategoryNameById(categories, "zanzibar_hotel_1");
-  const ZANZIBAR_STONE_TOWN = getCategoryNameById(categories, "zanzibar_stone_town");
-  const ZANZIBAR_HOTEL_2 = getCategoryNameById(categories, "zanzibar_hotel_2");
-  const KILIMANJARO = getCategoryNameById(categories, "kilimanjaro");
-  const ARUSHA_SLIDES = getCategoryNameById(categories, "arusha_activities_slides");
-  const FASTLAND = getCategoryNameById(categories, "diverse_mainland");
-  const EXTRA = getCategoryNameById(categories, "extra_slides");
-  const FLIGHT = getCategoryNameById(categories, "flyinformasjon");
+  const AUTO_PROGRAM_CATEGORY = getCategoryNameById("base_program");
+  const SAFARI_PERIODS = categories
+    .filter(c => c.parentId === "safari_period_group")
+    .map(c => getBuiltinCategoryName(c.id) || c.name);
+  const FIRST_NIGHT_CATEGORY = getCategoryNameById("arusha_first_night");
+  const LAST_NIGHT_CATEGORY = getCategoryNameById("last_safari_night");
+  const ZANZIBAR_MAIN = getCategoryNameById("zanzibar_hotel_1");
+  const ZANZIBAR_STONE_TOWN = getCategoryNameById("zanzibar_stone_town");
+  const ZANZIBAR_HOTEL_2 = getCategoryNameById("zanzibar_hotel_2");
+  const KILIMANJARO = getCategoryNameById("kilimanjaro");
+  const ARUSHA_SLIDES = getCategoryNameById("arusha_activities_slides");
+  const FASTLAND = getCategoryNameById("diverse_mainland");
+  const EXTRA = getCategoryNameById("extra_slides");
+  const FLIGHT = getCategoryNameById("flyinformasjon");
 
   /* =========================
      HELPER - Filtrer templates basert på bruker
@@ -965,12 +969,12 @@ export default function TravelProgramBuilder({ language = 'no' }: TravelProgramB
         )}
       </div>
 
-        {/* Rad 3: Zanzibar Hotel 1 + Zanzibar & Stone Town */}
+        {/* Rad 3: Zanzibar Hotel + Zanzibar & Stone Town */}
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          {/* 6. Zanzibar Hotel 1 */}
+          {/* 6. Zanzibar Hotel */}
           {isBuiltinCategoryVisible("zanzibar_hotel_1") && (
           <div className="space-y-2">
-            <Label>Zanzibar Hotel 1</Label>
+            <Label>{ZANZIBAR_MAIN}</Label>
             <CheckboxWithDropdown
               id="zanzibar-hotel-1"
               label=""
@@ -1019,11 +1023,11 @@ export default function TravelProgramBuilder({ language = 'no' }: TravelProgramB
           
           {/* Første rad tilleggsmoduler */}
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            {/* Zanzibar Hotel 2 */}
+            {/* Zanzibar & StoneTown */}
             {isBuiltinCategoryVisible("zanzibar_hotel_2") && (
             <CheckboxWithDropdown
               id="zanzibar-hotel-2"
-              label="Zanzibar Hotel 2"
+              label={ZANZIBAR_HOTEL_2}
               checked={zanzibarHotel2}
               onCheckedChange={setZanzibarHotel2}
               category={ZANZIBAR_HOTEL_2}

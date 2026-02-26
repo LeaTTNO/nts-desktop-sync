@@ -68,6 +68,8 @@ export default function TemplateLibrary() {
     updateCategory: updateUserCategory,
     setBuiltinCategoryVisible,
     isBuiltinCategoryVisible,
+    setBuiltinCategoryName,
+    getBuiltinCategoryName,
   } = useUserCategoryStore();
 
   // Håndter lagring av nytt navn på kategori
@@ -83,15 +85,12 @@ export default function TemplateLibrary() {
     }
     const userCat = userCategories.find(c => c.id === catId);
     if (userCat) {
+      // Brukerdefinert kategori
       updateUserCategory(catId!, { name: editingCategoryName.trim() });
     } else {
-      const idx = uploadableCategories.findIndex(c => c.id === catId);
-      if (idx !== -1) {
-        uploadableCategories[idx].name = editingCategoryName.trim();
-      }
-      const idxAll = allCategories.findIndex(c => c.id === catId);
-      if (idxAll !== -1) {
-        allCategories[idxAll].name = editingCategoryName.trim();
+      // Innebygd kategori - lagre override i store
+      if (catId) {
+        setBuiltinCategoryName(catId, editingCategoryName.trim());
       }
     }
     toast.success("Kategorinavn oppdatert");
@@ -190,12 +189,24 @@ export default function TemplateLibrary() {
   // Get base categories for all users (kun for admin)
   const baseCategories = userIsAdmin ? getAllUserBaseCategories(userLanguage) : [];
 
+  // Helper function to get category name with override support
+  const getCategoryDisplayName = (catId: string, defaultName: string): string => {
+    const override = getBuiltinCategoryName(catId);
+    return override || defaultName;
+  };
+
   // Merge default categories with user-specific categories + personal category + base categories (if admin)
   const userCategoryList = userEmail ? getCategoriesForUser(userEmail) : [];
   const allCategories = [
-    ...uploadableCategories,
+    ...uploadableCategories.map(c => ({
+      ...c,
+      name: getCategoryDisplayName(c.id, c.name)
+    })),
     ...(personalCategory ? [personalCategory] : []),
-    ...baseCategories,
+    ...baseCategories.map(c => ({
+      ...c,
+      name: getCategoryDisplayName(c.id, c.name)
+    })),
     ...userCategoryList.map(uc => ({
       id: uc.id,
       name: uc.name,
