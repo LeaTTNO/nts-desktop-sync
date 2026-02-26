@@ -418,19 +418,16 @@ export default function TravelProgramBuilder({ language = 'no' }: TravelProgramB
     const groups: Record<string, typeof templates> = {};
     
     templates.forEach(t => {
-      // Ekstraher hotellnavn (første ord eller til første tall/bindestrek)
-      const match = t.name.match(/^([A-Za-zÆØÅæøå\s]+)/);
+      // Ekstraher hotellnavn (alt før første tall, inkludert + tegn)
+      // Eksempel: "Pongwe + Tembo 4 + 1 nætter" → "Pongwe + Tembo"
+      const match = t.name.match(/^([A-Za-zÆØÅæøå\s\+]+?)(?=\s+\d)/);
       const hotelName = match ? match[1].trim() : t.name;
-      
-      console.log(`📋 Grouping template: "${t.name}" → hotel: "${hotelName}"`);
       
       if (!groups[hotelName]) {
         groups[hotelName] = [];
       }
       groups[hotelName].push(t);
     });
-    
-    console.log(`🏨 Hotel groups created:`, Object.keys(groups));
     
     // Sorter innenfor hver gruppe etter dager
     Object.values(groups).forEach(group => {
@@ -478,17 +475,8 @@ export default function TravelProgramBuilder({ language = 'no' }: TravelProgramB
     const categoryTemplates = getFilteredTemplatesByCategoryName(category).filter(t => t.visibleInBuilder);
     // Zanzibar-hotell: to-trinns dropdown
     const isZanzibarHotel = [ZANZIBAR_MAIN, ZANZIBAR_HOTEL_2, ZANZIBAR_STONE_TOWN].includes(category);
-    
-    console.log(`🔍 CheckboxWithDropdown for category: "${category}"`);
-    console.log(`   → isZanzibarHotel: ${isZanzibarHotel}`);
-    console.log(`   → groupByHotel prop: ${groupByHotel}`);
-    console.log(`   → categoryTemplates count: ${categoryTemplates.length}`);
-    
     const groupedTemplates = isZanzibarHotel ? groupTemplatesByHotel(categoryTemplates) : (groupByHotel ? groupTemplatesByHotel(categoryTemplates) : null);
     const hotelNames = groupedTemplates ? Object.keys(groupedTemplates).sort() : [];
-    
-    console.log(`   → groupedTemplates: ${groupedTemplates ? 'YES' : 'NO'}`);
-    console.log(`   → hotelNames: [${hotelNames.join(', ')}]`);
     
     const selectedTemplate = selectedId ? templates.find(t => t.id === selectedId) : null;
     
