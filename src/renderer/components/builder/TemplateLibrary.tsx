@@ -642,8 +642,8 @@ export default function TemplateLibrary() {
                       <div>
                         <Button 
                           variant="outline" 
-                          size="sm", cat.id
-                          onClick={() => handleUpload(cat.name)}
+                          size="sm"
+                          onClick={() => handleUpload(cat.name, cat.id)}
                           className="gap-2"
                         >
                           <Upload className="h-4 w-4" />
