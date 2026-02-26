@@ -50,6 +50,7 @@ import {
   FileDown,
   RotateCcw,
   Info,
+  ChevronDown,
 } from "lucide-react";
 
 import { toast } from "sonner";
@@ -706,7 +707,7 @@ function categorizeFlights(
     });
 
   // RESULT 1: BESTE OG BILLIGSTE (combines best score with lowest price)
-  // This is the BASE - all other categories should be same price or more expensive!
+  // This is the BASE - BESTE should be same price or more expensive!
   const bestAndCheapest = scoredBestAndCheapest[0] ? { ...scoredBestAndCheapest[0], isRecommended: true } : null;
   const basePrice = bestAndCheapest?.price || 0;
   const baseDuration = bestAndCheapest?.totalDurationMinutes || 0;
@@ -1108,7 +1109,8 @@ export default function FlightRobot() {
       bestQuality: null,
       cheapestExtended: null,
       flexible: null,
-      extendedStay: null,
+      addNights: null,
+      removeNights: null,
       dateInterval: null,
     });
   }
