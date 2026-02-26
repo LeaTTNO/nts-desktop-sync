@@ -25,6 +25,12 @@ import {
   PopoverContent,
   PopoverTrigger,
 } from "@/components/ui/popover";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+  TooltipProvider,
+} from "@/components/ui/tooltip";
 import { Calendar } from "@/components/ui/calendar";
 
 import SectionDivider from "@/components/SectionDivider";
@@ -1946,7 +1952,8 @@ function saveToPowerPointSingle(flight: ProcessedFlight, title: string) {
   }
 
   return (
-    <div className="space-y-2">
+    <TooltipProvider>
+      <div className="space-y-2">
       {/* Search Form */}
       <Card className="border-border/50">
         <CardContent className="pt-2">
@@ -2181,21 +2188,21 @@ function saveToPowerPointSingle(flight: ProcessedFlight, title: string) {
                   </Select>
                   {t.nights}
                 </Label>
-                <Popover>
-                  <PopoverTrigger asChild>
+                <Tooltip>
+                  <TooltipTrigger asChild>
                     <button className="text-muted-foreground hover:text-foreground transition-colors">
                       <Info className="h-4 w-4" />
                     </button>
-                  </PopoverTrigger>
-                  <PopoverContent className="w-80">
+                  </TooltipTrigger>
+                  <TooltipContent className="w-80">
                     <div className="flex gap-2">
                       <Info className="h-5 w-5 text-blue-500 flex-shrink-0 mt-0.5" />
                       <p className="text-sm text-muted-foreground">
                         {t.flexibleDatesInfo}
                       </p>
                     </div>
-                  </PopoverContent>
-                </Popover>
+                  </TooltipContent>
+                </Tooltip>
               </div>
             </div>
 
@@ -2225,21 +2232,21 @@ function saveToPowerPointSingle(flight: ProcessedFlight, title: string) {
                   </Select>
                   {t.nightsExtra}
                 </Label>
-                <Popover>
-                  <PopoverTrigger asChild>
+                <Tooltip>
+                  <TooltipTrigger asChild>
                     <button className="text-muted-foreground hover:text-foreground transition-colors">
                       <Info className="h-4 w-4" />
                     </button>
-                  </PopoverTrigger>
-                  <PopoverContent className="w-80">
+                  </TooltipTrigger>
+                  <TooltipContent className="w-80">
                     <div className="flex gap-2">
                       <Info className="h-5 w-5 text-blue-500 flex-shrink-0 mt-0.5" />
                       <p className="text-sm text-muted-foreground">
                         {t.addNightsInfo}
                       </p>
                     </div>
-                  </PopoverContent>
-                </Popover>
+                  </TooltipContent>
+                </Tooltip>
               </div>
             </div>
 
@@ -2269,21 +2276,21 @@ function saveToPowerPointSingle(flight: ProcessedFlight, title: string) {
                   </Select>
                   {t.nightsLess}
                 </Label>
-                <Popover>
-                  <PopoverTrigger asChild>
+                <Tooltip>
+                  <TooltipTrigger asChild>
                     <button className="text-muted-foreground hover:text-foreground transition-colors">
                       <Info className="h-4 w-4" />
                     </button>
-                  </PopoverTrigger>
-                  <PopoverContent className="w-80">
+                  </TooltipTrigger>
+                  <TooltipContent className="w-80">
                     <div className="flex gap-2">
                       <Info className="h-5 w-5 text-blue-500 flex-shrink-0 mt-0.5" />
                       <p className="text-sm text-muted-foreground">
                         {t.removeNightsInfo}
                       </p>
                     </div>
-                  </PopoverContent>
-                </Popover>
+                  </TooltipContent>
+                </Tooltip>
               </div>
             </div>
 
@@ -2298,21 +2305,21 @@ function saveToPowerPointSingle(flight: ProcessedFlight, title: string) {
                 <Label htmlFor="preferredAirline" className="cursor-pointer font-semibold">
                   {t.preferredAirline}
                 </Label>
-                <Popover>
-                  <PopoverTrigger asChild>
+                <Tooltip>
+                  <TooltipTrigger asChild>
                     <button className="text-muted-foreground hover:text-foreground transition-colors">
                       <Info className="h-4 w-4" />
                     </button>
-                  </PopoverTrigger>
-                  <PopoverContent className="w-80">
+                  </TooltipTrigger>
+                  <TooltipContent className="w-80">
                     <div className="flex gap-2">
                       <Info className="h-5 w-5 text-blue-500 flex-shrink-0 mt-0.5" />
                       <p className="text-sm text-muted-foreground">
                         {t.preferredAirlineInfo}
                       </p>
                     </div>
-                  </PopoverContent>
-                </Popover>
+                  </TooltipContent>
+                </Tooltip>
               </div>
               
               {usePreferredAirline && (
@@ -3086,5 +3093,6 @@ function saveToPowerPointSingle(flight: ProcessedFlight, title: string) {
         </Card>
       )}
     </div>
+    </TooltipProvider>
   );
 }
