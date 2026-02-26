@@ -288,7 +288,7 @@ export default function TemplateLibrary() {
     toast.success(`Kategori "${categoryName}" ble slettet`);
   };
 
-  async function handleUpload(category: string) {
+  async function handleUpload(categoryName: string, categoryId: string) {
     try {
       // @ts-ignore - Electron IPC
       const dialogResult = await window.electron.invoke("dialog:select-file");
@@ -318,12 +318,12 @@ export default function TemplateLibrary() {
           
           const buf = fileResult.data.buffer; // Convert Node Buffer to ArrayBuffer
           
-          // Save to IndexedDB (local)
+          // Save to IndexedDB (local) - use categoryName for storage (maintains compatibility)
           await addTemplate({
             name: fileName.replace(/\.pptx?$/i, ""),
             fileName: fileName,
             blob: buf,
-            category,
+            category: categoryName,
           });
           
           // If admin: Register file in OneDrive manifest (file already exists in OneDrive folder)
@@ -332,7 +332,8 @@ export default function TemplateLibrary() {
               // @ts-ignore - Electron IPC
               const result = await window.electron.invoke("onedrive:upload-template", {
                 filePath: filePath,
-                category: category,
+                category: categoryName,
+                categoryId: categoryId, // Send ID for reference
                 order: 999,
                 language: userLanguage,
               });
@@ -359,7 +360,7 @@ export default function TemplateLibrary() {
       }
       
       // Show summary toast
-      if (successCount > 0 && failCount === 0) {
+      if (successCount > 0 && failCount === 0) {Name
         toast.success(`${successCount} fil${successCount > 1 ? 'er' : ''} lastet opp til ${category}`);
       } else if (successCount > 0 && failCount > 0) {
         toast.warning(`${successCount} fil${successCount > 1 ? 'er' : ''} lastet opp, ${failCount} feilet`);
@@ -641,7 +642,7 @@ export default function TemplateLibrary() {
                       <div>
                         <Button 
                           variant="outline" 
-                          size="sm"
+                          size="sm", cat.id
                           onClick={() => handleUpload(cat.name)}
                           className="gap-2"
                         >

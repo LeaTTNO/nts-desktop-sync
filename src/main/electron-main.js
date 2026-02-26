@@ -1212,7 +1212,7 @@ ipcMain.handle("onedrive:upload-template", async (event, args) => {
   console.log("📝 OneDrive: Admin registering template in manifest");
   
   try {
-    const { filePath: selectedFilePath, category, order, language } = args;
+    const { filePath: selectedFilePath, category, categoryId, order, language } = args;
     
     const oneDrivePath = getOneDriveSharedPath(language);
     if (!oneDrivePath) {
@@ -1246,6 +1246,7 @@ ipcMain.handle("onedrive:upload-template", async (event, args) => {
       filePath: relativePath, // Store relative path (e.g., "Safari/Arusha.pptx")
       fileName: path.basename(selectedFilePath), // Also store just the filename
       category,
+      categoryId: categoryId || category, // Store category ID for reference
       order: order || 999,
       uploadedAt: new Date().toISOString(),
       uploadedBy: os.userInfo().username,
