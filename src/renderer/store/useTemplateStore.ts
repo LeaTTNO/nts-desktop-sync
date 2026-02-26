@@ -197,7 +197,11 @@ export const useTemplateStore = create<Store>((set, get) => ({
   getTemplatesByCategoryId: (catId) => {
     const category = defaultCategories.find(c => c.id === catId);
     if (!category) return [];
-    return get().templates.filter(t => t.category === category.name);
+    // Søk på categoryId felt ELLER at kategorinavnet matcher
+    return get().templates.filter(t => 
+      t.categoryId === catId || 
+      t.category === category.name
+    );
   },
 
   getTemplatesByCategoryName: (catName) =>

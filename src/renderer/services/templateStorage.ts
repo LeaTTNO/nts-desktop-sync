@@ -16,6 +16,7 @@ export interface TemplateEntry {
   id: string;
   name: string;
   category: string;
+  categoryId?: string;  // Kategori-ID for robust oppslag (uavhengig av kategorinavn)
   order: number;
   visibleInBuilder: boolean;
   blob: ArrayBuffer | null;

@@ -1322,6 +1322,7 @@ ipcMain.handle("onedrive:sync-now", async (event, args) => {
         filesWithData.push({
           name: entry.fileName || path.basename(relPath),
           category: entry.category,
+          categoryId: entry.categoryId, // Include for robust lookup
           order: entry.order,
           data: buffer.toString('base64'),
           size: buffer.length,

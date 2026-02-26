@@ -997,7 +997,6 @@ export default function FlightRobot() {
 
   // Listen for Farewise EK debug data from electron-main
   useEffect(() => {
-    // @ts-expect-error - electron API
     const removeListener = window.electron?.on?.('farewise:debug-ek', (debugData: any) => {
       console.log('\n🔥 RAW FAREWISE EMIRATES DATA FROM API:');
       console.log('Total EK flights:', debugData.count);

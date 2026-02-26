@@ -324,6 +324,7 @@ export default function TemplateLibrary() {
             fileName: fileName,
             blob: buf,
             category: categoryName,
+            categoryId: categoryId, // Lagre ID slik at vi kan søke robust
           });
           
           // If admin: Register file in OneDrive manifest (file already exists in OneDrive folder)
@@ -360,8 +361,8 @@ export default function TemplateLibrary() {
       }
       
       // Show summary toast
-      if (successCount > 0 && failCount === 0) {Name
-        toast.success(`${successCount} fil${successCount > 1 ? 'er' : ''} lastet opp til ${category}`);
+      if (successCount > 0 && failCount === 0) {
+        toast.success(`${successCount} fil${successCount > 1 ? 'er' : ''} lastet opp til ${categoryName}`);
       } else if (successCount > 0 && failCount > 0) {
         toast.warning(`${successCount} fil${successCount > 1 ? 'er' : ''} lastet opp, ${failCount} feilet`);
       } else if (failCount > 0) {
@@ -430,6 +431,7 @@ export default function TemplateLibrary() {
             id: `onedrive-${file.name}`,
             name: file.name.replace(/\.pptx?$/i, ''),
             category: file.category || 'onedrive-sync', // Use category from manifest
+            categoryId: file.categoryId, // ID for robust oppslag (uavhengig av kategorinavn)
             order: file.order || 999,
             visibleInBuilder: true,
             blob: arrayBuffer,

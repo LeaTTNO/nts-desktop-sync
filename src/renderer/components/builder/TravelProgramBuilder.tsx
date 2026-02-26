@@ -46,6 +46,7 @@ export default function TravelProgramBuilder({ language = 'no' }: TravelProgramB
     moveSelectedTemplate,
     clearSelectedTemplates,
     getTemplatesByCategoryName,
+    getTemplatesByCategoryId,
     loadFromDB,
     slides, // <-- bring in slides from global state
     removeFlightSlides, // <-- add this
@@ -82,8 +83,11 @@ export default function TravelProgramBuilder({ language = 'no' }: TravelProgramB
      HELPER - Filtrer templates basert på bruker
   ========================= */
   
-  const getFilteredTemplatesByCategoryName = (categoryName: string) => {
-    const allTemplates = getTemplatesByCategoryName(categoryName);
+  const getFilteredTemplatesByCategoryName = (categoryName: string, categoryId?: string) => {
+    // Søk på ID for robusthet (fungerer selv om kategorinavn er endret/feil)
+    const allTemplates = categoryId 
+      ? getTemplatesByCategoryId(categoryId)
+      : getTemplatesByCategoryName(categoryName);
     
     // Admin ser alt
     if (userIsAdmin) return allTemplates;
@@ -449,6 +453,7 @@ export default function TravelProgramBuilder({ language = 'no' }: TravelProgramB
     checked,
     onCheckedChange,
     category,
+    categoryId,
     selectedId,
     onSelectChange,
     indent = false,
@@ -460,6 +465,7 @@ export default function TravelProgramBuilder({ language = 'no' }: TravelProgramB
     checked: boolean;
     onCheckedChange: (checked: boolean) => void;
     category: string;
+    categoryId?: string;
     selectedId: string | null;
     onSelectChange: (id: string | null) => void;
     indent?: boolean;
@@ -469,9 +475,10 @@ export default function TravelProgramBuilder({ language = 'no' }: TravelProgramB
     const [isOpen, setIsOpen] = useState(false);
     const [selectedHotel, setSelectedHotel] = useState<string | null>(null);
     
-    const categoryTemplates = getFilteredTemplatesByCategoryName(category).filter(t => t.visibleInBuilder);
+    const categoryTemplates = getFilteredTemplatesByCategoryName(category, categoryId).filter(t => t.visibleInBuilder);
     // Zanzibar-hotell: to-trinns dropdown
-    const isZanzibarHotel = [ZANZIBAR_MAIN, ZANZIBAR_HOTEL_2].includes(category);
+    const isZanzibarHotel = [ZANZIBAR_MAIN, ZANZIBAR_HOTEL_2].includes(category) || 
+      categoryId === "zanzibar_hotel_1" || categoryId === "zanzibar_hotel_2";
     const groupedTemplates = isZanzibarHotel ? groupTemplatesByHotel(categoryTemplates) : (groupByHotel ? groupTemplatesByHotel(categoryTemplates) : null);
     const hotelNames = groupedTemplates ? Object.keys(groupedTemplates).sort() : [];
     
@@ -518,7 +525,7 @@ export default function TravelProgramBuilder({ language = 'no' }: TravelProgramB
                   !selectedTemplate && "text-muted-foreground"
                 )}
               >
-                {selectedTemplate?.name || `Velg ${label.toLowerCase()}`}
+                {selectedTemplate?.name || (hotelNames.length > 0 ? 'Velg hotell...' : 'Velg mal...')}
                 <ChevronDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
               </Button>
             </PopoverTrigger>
@@ -979,8 +986,28 @@ export default function TravelProgramBuilder({ language = 'no' }: TravelProgramB
               checked={true}
               onCheckedChange={() => {}}
               category={ZANZIBAR_MAIN}
+              categoryId="zanzibar_hotel_1"
               selectedId={zanzibarMainId}
               onSelectChange={setZanzibarMainId}
+              groupByHotel
+              hideCheckbox={true}
+            />
+          </div>
+          )}
+
+          {/* 7. Zanzibar & StoneTown */}
+          {isBuiltinCategoryVisible("zanzibar_hotel_2") && (
+          <div className="space-y-2">
+            <Label>{ZANZIBAR_HOTEL_2}</Label>
+            <CheckboxWithDropdown
+              id="zanzibar-hotel-2"
+              label=""
+              checked={true}
+              onCheckedChange={() => {}}
+              category={ZANZIBAR_HOTEL_2}
+              categoryId="zanzibar_hotel_2"
+              selectedId={zanzibarHotel2Id}
+              onSelectChange={setZanzibarHotel2Id}
               groupByHotel
               hideCheckbox={true}
             />
@@ -994,20 +1021,6 @@ export default function TravelProgramBuilder({ language = 'no' }: TravelProgramB
           
           {/* Første rad tilleggsmoduler */}
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            {/* Zanzibar & StoneTown */}
-            {isBuiltinCategoryVisible("zanzibar_hotel_2") && (
-            <CheckboxWithDropdown
-              id="zanzibar-hotel-2"
-              label={ZANZIBAR_HOTEL_2}
-              checked={zanzibarHotel2}
-              onCheckedChange={setZanzibarHotel2}
-              category={ZANZIBAR_HOTEL_2}
-              selectedId={zanzibarHotel2Id}
-              onSelectChange={setZanzibarHotel2Id}
-              groupByHotel
-            />
-            )}
-
             {/* Kilimanjaro */}
             {isBuiltinCategoryVisible("kilimanjaro") && (
             <CheckboxWithDropdown
