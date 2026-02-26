@@ -4,7 +4,7 @@ import { useUserCategoryStore } from "@/store/useUserCategoryStore";
 import { useAuth } from "@/contexts/AuthContext";
 import { getUploadableCategories, getUserPersonalCategory, getAllUserBaseCategories } from "@/config/templateCategories";
 import { getUserPrefix } from "@/config/userConfig";
-import { saveTemplate, type TemplateEntry } from "@/services/templateStorage";
+import { saveTemplate, deleteTemplateFromStorage, type TemplateEntry } from "@/services/templateStorage";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -427,8 +427,26 @@ export default function TemplateLibrary() {
           const arrayBuffer = bytes.buffer;
           
           // Create template entry using category from manifest
+          // ID inkluderer categoryId for å unngå kollisjon mellom like filnavn i ulike kategorier
+          const safeCatKey = (file.categoryId || file.category || 'uncategorized')
+            .replace(/[^a-zA-Z0-9_-]/g, '_');
+          const newId = `onedrive-${safeCatKey}-${file.name}`;
+          
+          // Dedup: slett gamle entries med samme filnavn + kategori (gammel ID-format eller tidligere sync)
+          const duplicates = templates.filter(t =>
+            t.fileName === file.name &&
+            t.id !== newId &&
+            (t.categoryId === file.categoryId || 
+             t.category === (file.category || 'onedrive-sync') ||
+             t.id === `onedrive-${file.name}`) // gammel ID-format
+          );
+          for (const dup of duplicates) {
+            await deleteTemplateFromStorage(dup.id);
+            console.log(`🗑️ Removed duplicate: ${dup.id}`);
+          }
+
           const template: TemplateEntry = {
-            id: `onedrive-${file.name}`,
+            id: newId,
             name: file.name.replace(/\.pptx?$/i, ''),
             category: file.category || 'onedrive-sync', // Use category from manifest
             categoryId: file.categoryId, // ID for robust oppslag (uavhengig av kategorinavn)

@@ -141,6 +141,7 @@ export const useTemplateStore = create<Store>((set, get) => ({
       id: nanoid(),
       name: t.name || "Uten navn",
       category: t.category!,
+      categoryId: t.categoryId,
       order: t.order ?? getDefaultOrder(t.name || ""),
       visibleInBuilder: t.visibleInBuilder ?? true,
       blob: t.blob || null,
