@@ -71,7 +71,6 @@ export default function TravelProgramBuilder({ language = 'no' }: TravelProgramB
   const FIRST_NIGHT_CATEGORY = getCategoryNameById("arusha_first_night");
   const LAST_NIGHT_CATEGORY = getCategoryNameById("last_safari_night");
   const ZANZIBAR_MAIN = getCategoryNameById("zanzibar_hotel_1");
-  const ZANZIBAR_STONE_TOWN = getCategoryNameById("zanzibar_stone_town");
   const ZANZIBAR_HOTEL_2 = getCategoryNameById("zanzibar_hotel_2");
   const KILIMANJARO = getCategoryNameById("kilimanjaro");
   const ARUSHA_SLIDES = getCategoryNameById("arusha_activities_slides");
@@ -124,8 +123,6 @@ export default function TravelProgramBuilder({ language = 'no' }: TravelProgramB
   /* Checkbox state med tilhørende template ID */
   const [zanzibarMain, setZanzibarMain] = useState(false);
   const [zanzibarMainId, setZanzibarMainId] = useState<string | null>(null);
-  const [zanzibarStoneTown, setZanzibarStoneTown] = useState(false);
-  const [zanzibarStoneTownId, setZanzibarStoneTownId] = useState<string | null>(null);
   const [zanzibarHotel2, setZanzibarHotel2] = useState(false);
   const [zanzibarHotel2Id, setZanzibarHotel2Id] = useState<string | null>(null);
   const [kilimanjaro, setKilimanjaro] = useState(false);
@@ -474,7 +471,7 @@ export default function TravelProgramBuilder({ language = 'no' }: TravelProgramB
     
     const categoryTemplates = getFilteredTemplatesByCategoryName(category).filter(t => t.visibleInBuilder);
     // Zanzibar-hotell: to-trinns dropdown
-    const isZanzibarHotel = [ZANZIBAR_MAIN, ZANZIBAR_HOTEL_2, ZANZIBAR_STONE_TOWN].includes(category);
+    const isZanzibarHotel = [ZANZIBAR_MAIN, ZANZIBAR_HOTEL_2].includes(category);
     const groupedTemplates = isZanzibarHotel ? groupTemplatesByHotel(categoryTemplates) : (groupByHotel ? groupTemplatesByHotel(categoryTemplates) : null);
     const hotelNames = groupedTemplates ? Object.keys(groupedTemplates).sort() : [];
     
@@ -987,33 +984,6 @@ export default function TravelProgramBuilder({ language = 'no' }: TravelProgramB
               groupByHotel
               hideCheckbox={true}
             />
-          </div>
-          )}
-
-          {/* 7. Zanzibar & Stone Town */}
-          {isBuiltinCategoryVisible("zanzibar_stone_town") && (
-          <div className="space-y-2">
-            <Label>Zanzibar & Stone Town</Label>
-            <Select
-              value={zanzibarStoneTownId ?? ""}
-              onValueChange={(value) => {
-                replaceTemplate(zanzibarStoneTownId, value || null);
-                setZanzibarStoneTownId(value || null);
-              }}
-            >
-              <SelectTrigger className="bg-background">
-                <SelectValue placeholder="Velg mal" />
-              </SelectTrigger>
-              <SelectContent position="popper" className="bg-background z-50 max-h-[300px] overflow-y-auto">
-                {getFilteredTemplatesByCategoryName(ZANZIBAR_STONE_TOWN)
-                  .filter((t) => t.visibleInBuilder)
-                  .map((t) => (
-                    <SelectItem key={t.id} value={t.id}>
-                      {t.name}
-                    </SelectItem>
-                  ))}
-              </SelectContent>
-            </Select>
           </div>
           )}
         </div>
