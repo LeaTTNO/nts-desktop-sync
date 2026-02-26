@@ -922,6 +922,16 @@ export default function FlightRobot() {
   const [latestDateOpen, setLatestDateOpen] = useState(false);
   const [earliestDateInput, setEarliestDateInput] = useState("");
   const [latestDateInput, setLatestDateInput] = useState("");
+  const [intervalNights, setIntervalNights] = useState(12); // Number of nights for interval search
+  const [intervalAlternatives, setIntervalAlternatives] = useState<Array<{
+    departureDate: string;
+    returnDate: string;
+    price: number;
+    currency: string;
+    airline: string;
+    flight: ProcessedFlight;
+  }>>([]);
+  const [showIntervalAlternatives, setShowIntervalAlternatives] = useState(false);
 
   // Results - nå fra Zustand store med auto-persist
   const { savedFlights, addFlight, clearFlights } = useFlightInfo();
@@ -1024,6 +1034,9 @@ export default function FlightRobot() {
     setLatestDeparture(undefined);
     setEarliestDateInput("");
     setLatestDateInput("");
+    setIntervalNights(12);
+    setIntervalAlternatives([]);
+    setShowIntervalAlternatives(false);
     
     // Reset all flight results
     resetFlightStore();
@@ -1779,13 +1792,21 @@ function saveToPowerPointSingle(flight: ProcessedFlight, title: string) {
         }
       }
 
-      // 4. DATE INTERVAL SEARCH (search all dates in range with same number of nights)
+      // 4. DATE INTERVAL SEARCH (search all dates in range with user-specified number of nights)
       // FOLLOWS "BESTE OG BILLIGSTE" CRITERIA
       if (useDateInterval && earliestDeparture && latestDeparture) {
         const MAX_BEST_AND_CHEAPEST_HOURS = getMaxBestAndCheapestDurationHours(departure);
-        const tripNights = calculateNights(departureDateStr, returnDateStr);
+        const tripNights = intervalNights; // Use user-selected number of nights
         let bestInterval: ProcessedFlight | null = null;
         const allIntervalFlights: ProcessedFlight[] = []; // Collect all flights for preferred airline search
+        const allValidResults: Array<{
+          departureDate: string;
+          returnDate: string;
+          price: number;
+          currency: string;
+          airline: string;
+          flight: ProcessedFlight;
+        }> = []; // Store all results for alternatives
 
         // Calculate number of days in the interval
         const startDate = new Date(earliestDeparture);
@@ -1796,6 +1817,13 @@ function saveToPowerPointSingle(flight: ProcessedFlight, title: string) {
         for (let i = 0; i <= daysDiff; i++) {
           const searchDepDate = format(new Date(startDate.getTime() + i * 24 * 60 * 60 * 1000), 'yyyy-MM-dd');
           const searchRetDate = addDays(searchDepDate, tripNights);
+          const returnDateObj = new Date(searchRetDate);
+
+          // CRITICAL: Check that BOTH departure AND return dates are within the selected period
+          if (returnDateObj > endDate) {
+            console.log(`Skipping ${searchDepDate}: return date ${searchRetDate} is after ${format(endDate, 'yyyy-MM-dd')}`);
+            continue; // Skip if return date is outside the period
+          }
 
           // Skip if this is the original search date
           if (searchDepDate === departureDateStr) continue;
@@ -1816,8 +1844,21 @@ function saveToPowerPointSingle(flight: ProcessedFlight, title: string) {
             allIntervalFlights.push(...valid); // Store for preferred airline search
 
             // Find BEST AND CHEAPEST (lowest score) across all dates in interval
+            // and collect all results for alternatives
             for (const flight of valid) {
               const flightScore = calculateFlightScore(flight);
+              
+              // Store this result for alternatives list
+              const airline = flight.outbound.airlineNames?.[0] || flight.outbound.airlines[0] || 'N/A';
+              allValidResults.push({
+                departureDate: searchDepDate,
+                returnDate: searchRetDate,
+                price: flight.price,
+                currency: flight.currency,
+                airline: airline,
+                flight: { ...flight, searchDate: searchDepDate }
+              });
+              
               if (!bestInterval || flightScore < calculateFlightScore(bestInterval)) {
                 bestInterval = { ...flight, searchDate: searchDepDate };
               }
@@ -1832,6 +1873,17 @@ function saveToPowerPointSingle(flight: ProcessedFlight, title: string) {
         if (bestInterval) {
           setDateIntervalResult({ ...bestInterval, recommendReason: t.searchInInterval });
           setSearchProgress(prev => ({ ...prev, current: prev.current + 1 }));
+          
+          // Find all alternatives within ±600 kr of the best price
+          const PRICE_MARGIN = 600;
+          const alternatives = allValidResults
+            .filter(r => Math.abs(r.price - bestInterval!.price) <= PRICE_MARGIN)
+            .sort((a, b) => new Date(a.departureDate).getTime() - new Date(b.departureDate).getTime()); // Sort by date ascending
+          
+          setIntervalAlternatives(alternatives);
+          setShowIntervalAlternatives(false); // Reset to collapsed
+        } else {
+          setIntervalAlternatives([]);
         }
         
         // Find best interval option for each selected airline
@@ -2365,6 +2417,27 @@ function saveToPowerPointSingle(flight: ProcessedFlight, title: string) {
                     </Popover>
                   </div>
                 </div>
+                
+                {/* Number of nights for interval search */}
+                <div className="space-y-1 min-w-[140px]">
+                  <Label htmlFor="intervalNights">
+                    {language === 'da' ? 'Antal nætter' : 'Antall netter'}
+                  </Label>
+                  <Select 
+                    value={String(intervalNights)} 
+                    onValueChange={(v) => setIntervalNights(parseInt(v))}
+                    disabled={!useDateInterval}
+                  >
+                    <SelectTrigger className="w-full h-10 bg-muted/30">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent position="popper" className="bg-background z-50 max-h-[200px] overflow-y-auto">
+                      {[...Array(30)].map((_, i) => (
+                        <SelectItem key={i + 1} value={String(i + 1)}>{i + 1}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
               </div>
             </div>
 
@@ -2812,7 +2885,7 @@ function saveToPowerPointSingle(flight: ProcessedFlight, title: string) {
               <h3 className="font-semibold text-foreground">{t.searchInInterval}</h3>
               {dateIntervalResult.searchDate && (
                 <p className="text-xs text-muted-foreground">
-                  Avreise: {format(new Date(dateIntervalResult.searchDate), "dd.MM.yyyy")}
+                  {language === 'da' ? 'Afrejse' : 'Avreise'}: {format(new Date(dateIntervalResult.searchDate), "dd.MM.yyyy")}
                 </p>
               )}
             </div>
@@ -2829,6 +2902,55 @@ function saveToPowerPointSingle(flight: ProcessedFlight, title: string) {
             childrenCount={parseInt(children)}
             hasNightFlight={dateIntervalResult.hasNightFlight}
           />
+          
+          {/* Alternative dates button and list */}
+          {intervalAlternatives.length > 1 && (
+            <div className="space-y-2">
+              <Button
+                variant="outline"
+                onClick={() => setShowIntervalAlternatives(!showIntervalAlternatives)}
+                className="w-full flex items-center justify-between gap-2"
+              >
+                <span className="text-sm">
+                  {showIntervalAlternatives 
+                    ? (language === 'da' ? 'Skjul andre datoer' : 'Skjul andre datoer')
+                    : (language === 'da' 
+                      ? `Vis ${intervalAlternatives.length - 1} andre dato${intervalAlternatives.length - 1 === 1 ? '' : 'er'} med lignende pris`
+                      : `Vis ${intervalAlternatives.length - 1} andre dato${intervalAlternatives.length - 1 === 1 ? '' : 'er'} med lignende pris`)
+                  }
+                </span>
+                <ChevronDown className={`h-4 w-4 transition-transform ${showIntervalAlternatives ? 'rotate-180' : ''}`} />
+              </Button>
+              
+              {showIntervalAlternatives && (
+                <Card className="border-border/50 bg-muted/20">
+                  <CardContent className="pt-4 pb-4">
+                    <div className="space-y-2">
+                      <h4 className="text-sm font-semibold text-muted-foreground mb-3">
+                        {language === 'da' ? 'Alternative datoer (±600 kr)' : 'Alternative datoer (±600 kr)'}
+                      </h4>
+                      {intervalAlternatives.map((alt, idx) => (
+                        <div 
+                          key={idx}
+                          className="flex items-center justify-between py-2 px-3 rounded-md bg-background/50 hover:bg-background/80 transition-colors"
+                        >
+                          <span className="text-sm font-medium">
+                            {format(new Date(alt.departureDate), 'dd')} – {format(new Date(alt.returnDate), 'dd MMMM', { locale: language === 'da' ? daFns : nbFns })}
+                          </span>
+                          <span className="text-sm text-muted-foreground">
+                            {alt.airline}
+                          </span>
+                          <span className="text-sm font-semibold">
+                            {Math.round(alt.price).toLocaleString(language === 'da' ? 'da-DK' : 'nb-NO')} {alt.currency}
+                          </span>
+                        </div>
+                      ))}
+                    </div>
+                  </CardContent>
+                </Card>
+              )}
+            </div>
+          )}
         </div>
       )}
 
