@@ -236,8 +236,8 @@ export default function TemplateLibrary() {
     }))
   ].filter(cat => !hiddenCategories.includes(cat.id)).sort((a, b) => a.order - b.order);
   
-  // Filtrer templates basert på bruker og språk
-  const langFilteredTemplates = templates.filter(t => !t.language || t.language === userLanguage);
+  // Filtrer templates basert på bruker og språk – vis KUN maler med riktig språk
+  const langFilteredTemplates = templates.filter(t => t.language === userLanguage);
   const filteredTemplates = userIsAdmin 
     ? langFilteredTemplates // Admin ser alle templates for aktivt språk
     : langFilteredTemplates.filter(t => {
@@ -326,6 +326,7 @@ export default function TemplateLibrary() {
             blob: buf,
             category: categoryName,
             categoryId: categoryId, // Lagre ID slik at vi kan søke robust
+            language: userLanguage, // 🌐 Skiller NO og DK maler
           });
           
           // If admin: Register file in OneDrive manifest (file already exists in OneDrive folder)
@@ -412,7 +413,17 @@ export default function TemplateLibrary() {
       }
       
       toast.info(`Lagrer ${count} fil${count > 1 ? 'er' : ''}...`);
-      
+
+      // Ryd opp legacy onedrive-maler UTEN language-felt (synket før language-fiksen)
+      // og eksisterende maler for dette språket (erstattes straks av nye)
+      const legacyToDelete = templates.filter(t =>
+        t.id.startsWith('onedrive-') && (!t.language || t.language === userLanguage)
+      );
+      for (const old of legacyToDelete) {
+        await deleteTemplateFromStorage(old.id);
+        console.log(`🧹 Ryddet legacy/gammel mal: ${old.id}`);
+      }
+
       // Save each file to IndexedDB
       let successCount = 0;
       let errorCount = 0;

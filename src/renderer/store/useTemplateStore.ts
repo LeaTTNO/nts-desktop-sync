@@ -142,6 +142,7 @@ export const useTemplateStore = create<Store>((set, get) => ({
       name: t.name || "Uten navn",
       category: t.category!,
       categoryId: t.categoryId,
+      language: t.language,        // 🌐 NO eller DA – skiller norske og danske maler
       order: t.order ?? getDefaultOrder(t.name || ""),
       visibleInBuilder: t.visibleInBuilder ?? true,
       blob: t.blob || null,

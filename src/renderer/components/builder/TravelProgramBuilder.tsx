@@ -89,8 +89,8 @@ export default function TravelProgramBuilder({ language = 'no' }: TravelProgramB
       ? getTemplatesByCategoryId(categoryId)
       : getTemplatesByCategoryName(categoryName);
     
-    // Filtrer på språk - vis kun maler for aktivt språk (eller maler uten språk = eldre maler)
-    return allTemplates.filter(t => !t.language || t.language === userLanguage);
+    // Filtrer på språk - vis KUN maler for aktivt språk
+    return allTemplates.filter(t => t.language === userLanguage);
   };
   
   /* =========================
