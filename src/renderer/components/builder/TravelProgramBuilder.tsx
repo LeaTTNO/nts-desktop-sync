@@ -411,14 +411,15 @@ export default function TravelProgramBuilder({ language = 'no' }: TravelProgramB
     return [...withNumber, ...withoutNumber];
   }
 
-  // Helper: Grupper templates etter hotellnavn (første ord)
+  // Helper: Grupper templates etter hotellnavn (alt før første tall)
   function groupTemplatesByHotel(templates: typeof categoryTemplates) {
     const groups: Record<string, typeof templates> = {};
     
     templates.forEach(t => {
-      // Ekstraher hotellnavn (alt før første tall, inkludert + tegn)
+      // Ekstraher hotellnavn: alt (inkl. spesialtegn som &, -, ') før første tall
       // Eksempel: "Pongwe + Tembo 4 + 1 nætter" → "Pongwe + Tembo"
-      const match = t.name.match(/^([A-Za-zÆØÅæøå\s\+]+?)(?=\s+\d)/);
+      // Eksempel: "Baraza & Essque 7 nætter" → "Baraza & Essque"
+      const match = t.name.match(/^(.*?)(?=\s+\d)/);
       const hotelName = match ? match[1].trim() : t.name;
       
       if (!groups[hotelName]) {
