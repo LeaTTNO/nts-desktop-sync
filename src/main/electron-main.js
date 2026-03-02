@@ -32,6 +32,9 @@ let mainWindow = null;
 app.commandLine.appendSwitch("disable-gpu-cache");
 app.commandLine.appendSwitch("disable-software-rasterizer");
 
+// Deaktiver hardware-akselerasjon - forhindrer renderer-kræsj på Windows/Electron 29
+app.disableHardwareAcceleration();
+
 /* --------------------------------------------------
    🔐 ENV
 -------------------------------------------------- */
