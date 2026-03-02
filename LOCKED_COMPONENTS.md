@@ -106,6 +106,112 @@ Dette dokumentet beskriver kritiske komponenter som **IKKE skal endres** uten gr
 
 ---
 
+## 📊 PowerPoint Generation System
+
+### `src/main/electron-main.js` - `ppt:generate` handler
+
+**Status:** 🔒 **LOCKED - KRITISK**
+
+**Linjer:** 946-1111
+
+**KRITISK ARKITEKTUR:**
+
+PowerPoint SKAL åpnes via `shell.openPath()` ETTER at PowerShell-scriptene er ferdig — IKKE via COM-objektets `$ppApp.Visible = $true`.
+
+**Hvorfor:**
+- PowerShell-prosessen avsluttes når scriptet er ferdig
+- Når PowerShell avsluttes, lukkes COM-objektet (`$ppApp`)
+- Hvis PowerPoint ble åpnet via `$ppApp.Visible = $true`, forsvinner den umiddelbart
+- `shell.openPath()` åpner filen som et eget OS-nivå dokument (fungerer både i dev og production)
+
+**Korrekt flyt:**
+
+```javascript
+// 1. Kjør ppt-build.ps1 ($ppApp.Visible = $false)
+execFile("powershell.exe", [...], (error, stdout, stderr) => {
+  if (!error) {
+    // 2. Kjør ppt-post-process.ps1
+    execFile("powershell.exe", [...], (postError, postStdout, postStderr) => {
+      if (!postError) {
+        // 3. Åpne filen via shell ETTER at PS-scriptene er ferdig
+        shell.openPath(basePath).then(() => {
+          console.log("📂 PowerPoint file opened successfully");
+        });
+        resolve({ ok: true });
+      }
+    });
+  }
+});
+```
+
+**ppt-build.ps1 korrekt oppsett:**
+
+```powershell
+# RIKTIG: Hold PowerPoint skjult under bygging
+$ppApp = New-Object -ComObject PowerPoint.Application
+$ppApp.Visible = $false  # Keep hidden during build
+
+# ... bygg presentasjonen ...
+
+# IKKE lagre - filen åpnes av shell.openPath() etterpå
+Write-Host "PowerPoint ferdig bygget – layout bevart – ingen lagring utført"
+```
+
+### VANLIGE FEIL (gjort 10+ ganger):
+
+❌ **FEIL 1: Sette `$ppApp.Visible = $true`**
+```powershell
+$ppApp = New-Object -ComObject PowerPoint.Application
+$ppApp.Visible = $true  # ❌ PowerPoint forsvinner når PS-scriptet avsluttes!
+```
+
+❌ **FEIL 2: Glemme `shell.openPath()` i electron-main.js**
+```javascript
+} else {
+  console.log("✅ ppt-post-process.ps1 complete");
+  resolve({ ok: true }); // ❌ Filen åpnes ALDRI!
+}
+```
+
+❌ **FEIL 3: Bruke emojis i PowerShell-filer**
+```powershell
+Write-Host "✅ Ferdig!"  # ❌ PowerShell parsing-feil!
+```
+Kun ASCII-tekst i `.ps1` filer — emojis forårsaker parsing-feil.
+
+### Filer som MÅ synkroniseres:
+
+1. **`src/main/ppt-build.ps1`** - Bygger PPT via COM, `$ppApp.Visible = $false`
+2. **`src/main/ppt-post-process.ps1`** - DG/DTO erstatning, holder PowerPoint skjult
+3. **`src/main/electron-main.js`** - `ppt:generate` handler, kaller `shell.openPath()` etter scriptene
+4. **`scripts/build-main.mjs`** - Kopierer alle 3 filer til `dist/main/`
+
+**Build-sjekkliste før release:**
+
+- [ ] `ppt-build.ps1` har `$ppApp.Visible = $false`
+- [ ] `electron-main.js` kaller `shell.openPath(basePath)` etter begge scriptene
+- [ ] Ingen emojis i `.ps1` filer (bruk kun ASCII)
+- [ ] `scripts/build-main.mjs` kopierer alle 3 filer til `dist/main/`
+- [ ] **TEST I DEV-MODUS FØR BYGG** (`npm run dev` + generer PPT)
+
+### Testing:
+
+```bash
+# 1. Start dev-modus
+npm run dev
+
+# 2. Bygg PowerPoint i appen
+# 3. Verifiser at PowerPoint åpnes automatisk
+# 4. Hvis PowerPoint IKKE åpnes:
+#    - Sjekk at shell.openPath() kalles (se console.log)
+#    - Sjekk at $ppApp.Visible = $false i ppt-build.ps1
+#    - Sjekk at ingen emojis i .ps1 filer
+```
+
+**IKKE bygg production før dette er verifisert!**
+
+---
+
 ## 🎯 Popover System
 
 ### `src/renderer/components/ui/popover.tsx`

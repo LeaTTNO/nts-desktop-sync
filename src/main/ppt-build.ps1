@@ -13,8 +13,9 @@ param (
 # === Start PowerPoint ===
 # --------------------------------------------------
 
+# Create COM object but keep it hidden (file will be opened by shell.openPath after processing)
 $ppApp = New-Object -ComObject PowerPoint.Application
-$ppApp.Visible = $true
+$ppApp.Visible = $false  # Keep hidden during build
 
 # --------------------------------------------------
 # === APNE BASEFIL ===

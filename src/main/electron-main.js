@@ -1078,12 +1078,24 @@ ipcMain.handle("ppt:generate", async (_, payload) => {
                   // Check if it's a critical error or just warnings
                   if (postStdout && postStdout.includes("Post-processing complete")) {
                     console.log("✅ Despite errors, post-processing completed successfully");
+                    // Open PowerPoint file after processing complete
+                    shell.openPath(basePath).then(() => {
+                      console.log("📂 PowerPoint file opened:", basePath);
+                    }).catch(openErr => {
+                      console.error("❌ Failed to open PowerPoint:", openErr);
+                    });
                     resolve({ ok: true });
                   } else {
                     reject(postStderr || postError.message);
                   }
                 } else {
                   console.log("✅ ppt-post-process.ps1 complete");
+                  // Open PowerPoint file using shell.openPath (works in both dev and production)
+                  shell.openPath(basePath).then(() => {
+                    console.log("📂 PowerPoint file opened successfully:", basePath);
+                  }).catch(openErr => {
+                    console.error("❌ Failed to open PowerPoint file:", openErr);
+                  });
                   resolve({ ok: true });
                 }
               }
