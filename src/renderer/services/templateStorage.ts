@@ -17,8 +17,6 @@ export interface TemplateEntry {
   name: string;
   category: string;
   categoryId?: string;  // Kategori-ID for robust oppslag (uavhengig av kategorinavn)
-  hotelGroup?: string;  // Undermappenavn fra OneDrive – brukes til hotellgruppering i Zanzibar-dropdown
-  language?: string;    // "no" eller "da" – skiller norske og danske maler
   order: number;
   visibleInBuilder: boolean;
   blob: ArrayBuffer | null;

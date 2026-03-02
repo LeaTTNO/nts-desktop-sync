@@ -414,22 +414,15 @@ export default function TravelProgramBuilder({ language = 'no' }: TravelProgramB
     return [...withNumber, ...withoutNumber];
   }
 
-  // Helper: Grupper templates etter hotellnavn
-  // Bruker t.hotelGroup (undermappenavn fra OneDrive) om tilgjengelig,
-  // faller kun tilbake til regex-parsing av filnavnet som siste utvei
+  // Helper: Grupper templates etter hotellnavn (første ord)
   function groupTemplatesByHotel(templates: typeof categoryTemplates) {
     const groups: Record<string, typeof templates> = {};
     
     templates.forEach(t => {
-      let hotelName: string;
-      if (t.hotelGroup) {
-        // Primær: bruk undermappenavn satt under sync (f.eks. "Pongwe", "Tembo")
-        hotelName = t.hotelGroup;
-      } else {
-        // Fallback: trekk ut hotellnavn fra filnavn via regex
-        const match = t.name.match(/^([A-Za-zÆØÅæøå\s\+]+?)(?=\s+\d)/);
-        hotelName = match ? match[1].trim() : t.name;
-      }
+      // Ekstraher hotellnavn (alt før første tall, inkludert + tegn)
+      // Eksempel: "Pongwe + Tembo 4 + 1 nætter" → "Pongwe + Tembo"
+      const match = t.name.match(/^([A-Za-zÆØÅæøå\s\+]+?)(?=\s+\d)/);
+      const hotelName = match ? match[1].trim() : t.name;
       
       if (!groups[hotelName]) {
         groups[hotelName] = [];
@@ -532,11 +525,7 @@ export default function TravelProgramBuilder({ language = 'no' }: TravelProgramB
                   !selectedTemplate && "text-muted-foreground"
                 )}
               >
-                {selectedTemplate 
-                  ? (selectedTemplate.hotelGroup 
-                      ? `${selectedTemplate.hotelGroup} – ${selectedTemplate.name}` 
-                      : selectedTemplate.name)
-                  : (hotelNames.length > 0 ? 'Velg hotell...' : 'Velg mal...')}
+                {selectedTemplate?.name || (hotelNames.length > 0 ? 'Velg hotell...' : 'Velg mal...')}
                 <ChevronDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
               </Button>
             </PopoverTrigger>
@@ -551,15 +540,7 @@ export default function TravelProgramBuilder({ language = 'no' }: TravelProgramB
                           onClick={(e) => {
                             e.preventDefault();
                             e.stopPropagation();
-                            const variants = groupedTemplates![hotelName] || [];
-                            if (variants.length === 1) {
-                              // Kun én variant – velg direkte uten å vise nivå 2
-                              replaceTemplate(selectedId, variants[0].id);
-                              onSelectChange(variants[0].id);
-                              setIsOpen(false);
-                            } else {
-                              setSelectedHotel(hotelName);
-                            }
+                            setSelectedHotel(hotelName);
                           }}
                           className="w-full text-left px-3 py-2 text-sm rounded-sm hover:bg-accent hover:text-accent-foreground transition-colors"
                         >

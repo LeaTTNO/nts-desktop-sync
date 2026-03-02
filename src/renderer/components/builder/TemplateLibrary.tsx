@@ -236,13 +236,10 @@ export default function TemplateLibrary() {
     }))
   ].filter(cat => !hiddenCategories.includes(cat.id)).sort((a, b) => a.order - b.order);
   
-  // Filtrer templates basert på bruker og språk
-  const langFilteredTemplates = templates.filter(t =>
-    !t.language || t.language === userLanguage
-  );
+  // Filtrer templates basert på bruker
   const filteredTemplates = userIsAdmin 
-    ? langFilteredTemplates // Admin ser alle templates for aktivt språk
-    : langFilteredTemplates.filter(t => {
+    ? templates // Admin ser alle templates
+    : templates.filter(t => {
         // Skjul basefil-kategorier fra vanlige brukere (disse vises kun for admin)
         const isBaseCategory = baseCategories.some(bc => bc.name === t.category);
         if (isBaseCategory) return false;
@@ -328,7 +325,6 @@ export default function TemplateLibrary() {
             blob: buf,
             category: categoryName,
             categoryId: categoryId, // Lagre ID slik at vi kan søke robust
-            language: userLanguage,  // Skiller NO og DK maler
           });
           
           // If admin: Register file in OneDrive manifest (file already exists in OneDrive folder)
@@ -454,8 +450,6 @@ export default function TemplateLibrary() {
             name: file.name.replace(/\.pptx?$/i, ''),
             category: file.category || 'onedrive-sync', // Use category from manifest
             categoryId: file.categoryId, // ID for robust oppslag (uavhengig av kategorinavn)
-            hotelGroup: (file as any).hotelGroup || undefined, // Undermappenavn = hotellnavn for gruppering
-            language: userLanguage,  // Skiller NO og DK maler
             order: file.order || 999,
             visibleInBuilder: true,
             blob: arrayBuffer,

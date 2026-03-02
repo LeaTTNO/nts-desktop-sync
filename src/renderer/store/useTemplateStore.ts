@@ -142,8 +142,6 @@ export const useTemplateStore = create<Store>((set, get) => ({
       name: t.name || "Uten navn",
       category: t.category!,
       categoryId: t.categoryId,
-      hotelGroup: t.hotelGroup,
-      language: t.language,
       order: t.order ?? getDefaultOrder(t.name || ""),
       visibleInBuilder: t.visibleInBuilder ?? true,
       blob: t.blob || null,
@@ -201,8 +199,9 @@ export const useTemplateStore = create<Store>((set, get) => ({
     const category = defaultCategories.find(c => c.id === catId);
     if (!category) return [];
     // Søk på categoryId felt ELLER at kategorinavnet matcher
-    return get().templates.filter(t =>
-      t.categoryId === catId || t.category === category.name
+    return get().templates.filter(t => 
+      t.categoryId === catId || 
+      t.category === category.name
     );
   },
 
