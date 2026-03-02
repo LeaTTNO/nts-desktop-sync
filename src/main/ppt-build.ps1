@@ -13,9 +13,8 @@ param (
 # === Start PowerPoint ===
 # --------------------------------------------------
 
-# Create COM object but keep it hidden (file will be opened by shell.openPath after processing)
 $ppApp = New-Object -ComObject PowerPoint.Application
-$ppApp.Visible = $false  # Keep hidden during build
+$ppApp.Visible = $true
 
 # --------------------------------------------------
 # === APNE BASEFIL ===
@@ -96,20 +95,7 @@ if ($flightModulePath -and (Test-Path $flightModulePath)) {
 }
 
 # --------------------------------------------------
-# CLOSE POWERPOINT - IMPORTANT!
+# IKKE lagre – brukeren lagrer selv
 # --------------------------------------------------
 
-# Close presentation WITHOUT saving (user will open and save manually)
-$presentation.Close()
-
-# Quit PowerPoint application
-$ppApp.Quit()
-
-# Release COM objects
-[System.Runtime.Interopservices.Marshal]::ReleaseComObject($presentation) | Out-Null
-[System.Runtime.Interopservices.Marshal]::ReleaseComObject($ppApp) | Out-Null
-[System.GC]::Collect()
-[System.GC]::WaitForPendingFinalizers()
-
-Write-Host "PowerPoint ferdig bygget – layout bevart – ingen lagring utført"
-Write-Host "PowerPoint COM objekter lukket - filen er klar til a apnes"
+Write-Host "PowerPoint ferdig bygget – layout bevart – ingen lagring utfort"
