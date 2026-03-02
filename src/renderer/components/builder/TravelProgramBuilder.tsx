@@ -89,11 +89,8 @@ export default function TravelProgramBuilder({ language = 'no' }: TravelProgramB
       ? getTemplatesByCategoryId(categoryId)
       : getTemplatesByCategoryName(categoryName);
     
-    // Admin ser alt
-    if (userIsAdmin) return allTemplates;
-    
-    // Andre kategorier - vis alt
-    return allTemplates;
+    // Filtrer på språk - vis kun maler for aktivt språk (eller maler uten språk = eldre maler)
+    return allTemplates.filter(t => !t.language || t.language === userLanguage);
   };
   
   /* =========================

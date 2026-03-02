@@ -236,10 +236,11 @@ export default function TemplateLibrary() {
     }))
   ].filter(cat => !hiddenCategories.includes(cat.id)).sort((a, b) => a.order - b.order);
   
-  // Filtrer templates basert på bruker
+  // Filtrer templates basert på bruker og språk
+  const langFilteredTemplates = templates.filter(t => !t.language || t.language === userLanguage);
   const filteredTemplates = userIsAdmin 
-    ? templates // Admin ser alle templates
-    : templates.filter(t => {
+    ? langFilteredTemplates // Admin ser alle templates for aktivt språk
+    : langFilteredTemplates.filter(t => {
         // Skjul basefil-kategorier fra vanlige brukere (disse vises kun for admin)
         const isBaseCategory = baseCategories.some(bc => bc.name === t.category);
         if (isBaseCategory) return false;
@@ -427,18 +428,19 @@ export default function TemplateLibrary() {
           const arrayBuffer = bytes.buffer;
           
           // Create template entry using category from manifest
-          // ID inkluderer categoryId for å unngå kollisjon mellom like filnavn i ulike kategorier
+          // ID inkluderer language + categoryId for å unngå kollisjon mellom NO/DK og ulike kategorier
           const safeCatKey = (file.categoryId || file.category || 'uncategorized')
             .replace(/[^a-zA-Z0-9_-]/g, '_');
-          const newId = `onedrive-${safeCatKey}-${file.name}`;
+          const newId = `onedrive-${userLanguage}-${safeCatKey}-${file.name}`;
           
-          // Dedup: slett gamle entries med samme filnavn + kategori (gammel ID-format eller tidligere sync)
+          // Dedup: slett alle gamle entries med samme filnavn + kategori (uansett ID-format)
           const duplicates = templates.filter(t =>
             t.fileName === file.name &&
             t.id !== newId &&
-            (t.categoryId === file.categoryId || 
+            (t.categoryId === file.categoryId ||
              t.category === (file.category || 'onedrive-sync') ||
-             t.id === `onedrive-${file.name}`) // gammel ID-format
+             t.id === `onedrive-${file.name}` ||
+             t.id === `onedrive-${safeCatKey}-${file.name}`) // gammelt ID-format uten language
           );
           for (const dup of duplicates) {
             await deleteTemplateFromStorage(dup.id);
@@ -448,8 +450,9 @@ export default function TemplateLibrary() {
           const template: TemplateEntry = {
             id: newId,
             name: file.name.replace(/\.pptx?$/i, ''),
-            category: file.category || 'onedrive-sync', // Use category from manifest
-            categoryId: file.categoryId, // ID for robust oppslag (uavhengig av kategorinavn)
+            category: file.category || 'onedrive-sync',
+            categoryId: file.categoryId,
+            language: userLanguage, // 🆕 Skiller NO og DK maler
             order: file.order || 999,
             visibleInBuilder: true,
             blob: arrayBuffer,
