@@ -1,6 +1,7 @@
 import React from "react";
 import { useAuth } from "@/contexts/AuthContext";
 import { userFolders } from "@/config/userConfig";
+import { version } from "../../../package.json";
 import { Button } from "@/components/ui/button";
 import {
   DropdownMenu,
@@ -93,6 +94,9 @@ export default function UserMenu() {
             </span>
             <span className="text-xs text-muted-foreground font-normal">
               Mappe: {userFolder}
+            </span>
+            <span className="text-xs text-muted-foreground font-normal mt-1">
+              v{version}
             </span>
           </div>
         </DropdownMenuLabel>
