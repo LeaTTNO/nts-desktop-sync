@@ -6,6 +6,7 @@ import { getBaseTemplateFileName, getAllBaseTemplateOptions, type DestinationSel
 import { getUserPrefix } from "@/config/userConfig";
 import { getUserBaseCategory } from "@/config/templateCategories";
 import { useAuth } from "@/contexts/AuthContext";
+import { useLanguage } from "@/contexts/LanguageContext";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -34,7 +35,8 @@ interface TravelProgramBuilderProps {
 }
 
 export default function TravelProgramBuilder({ language = 'no' }: TravelProgramBuilderProps) {
-  const { userEmail, userLanguage, isAdmin: userIsAdmin } = useAuth();
+  const { userEmail, isAdmin: userIsAdmin } = useAuth();
+  const { language: userLanguage } = useLanguage(); // Reaktiv – oppdateres når NO/DK byttes
   const userPrefix = userEmail ? getUserPrefix(userEmail) : undefined;
 
   const {

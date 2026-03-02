@@ -35,6 +35,7 @@ import {
 } from "@/components/ui/accordion";
 import { Upload, Trash2, Eye, EyeOff, Plus, Edit2, FolderPlus, RefreshCw, Save, CheckSquare, Square } from "lucide-react";
 import { toast } from "sonner";
+import { useLanguage } from "@/contexts/LanguageContext";
 
 export default function TemplateLibrary() {
   const [uploading, setUploading] = useState<string | null>(null);
@@ -48,7 +49,8 @@ export default function TemplateLibrary() {
   // State for innebygde kategoriers synlighet og checkbox for admin
   const [builtInCategorySettings, setBuiltInCategorySettings] = useState<Record<string, { isVisible?: boolean; hasCheckbox?: boolean }>>({});;
 
-  const { user, userEmail, userLanguage, isAdmin: userIsAdmin } = useAuth();
+  const { user, userEmail, isAdmin: userIsAdmin } = useAuth();
+  const { language: userLanguage } = useLanguage(); // Reaktiv – oppdateres når NO/DK byttes
   const userPrefix = userEmail ? getUserPrefix(userEmail) : undefined;
 
   const {
@@ -377,7 +379,7 @@ export default function TemplateLibrary() {
   }
 
   function handleDelete(id: string, name: string) {
-    if (!confirm(`Slett "${name}"?\n\nMalen fjernes fra din lokale database. Synkroniser på nytt for å hente den tilbake.`)) return;
+    if (!userIsAdmin && !confirm(`Slett "${name}"?\n\nMalen fjernes fra din lokale database. Synkroniser på nytt for å hente den tilbake.`)) return;
     deleteTemplate(id);
     toast.success(`"${name}" slettet`);
   }
