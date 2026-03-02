@@ -236,7 +236,7 @@ export default function TemplateLibrary() {
     }))
   ].filter(cat => !hiddenCategories.includes(cat.id)).sort((a, b) => a.order - b.order);
   
-  // Filtrer templates basert på bruker og språk – vis KUN maler med riktig språk
+  // Filtrer templates – ALT separert mellom NO og DK, ingen unntak
   const langFilteredTemplates = templates.filter(t => t.language === userLanguage);
   const filteredTemplates = userIsAdmin 
     ? langFilteredTemplates // Admin ser alle templates for aktivt språk
@@ -414,14 +414,12 @@ export default function TemplateLibrary() {
       
       toast.info(`Lagrer ${count} fil${count > 1 ? 'er' : ''}...`);
 
-      // Ryd opp legacy onedrive-maler UTEN language-felt (synket før language-fiksen)
-      // og eksisterende maler for dette språket (erstattes straks av nye)
-      const legacyToDelete = templates.filter(t =>
-        t.id.startsWith('onedrive-') && (!t.language || t.language === userLanguage)
-      );
-      for (const old of legacyToDelete) {
+      // Slett ALLE onedrive-maler uansett språk – frisk start ved hver synk
+      // Sikrer at ingen NO-filer henger igjen hos DK-bruker og vice versa
+      const allOnedriveMaler = templates.filter(t => t.id.startsWith('onedrive-'));
+      for (const old of allOnedriveMaler) {
         await deleteTemplateFromStorage(old.id);
-        console.log(`🧹 Ryddet legacy/gammel mal: ${old.id}`);
+        console.log(`🧹 Slettet gammel onedrive-mal: ${old.id}`);
       }
 
       // Save each file to IndexedDB

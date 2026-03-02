@@ -89,7 +89,7 @@ export default function TravelProgramBuilder({ language = 'no' }: TravelProgramB
       ? getTemplatesByCategoryId(categoryId)
       : getTemplatesByCategoryName(categoryName);
     
-    // Filtrer på språk - vis KUN maler for aktivt språk
+    // Filtrer på språk – ALT separert mellom NO og DK, ingen unntak
     return allTemplates.filter(t => t.language === userLanguage);
   };
   
