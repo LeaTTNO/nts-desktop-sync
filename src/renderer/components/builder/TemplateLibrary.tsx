@@ -388,7 +388,8 @@ export default function TemplateLibrary() {
 
 
   async function handleResetAndSync() {
-    if (!confirm(`Sletter ALLE maler fra lokal database og laster inn ${userLanguage.toUpperCase()}-maler på nytt. Fortsett?`)) return;
+    const langLabel = userLanguage === 'da' ? 'DK (dansk)' : 'NO (norsk)';
+    if (!confirm(`Sletter ALLE maler fra lokal database og laster inn ${langLabel}-maler på nytt. Fortsett?`)) return;
     setIsSyncing(true);
     try {
       await clearAllTemplates();
