@@ -48,7 +48,6 @@ export default function TravelProgramBuilder({ language = 'no' }: TravelProgramB
     getTemplatesByCategoryName,
     getTemplatesByCategoryId,
     loadFromDB,
-    setCurrentLanguage,
     slides, // <-- bring in slides from global state
     removeFlightSlides, // <-- add this
   } = useTemplateStore();
@@ -188,11 +187,6 @@ export default function TravelProgramBuilder({ language = 'no' }: TravelProgramB
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [templates, userLanguage, userPrefix]);
-
-  // Synkroniser språk til store så getTemplates*-metoder filtrerer riktig
-  useEffect(() => {
-    setCurrentLanguage(userLanguage);
-  }, [userLanguage, setCurrentLanguage]);
 
   /* =========================
      HELPERS

@@ -29,8 +29,6 @@ type FlightSlide = {
 type Store = {
   templates: TemplateEntry[];
   categories: Category[];
-  currentLanguage: string;
-  setCurrentLanguage: (lang: string) => void;
 
   selectedTemplateIds: string[];
   addSelectedTemplate: (id: string) => void;
@@ -58,8 +56,6 @@ const LOCKED_CATEGORY = "Reiseprogram og Tilbud";
 
 export const useTemplateStore = create<Store>((set, get) => ({
   templates: [],
-  currentLanguage: 'no',
-  setCurrentLanguage: (lang) => set({ currentLanguage: lang }),
   categories: defaultCategories.map(c => ({
     id: c.id,
     name: c.name,
@@ -147,7 +143,7 @@ export const useTemplateStore = create<Store>((set, get) => ({
       category: t.category!,
       categoryId: t.categoryId,
       hotelGroup: t.hotelGroup,
-      language: t.language || get().currentLanguage,
+      language: t.language,
       order: t.order ?? getDefaultOrder(t.name || ""),
       visibleInBuilder: t.visibleInBuilder ?? true,
       blob: t.blob || null,
@@ -204,21 +200,14 @@ export const useTemplateStore = create<Store>((set, get) => ({
   getTemplatesByCategoryId: (catId) => {
     const category = defaultCategories.find(c => c.id === catId);
     if (!category) return [];
-    const lang = get().currentLanguage;
-    // Søk på categoryId felt ELLER at kategorinavnet matcher, og filtrer på språk
-    return get().templates.filter(t => 
-      (t.categoryId === catId || t.category === category.name) &&
-      (!t.language || t.language === lang)
+    // Søk på categoryId felt ELLER at kategorinavnet matcher
+    return get().templates.filter(t =>
+      t.categoryId === catId || t.category === category.name
     );
   },
 
-  getTemplatesByCategoryName: (catName) => {
-    const lang = get().currentLanguage;
-    return get().templates.filter(t =>
-      t.category === catName &&
-      (!t.language || t.language === lang)
-    );
-  },
+  getTemplatesByCategoryName: (catName) =>
+    get().templates.filter(t => t.category === catName),
 
   getTemplateBlob: (id) => {
     const tpl = get().templates.find(t => t.id === id);

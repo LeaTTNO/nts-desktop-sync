@@ -58,7 +58,6 @@ export default function TemplateLibrary() {
     setTemplateVisibility,
     updateTemplateCategory,
     loadFromDB,
-    setCurrentLanguage,
   } = useTemplateStore();
 
   const {
@@ -181,9 +180,6 @@ export default function TemplateLibrary() {
 
   // 🔄 Auto-sync listener - triggered daily at 08:00 by main process
   useEffect(() => {
-    // Synkroniser språk til store så getTemplates*-metoder filtrerer riktig
-    setCurrentLanguage(userLanguage);
-
     if (!window.electron?.on) return;
 
     console.log('🔔 TemplateLibrary: Setting up auto-sync listener');

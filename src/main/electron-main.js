@@ -1443,7 +1443,7 @@ function createWindow() {
 
   if (isDev) {
     win.loadURL("http://localhost:5174");
-    win.webContents.openDevTools(); // Vis konsoll-feil i dev-modus
+    // win.webContents.openDevTools(); // Fjernet - kræsjer renderer i Electron 29
   } else {
     const indexPath = path.join(__dirname, "../renderer/index.html");
     console.log("📦 PROD index.html:", indexPath);

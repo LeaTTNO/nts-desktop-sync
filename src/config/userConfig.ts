@@ -13,7 +13,6 @@ export type SupportedLanguage = "no" | "da";
 // 0. Admin-system
 // ------------------------------------------------------------
 const ADMIN_EMAILS = [
-  "lea@tanzaniatours.no",
   "lea@tanzaniatours.dk",
   "jakob@tanzaniatours.dk",
   "info@tanzaniatours.dk",
