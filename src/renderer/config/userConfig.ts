@@ -25,39 +25,8 @@ export function isAdmin(email: string): boolean {
 }
 
 // ------------------------------------------------------------
-// 1. Auto-deteksjon av språk ut fra epost
-// ------------------------------------------------------------
-export function detectLanguageFromEmail(email: string): SupportedLanguage {
-  const lower = email.toLowerCase();
-
-  // Ingen email = default norsk
-  if (!lower || lower === "") return "no";
-  
-  // Dansk domene
-  if (lower.endsWith("@tanzaniatours.dk")) return "da";
-  
-  // Alt annet (inkl. .no) = norsk
-  return "no";
-}
-
-// ------------------------------------------------------------
-// 2. Manuell overskriving (bruker klikker NO/DK-knapp i UI)
-// ------------------------------------------------------------
-let overrideLanguage: SupportedLanguage | null = null;
-
-export function setManualLanguage(lang: SupportedLanguage) {
-  overrideLanguage = lang;
-}
-
-export function getActiveLanguage(userEmail: string): SupportedLanguage {
-  // Prioritet: 1) manuell override, 2) auto-detect fra email, 3) default norsk
-  if (overrideLanguage) return overrideLanguage;
-  if (!userEmail || userEmail === "") return "no"; // Default norsk
-  return detectLanguageFromEmail(userEmail);
-}
-
-// ------------------------------------------------------------
-// 3. Mapping: bruker → base-folder
+// 1. Mapping: bruker → base-folder + default språk
+//    language = hva appen åpner med som DEFAULT for denne brukeren
 // ------------------------------------------------------------
 
 interface UserFolder {
@@ -68,27 +37,51 @@ interface UserFolder {
 
 export const userFolders: UserFolder[] = [
   // NO
-  {
-    email: "info@tanzaniatours.no",
-    language: "no",
-    folder: "info-Reiseprogram og tilbud",
-  },
-  {
-    email: "lea@tanzaniatours.no",
-    language: "no",
-    folder: "lea-Reiseprogram og tilbud",
-  },
+  { email: "info@tanzaniatours.no", language: "no", folder: "info-Reiseprogram og tilbud" },
+  { email: "lea@tanzaniatours.no",  language: "no", folder: "lea-Reiseprogram og tilbud" },
 
-  // DK
-  { email: "lea@tanzaniatours.dk", language: "da", folder: "lea-Rejseprogram og tilbud" },
-  { email: "gordon@tanzaniatours.dk", language: "da", folder: "gordon-Rejseprogram og tilbud" },
-  { email: "lars@tanzaniatours.dk", language: "da", folder: "lars-Rejseprogram og tilbud" },
-  { email: "camilla@tanzaniatours.dk", language: "da", folder: "camilla-Rejseprogram og tilbud" },
-  { email: "jakob@tanzaniatours.dk", language: "da", folder: "jakob-Rejseprogram og tilbud" },
-  { email: "sofia@tanzaniatours.dk", language: "da", folder: "sofia-Rejseprogram og tilbud" },
-  { email: "lennie@tanzaniatours.dk", language: "da", folder: "lennie-Rejseprogram og tilbud" },
-  { email: "info@tanzaniatours.dk", language: "da", folder: "info-Rejseprogram og tilbud" },
+  // DK – men Lea og Camilla bruker NO som default
+  { email: "lea@tanzaniatours.dk",     language: "no", folder: "lea-Rejseprogram og tilbud" },
+  { email: "camilla@tanzaniatours.dk", language: "no", folder: "camilla-Rejseprogram og tilbud" },
+  { email: "gordon@tanzaniatours.dk",  language: "da", folder: "gordon-Rejseprogram og tilbud" },
+  { email: "lars@tanzaniatours.dk",    language: "da", folder: "lars-Rejseprogram og tilbud" },
+  { email: "jakob@tanzaniatours.dk",   language: "da", folder: "jakob-Rejseprogram og tilbud" },
+  { email: "sofia@tanzaniatours.dk",   language: "da", folder: "sofia-Rejseprogram og tilbud" },
+  { email: "lennie@tanzaniatours.dk",  language: "da", folder: "lennie-Rejseprogram og tilbud" },
+  { email: "info@tanzaniatours.dk",    language: "da", folder: "info-Rejseprogram og tilbud" },
 ];
+
+// ------------------------------------------------------------
+// 2. Auto-deteksjon av språk ut fra epost
+//    Bruker userFolders som sannhetskilde — ikke separat liste.
+// ------------------------------------------------------------
+export function detectLanguageFromEmail(email: string): SupportedLanguage {
+  const lower = email.toLowerCase();
+  if (!lower) return "no";
+
+  // Slå opp i userFolders — her er default-språk per bruker definert
+  const entry = userFolders.find(u => u.email === lower);
+  if (entry) return entry.language;
+
+  // Fallback for ukjente brukere: .dk-domene = dansk, alt annet = norsk
+  return lower.endsWith("@tanzaniatours.dk") ? "da" : "no";
+}
+
+// ------------------------------------------------------------
+// 3. Manuell overskriving (bruker klikker NO/DK-knapp i UI)
+// ------------------------------------------------------------
+let overrideLanguage: SupportedLanguage | null = null;
+
+export function setManualLanguage(lang: SupportedLanguage) {
+  overrideLanguage = lang;
+}
+
+export function getActiveLanguage(userEmail: string): SupportedLanguage {
+  // Prioritet: 1) manuell override, 2) auto-detect fra email, 3) default norsk
+  if (overrideLanguage) return overrideLanguage;
+  if (!userEmail || userEmail === "") return "no";
+  return detectLanguageFromEmail(userEmail);
+}
 
 // ------------------------------------------------------------
 // 4. Finn personlig mappe for bruker
