@@ -4,7 +4,7 @@ import { useUserCategoryStore } from "@/store/useUserCategoryStore";
 import { useAuth } from "@/contexts/AuthContext";
 import { getUploadableCategories, getUserPersonalCategory, getAllUserBaseCategories } from "@/config/templateCategories";
 import { getUserPrefix } from "@/config/userConfig";
-import { saveTemplate, deleteTemplateFromStorage, type TemplateEntry } from "@/services/templateStorage";
+import { saveTemplate, deleteTemplateFromStorage, clearAllTemplates, type TemplateEntry } from "@/services/templateStorage";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -385,6 +385,19 @@ export default function TemplateLibrary() {
     setTemplateVisibility(id, !currentlyVisible);
   }
 
+
+  async function handleResetAndSync() {
+    if (!confirm(`Sletter ALLE maler fra lokal database og laster inn ${userLanguage.toUpperCase()}-maler på nytt. Fortsett?`)) return;
+    setIsSyncing(true);
+    try {
+      await clearAllTemplates();
+      console.log('🗑️ Alle templates slettet fra IndexedDB');
+      toast.info('Database nullstilt – laster inn maler på nytt...');
+    } catch (e) {
+      console.error('Feil ved nullstilling:', e);
+    }
+    await handleSyncNow();
+  }
 
   async function handleSyncNow() {
     setIsSyncing(true);
@@ -767,6 +780,19 @@ export default function TemplateLibrary() {
         
         {/* Admin-kontroller nederst */}
         <div className="flex items-center justify-end gap-2 mt-4 pt-4 border-t">
+          {userIsAdmin && (
+            <Button
+              variant="outline"
+              size="sm"
+              className="gap-2 text-destructive hover:text-destructive"
+              onClick={handleResetAndSync}
+              disabled={isSyncing}
+              title="Slett alle maler og last inn på nytt med korrekt språk"
+            >
+              <RefreshCw className={`h-4 w-4 ${isSyncing ? 'animate-spin' : ''}`} />
+              Nullstill og synk
+            </Button>
+          )}
           <Button 
             variant="outline" 
             size="sm" 
