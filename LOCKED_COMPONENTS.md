@@ -197,6 +197,58 @@ shell.openPath(basePath).then(() => {
 });
 ```
 
+❌ **FEIL 5: Ikke lukke og release PowerPoint COM-objekter** (v1.1.19 fix - ROOT CAUSE)
+
+**ROOT CAUSE av "PowerPoint åpner ikke" problemet!**
+
+PowerPoint COM-objekter (`$ppApp`, `$presentation`) MÅ lukkes, quittes, og releases FØR filen kan åpnes. Hvis ikke, holder Windows-COM et file-lock som blokkerer åpning.
+
+```powershell
+# ❌ FEIL: Aldri lukke COM-objekter = fil forblir låst!
+Write-Host "PowerPoint ferdig bygget..."
+# Script slutter uten å lukke $ppApp og $presentation
+
+# ✅ RIKTIG (ppt-build.ps1 slutt):
+Write-Host "PowerPoint ferdig bygget – layout bevart – ingen lagring utfort"
+
+# Lukk og release COM-objekter for å frigjøre fil-lock
+$presentation.Close()
+$ppApp.Quit()
+[System.Runtime.Interopservices.Marshal]::ReleaseComObject($presentation) | Out-Null
+[System.Runtime.Interopservices.Marshal]::ReleaseComObject($ppApp) | Out-Null
+[System.GC]::Collect()
+[System.GC]::WaitForPendingFinalizers()
+
+Write-Host "PowerPoint COM objekter lukket - filen er klar til a apnes"
+
+# ✅ RIKTIG (ppt-post-process.ps1 slutt):
+Write-Host "Post-processing complete"
+
+# Lukk COM-objekter FØR vi prøver å åpne filen
+if ($presentation) {
+    $presentation.Save()
+    $presentation.Close()
+    [System.Runtime.Interopservices.Marshal]::ReleaseComObject($presentation) | Out-Null
+}
+if ($ppApp) {
+    $ppApp.Quit()
+    [System.Runtime.Interopservices.Marshal]::ReleaseComObject($ppApp) | Out-Null
+}
+[System.GC]::Collect()
+[System.GC]::WaitForPendingFinalizers()
+
+Write-Host "COM objects fully released - file is ready to open"
+Invoke-Item -Path $PresentationPath
+```
+
+**Hvorfor dette er kritisk:**
+- Windows COM holder file-lock så lenge COM-objektet eksisterer
+- Selv om PowerShell-scriptet sier det åpner filen, kan den ikke åpnes (låst)
+- PowerPoint-vinduet forblir skjult selv med `$ppApp.Visible = $true`
+- Dette var ROOT CAUSE av problemet som feilet i 10+ versjoner
+
+**Fikset i:** v1.1.19
+
 ### Filer som MÅ synkroniseres:
 
 1. **`src/main/ppt-build.ps1`** - Bygger PPT via COM, `$ppApp.Visible = $false`
@@ -207,7 +259,9 @@ shell.openPath(basePath).then(() => {
 **Build-sjekkliste før release:**
 
 - [ ] `ppt-build.ps1` har `$ppApp.Visible = $false`
-- [ ] `electron-main.js` kaller `shell.openPath(basePath)` etter begge scriptene
+- [ ] `ppt-build.ps1` lukker og releaser COM-objekter på slutten (v1.1.19)
+- [ ] `ppt-post-process.ps1` lukker og releaser COM-objekter før åpning (v1.1.19)
+- [ ] `electron-main.js` kaller `shell.openPath(basePath)` etter begge scriptene (eller PowerShell åpner selv)
 - [ ] Ingen emojis i `.ps1` filer (bruk kun ASCII)
 - [ ] `scripts/build-main.mjs` kopierer alle 3 filer til `dist/main/`
 - [ ] **TEST I DEV-MODUS FØR BYGG** (`npm run dev` + generer PPT)
