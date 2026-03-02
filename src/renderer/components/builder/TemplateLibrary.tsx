@@ -450,6 +450,7 @@ export default function TemplateLibrary() {
             name: file.name.replace(/\.pptx?$/i, ''),
             category: file.category || 'onedrive-sync', // Use category from manifest
             categoryId: file.categoryId, // ID for robust oppslag (uavhengig av kategorinavn)
+            hotelGroup: (file as any).hotelGroup || undefined, // Undermappenavn = hotellnavn for gruppering
             order: file.order || 999,
             visibleInBuilder: true,
             blob: arrayBuffer,

@@ -1319,10 +1319,17 @@ ipcMain.handle("onedrive:sync-now", async (event, args) => {
         }
         
         const buffer = fs.readFileSync(fullPath);
+        // Extract subfolder name (hotel group) from relative path
+        // e.g. "Zanzibar Hotel 1/Pongwe/7 netter.pptx" → hotelGroup = "Pongwe"
+        //      "Safari/7 dager.pptx"                   → hotelGroup = null (only 2 parts)
+        const pathParts = relPath.replace(/\\/g, '/').split('/');
+        const hotelGroup = pathParts.length >= 3 ? pathParts[pathParts.length - 2] : null;
+        
         filesWithData.push({
           name: entry.fileName || path.basename(relPath),
           category: entry.category,
           categoryId: entry.categoryId, // Include for robust lookup
+          hotelGroup: hotelGroup,        // Subfolder name = hotel name for grouping
           order: entry.order,
           data: buffer.toString('base64'),
           size: buffer.length,
