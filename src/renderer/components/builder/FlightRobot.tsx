@@ -1410,9 +1410,17 @@ function saveToPowerPointSingle(flight: ProcessedFlight, title: string) {
 
   // Main search handler
   async function handleSearch() {
-    if (!departure || !departureDateStr || !returnDateStr) {
-      toast.error(t.fillFields);
-      return;
+    // Datointervall-modus: trenger ikke datoer øverst, bare intervall-datoer og netter
+    if (useDateInterval) {
+      if (!departure || !earliestDeparture || !latestDeparture) {
+        toast.error(t.fillFields);
+        return;
+      }
+    } else {
+      if (!departure || !departureDateStr || !returnDateStr) {
+        toast.error(t.fillFields);
+        return;
+      }
     }
 
     // Create new abort controller for this search
@@ -1451,13 +1459,21 @@ function saveToPowerPointSingle(flight: ProcessedFlight, title: string) {
     const pax = parseInt(passengers);
 
     try {
+      // Datointervall-stanse-modus: hopp over hoved-søk når kun intervall er aktivt og ingen top-datoer er satt
+      const skipMainSearch = useDateInterval && !departureDateStr && !returnDateStr;
+
+      // Deklareres utenfor blokken slik at toast og interval-søk kan bruke dem
+      let basePrice = Infinity;
+      let categories: ReturnType<typeof categorizeFlights> | null = null;
+
+      if (!skipMainSearch) {
       // 1. MAIN SEARCH - Always runs, always shows 3 categories
       console.log('🔍 SEARCH START:', { departure, destination, returnFrom, returnTo, departureDateStr, returnDateStr, pax, currency });
       const mainOffers = await searchFlightsApi(departure, destination, returnFrom, returnTo, departureDateStr, returnDateStr, pax, currency);
       console.log('📡 API RESPONSE:', mainOffers.length, 'offers received');
       const processedFlights = processFlightOffers(mainOffers, undefined, pax);
       console.log('⚙️ PROCESSED:', processedFlights.length, 'flights after processing');
-      const categories = categorizeFlights(processedFlights, t, departure, language);
+      categories = categorizeFlights(processedFlights, t, departure, language);
 
       // Set all 3 mandatory categories
       setMainResults({ bestAndCheapest: categories.bestAndCheapest, cheapest: null });
@@ -1483,7 +1499,7 @@ function saveToPowerPointSingle(flight: ProcessedFlight, title: string) {
       // Note: Extra search results (flexible dates, add/remove nights, intervals) are added
       // directly via addFlight() in their respective search functions below
 
-      const basePrice = categories.bestAndCheapest?.price || Infinity;
+      basePrice = categories.bestAndCheapest?.price || Infinity;
 
       // 1.5. PREFERRED AIRLINE SEARCH - Find best alternatives with selected airlines
       if (usePreferredAirline && selectedAirlines.length > 0) {
@@ -1808,6 +1824,8 @@ function saveToPowerPointSingle(flight: ProcessedFlight, title: string) {
         }
       }
 
+      } // end if (!skipMainSearch)
+
       // 4. DATE INTERVAL SEARCH (search all dates in range with user-specified number of nights)
       // FOLLOWS "BESTE OG BILLIGSTE" CRITERIA
       if (useDateInterval && earliestDeparture && latestDeparture) {
@@ -1930,7 +1948,7 @@ function saveToPowerPointSingle(flight: ProcessedFlight, title: string) {
       }
 
       // Toast notification
-      if (categories.bestAndCheapest || categories.bestQuality || categories.cheapestExtended) {
+      if (categories?.bestAndCheapest || categories?.bestQuality || categories?.cheapestExtended || dateIntervalResult) {
         toast.success(language === "no" ? "Flyreiser funnet!" : "Flyrejser fundet!");
       } else {
         toast.info(t.noResults);
