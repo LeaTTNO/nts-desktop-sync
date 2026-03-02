@@ -179,6 +179,24 @@ Write-Host "✅ Ferdig!"  # ❌ PowerShell parsing-feil!
 ```
 Kun ASCII-tekst i `.ps1` filer — emojis forårsaker parsing-feil.
 
+❌ **FEIL 4: Resolve promise FØR shell.openPath() fullføres** (v1.1.16 bug)
+```javascript
+// ❌ FEIL: Resolver umiddelbart, venter ikke på at PowerPoint åpner
+shell.openPath(basePath).then(() => {
+  console.log("📂 PowerPoint opened");
+}).catch(err => console.error(err));
+resolve({ ok: true }); // ❌ Returnerer FØR filen åpnes!
+
+// ✅ RIKTIG: Resolve INNE I .then() callback
+shell.openPath(basePath).then(() => {
+  console.log("📂 PowerPoint opened");
+  resolve({ ok: true }); // ✅ Venter til filen faktisk er åpnet
+}).catch(err => {
+  console.error(err);
+  resolve({ ok: true }); // OK å resolve selv ved feil (filen er bygget)
+});
+```
+
 ### Filer som MÅ synkroniseres:
 
 1. **`src/main/ppt-build.ps1`** - Bygger PPT via COM, `$ppApp.Visible = $false`
