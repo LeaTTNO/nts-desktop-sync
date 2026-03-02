@@ -34,7 +34,8 @@ contextBridge.exposeInMainWorld("electron", {
   },
 
   // PowerPoint/COM merging
-  generatePpt: async ({ base, modules, language, departureDate, flightData }) => {
+  generatePpt: async ({ base, modules, language, departureDate, flightData, baseTemplateName }) => {
+    console.log('🔧 PRELOAD generatePpt called - about to invoke ppt:generate');
     // Send data direkte til main-prosess - la main håndtere filoperasjoner
     const result = await ipcRenderer.invoke('ppt:generate', {
       base,
@@ -42,7 +43,9 @@ contextBridge.exposeInMainWorld("electron", {
       departureDate,
       language,
       flightData,
+      baseTemplateName,
     });
+    console.log('🔧 PRELOAD generatePpt - IPC invoke completed, result:', result ? 'OK' : 'NULL');
     return result;
   },
 
