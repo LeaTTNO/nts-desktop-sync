@@ -16,6 +16,11 @@ files:
   - "!dist/*.yaml"
   - "!dist/*.7z"
 
+# Unpack PowerShell scripts from asar (they must be readable by powershell.exe)
+asarUnpack:
+  - "dist/main/*.ps1"
+  - "dist/main/*.js"
+
 win:
   target:
     - nsis
