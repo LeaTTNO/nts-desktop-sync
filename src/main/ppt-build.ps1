@@ -1,3 +1,7 @@
+# !! VIKTIG: IKKE bruk emojis eller spesialtegn i denne filen !!
+# Emojis forarsaket parsing-feil i PowerShell og gjor at PowerPoint ikke apner.
+# Bruk kun vanlig ASCII-tekst i alle Write-Host og kommentarer.
+
 param (
     [string]$BasePath,
     [string]$DepartureDate,
@@ -6,14 +10,14 @@ param (
 )
 
 # --------------------------------------------------
-# 🧠 Start PowerPoint
+# === Start PowerPoint ===
 # --------------------------------------------------
 
 $ppApp = New-Object -ComObject PowerPoint.Application
 $ppApp.Visible = $true
 
 # --------------------------------------------------
-# 📥 ÅPNE BASEFIL
+# === APNE BASEFIL ===
 # --------------------------------------------------
 
 $presentation = $ppApp.Presentations.Open(
@@ -24,7 +28,7 @@ $presentation = $ppApp.Presentations.Open(
 )
 
 # --------------------------------------------------
-# 📥 HENT MODULER – HELLIG METODE (VBA-ekvivalent)
+# === HENT MODULER - HELLIG METODE (VBA-ekvivalent) ===
 # --------------------------------------------------
 
 # STEG 1: Finn flyinformasjon-modulen (settes inn SIST, men fortsatt før siste basefil-slide)
@@ -92,7 +96,7 @@ if ($flightModulePath -and (Test-Path $flightModulePath)) {
 
 
 # --------------------------------------------------
-# ❗ IKKE lagre – brukeren lagrer selv
+# IKKE lagre - brukeren lagrer selv
 # --------------------------------------------------
 
 Write-Host "PowerPoint ferdig bygget – layout bevart – ingen lagring utført"
