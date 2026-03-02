@@ -13,15 +13,27 @@ interface LanguageContextType {
 
 const LanguageContext = createContext<LanguageContextType | undefined>(undefined);
 
+function getLangStorageKey(email: string) {
+  return `nts-language-${email.toLowerCase()}`;
+}
+
 export function LanguageProvider({ children }: { children: ReactNode }) {
   const { account } = useAuth();
   const [language, setLanguageState] = useState<SupportedLanguage>("no");
 
-  // Auto-detect language from user email
+  // Auto-detect language from user email, but respect persisted preference
   useEffect(() => {
     if (account?.username) {
-      const detected = detectLanguageFromEmail(account.username);
-      setLanguageState(detected);
+      const stored = localStorage.getItem(getLangStorageKey(account.username)) as SupportedLanguage | null;
+      if (stored === "no" || stored === "da") {
+        // User has a saved preference — use it and register override
+        setManualLanguage(stored);
+        setLanguageState(stored);
+      } else {
+        // First time: auto-detect from email
+        const detected = detectLanguageFromEmail(account.username);
+        setLanguageState(detected);
+      }
     }
   }, [account?.username]);
 
@@ -41,6 +53,10 @@ export function LanguageProvider({ children }: { children: ReactNode }) {
       console.log(`🔄 Language changed from ${language} to ${lang} - all data reset`);
     }
     
+    // Persist language preference for this user across app restarts
+    if (account?.username) {
+      localStorage.setItem(getLangStorageKey(account.username), lang);
+    }
     setManualLanguage(lang);
     setLanguageState(lang);
   };
