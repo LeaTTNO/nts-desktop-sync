@@ -49,6 +49,39 @@ export const getCategoryByName = (name: string) =>
 export const getCategoryById = (id: string) => 
   defaultCategories.find(c => c.id === id);
 
+// Danske oversettelser av innebygde kategorier
+export const categoryNamesDanish: Record<string, string> = {
+  "arusha_first_night":          "Arusha første nat",
+  "safari_period_group":         "Safariperiode",
+  "safari_mid_dec_feb_ndutu":    "Safari - Midt DEC - FEB (Ndutu)",
+  "safari_march_ndutu_no_tar":   "Safari - MARTS (Ndutu uden Tar)",
+  "safari_april_may_ser_no_tar": "Safari - APRIL - MAJ (Ser uden Tar)",
+  "safari_june_10july_ser":      "Safari - JUNI - ca. 10. JULI (Ser)",
+  "safari_10july_sep_tar_ser_north": "Safari - ca. 10. JULI - SEP (Tar + Ser nord)",
+  "safari_oct_tar_ser":          "Safari - OKT (Tar + Ser)",
+  "safari_nov_middec_tar_ser":   "Safari - NOV - Midt DEC (Tar + Ser)",
+  "last_safari_night":           "Sidste nat safari",
+  "zanzibar_hotel_1":            "Zanzibar Hotel",
+  "zanzibar_hotel_2":            "Zanzibar & Stone Town",
+  "kilimanjaro":                 "Kilimanjaro",
+  "arusha_activities_slides":    "Aktiviteter Arusha - Slides",
+  "diverse_mainland":            "Diverse Fastland",
+  "extra_slides":                "Ekstra Slides",
+  "flyinformasjon":              "Flyinformation",
+  "base_program":                "Basisprogram",
+};
+
+/**
+ * Hent kategorinavn for gitt ID og språk
+ */
+export function getCategoryNameForLanguage(id: string, language: "no" | "da"): string | null {
+  if (language === "da" && categoryNamesDanish[id]) {
+    return categoryNamesDanish[id];
+  }
+  const cat = defaultCategories.find(c => c.id === id);
+  return cat ? cat.name : null;
+}
+
 /**
  * Generer brukerspesifikk kategori for egne filer
  * @param userPrefix - Brukerens prefix (lea, gordon, osv.)

@@ -4,7 +4,7 @@ import { useUserCategoryStore } from "@/store/useUserCategoryStore";
 import TemplateDropdown from "./TemplateDropdown";
 import { getBaseTemplateFileName, getAllBaseTemplateOptions, type DestinationSelection } from "@/config/baseTemplateSelector";
 import { getUserPrefix } from "@/config/userConfig";
-import { getUserBaseCategory } from "@/config/templateCategories";
+import { getUserBaseCategory, getCategoryNameForLanguage } from "@/config/templateCategories";
 import { useAuth } from "@/contexts/AuthContext";
 import { useLanguage } from "@/contexts/LanguageContext";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -57,13 +57,11 @@ export default function TravelProgramBuilder({ language = 'no' }: TravelProgramB
   const { categories: userCategories, getCategoriesForUser, isBuiltinCategoryVisible, getBuiltinCategoryName } = useUserCategoryStore();
   const myUserCategories = userEmail ? getCategoriesForUser(userEmail) : [];
 
-  // Helper to get category name by id from store with override support
+  // Helper to get category name by id – respekterer: 1) admin-override, 2) aktivt språk, 3) norsk default
   const getCategoryNameById = (id: string): string => {
     const override = getBuiltinCategoryName(id);
     if (override) return override;
-    
-    const cat = categories.find(c => c.id === id);
-    return cat ? cat.name : "";
+    return getCategoryNameForLanguage(id, userLanguage) ?? "";
   };
 
   // Dynamically get category names from store

@@ -2,7 +2,7 @@ import React, { useState, useEffect } from "react";
 import { useTemplateStore } from "@/store/useTemplateStore";
 import { useUserCategoryStore } from "@/store/useUserCategoryStore";
 import { useAuth } from "@/contexts/AuthContext";
-import { getUploadableCategories, getUserPersonalCategory, getAllUserBaseCategories } from "@/config/templateCategories";
+import { getUploadableCategories, getUserPersonalCategory, getAllUserBaseCategories, getCategoryNameForLanguage } from "@/config/templateCategories";
 import { getUserPrefix } from "@/config/userConfig";
 import { saveTemplate, deleteTemplateFromStorage, clearAllTemplates, type TemplateEntry } from "@/services/templateStorage";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -209,10 +209,11 @@ export default function TemplateLibrary() {
   // Get base categories for all users (kun for admin)
   const baseCategories = userIsAdmin ? getAllUserBaseCategories(userLanguage) : [];
 
-  // Helper function to get category name with override support
+  // Helper function to get category name: 1) admin-override, 2) aktivt språk, 3) norsk default
   const getCategoryDisplayName = (catId: string, defaultName: string): string => {
     const override = getBuiltinCategoryName(catId);
-    return override || defaultName;
+    if (override) return override;
+    return getCategoryNameForLanguage(catId, userLanguage) ?? defaultName;
   };
 
   // Merge default categories with user-specific categories + personal category + base categories (if admin)
