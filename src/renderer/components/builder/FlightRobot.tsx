@@ -1428,17 +1428,21 @@ function saveToPowerPointSingle(flight: ProcessedFlight, title: string) {
     setAbortController(newAbortController);
 
     // Calculate max expected results based on enabled options
-    let maxResults = 3; // 3 main categories always
-    if (flexibleDates) maxResults += 1;
-    if (addNights) maxResults += 1;
-    if (removeNights) maxResults += 1;
-    if (useDateInterval) maxResults += 1;
-    if (usePreferredAirline && selectedAirlines.length > 0) {
-      maxResults += 3; // Up to 3 preferred airline categories
+    let maxResults: number;
+    if (useDateInterval) {
+      // Dato-intervall-modus: kun 1 resultat (beste og billigste i perioden)
+      maxResults = 1;
+    } else {
+      maxResults = 3; // 3 main categories always
+      if (flexibleDates) maxResults += 1;
+      if (addNights) maxResults += 1;
+      if (removeNights) maxResults += 1;
+      if (usePreferredAirline && selectedAirlines.length > 0) {
+        maxResults += 3; // Up to 3 preferred airline categories
+      }
+      // Cap at 9 for display purposes
+      maxResults = Math.min(maxResults, 9);
     }
-    
-    // Cap at 9 for display purposes (3 main + flexible + add + remove + interval + 3 preferred)
-    maxResults = Math.min(maxResults, 9);
     
     setSearchProgress({ current: 0, max: maxResults });
     setIsSearching(true);
@@ -1459,12 +1463,13 @@ function saveToPowerPointSingle(flight: ProcessedFlight, title: string) {
     const pax = parseInt(passengers);
 
     try {
-      // Datointervall-stanse-modus: hopp over hoved-søk når kun intervall er aktivt og ingen top-datoer er satt
-      const skipMainSearch = useDateInterval && !departureDateStr && !returnDateStr;
+      // Datointervall-modus: hopp alltid over hoved-søk — søker kun i intervallet
+      const skipMainSearch = useDateInterval;
 
       // Deklareres utenfor blokken slik at toast og interval-søk kan bruke dem
       let basePrice = Infinity;
       let categories: ReturnType<typeof categorizeFlights> | null = null;
+      let intervalFound = false;
 
       if (!skipMainSearch) {
       // 1. MAIN SEARCH - Always runs, always shows 3 categories
@@ -1905,6 +1910,7 @@ function saveToPowerPointSingle(flight: ProcessedFlight, title: string) {
         // ALWAYS show the best interval option (by score) - even if more expensive!
         // User wants to see the result if the checkbox is enabled
         if (bestInterval) {
+          intervalFound = true;
           setDateIntervalResult({ ...bestInterval, recommendReason: t.searchInInterval });
           setSearchProgress(prev => ({ ...prev, current: prev.current + 1 }));
           
@@ -1948,7 +1954,7 @@ function saveToPowerPointSingle(flight: ProcessedFlight, title: string) {
       }
 
       // Toast notification
-      if (categories?.bestAndCheapest || categories?.bestQuality || categories?.cheapestExtended || dateIntervalResult) {
+      if (categories?.bestAndCheapest || categories?.bestQuality || categories?.cheapestExtended || intervalFound) {
         toast.success(language === "no" ? "Flyreiser funnet!" : "Flyrejser fundet!");
       } else {
         toast.info(t.noResults);
