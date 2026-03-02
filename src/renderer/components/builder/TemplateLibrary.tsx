@@ -58,6 +58,7 @@ export default function TemplateLibrary() {
     setTemplateVisibility,
     updateTemplateCategory,
     loadFromDB,
+    setCurrentLanguage,
   } = useTemplateStore();
 
   const {
@@ -180,6 +181,9 @@ export default function TemplateLibrary() {
 
   // 🔄 Auto-sync listener - triggered daily at 08:00 by main process
   useEffect(() => {
+    // Synkroniser språk til store så getTemplates*-metoder filtrerer riktig
+    setCurrentLanguage(userLanguage);
+
     if (!window.electron?.on) return;
 
     console.log('🔔 TemplateLibrary: Setting up auto-sync listener');
@@ -236,10 +240,13 @@ export default function TemplateLibrary() {
     }))
   ].filter(cat => !hiddenCategories.includes(cat.id)).sort((a, b) => a.order - b.order);
   
-  // Filtrer templates basert på bruker
+  // Filtrer templates basert på bruker og språk
+  const langFilteredTemplates = templates.filter(t =>
+    !t.language || t.language === userLanguage
+  );
   const filteredTemplates = userIsAdmin 
-    ? templates // Admin ser alle templates
-    : templates.filter(t => {
+    ? langFilteredTemplates // Admin ser alle templates for aktivt språk
+    : langFilteredTemplates.filter(t => {
         // Skjul basefil-kategorier fra vanlige brukere (disse vises kun for admin)
         const isBaseCategory = baseCategories.some(bc => bc.name === t.category);
         if (isBaseCategory) return false;
@@ -325,6 +332,7 @@ export default function TemplateLibrary() {
             blob: buf,
             category: categoryName,
             categoryId: categoryId, // Lagre ID slik at vi kan søke robust
+            language: userLanguage,  // Skiller NO og DK maler
           });
           
           // If admin: Register file in OneDrive manifest (file already exists in OneDrive folder)
@@ -451,6 +459,7 @@ export default function TemplateLibrary() {
             category: file.category || 'onedrive-sync', // Use category from manifest
             categoryId: file.categoryId, // ID for robust oppslag (uavhengig av kategorinavn)
             hotelGroup: (file as any).hotelGroup || undefined, // Undermappenavn = hotellnavn for gruppering
+            language: userLanguage,  // Skiller NO og DK maler
             order: file.order || 999,
             visibleInBuilder: true,
             blob: arrayBuffer,
