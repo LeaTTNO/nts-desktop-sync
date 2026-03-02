@@ -1078,30 +1078,17 @@ ipcMain.handle("ppt:generate", async (_, payload) => {
                   // Check if it's a critical error or just warnings
                   if (postStdout && postStdout.includes("Post-processing complete")) {
                     console.log("✅ Despite errors, post-processing completed successfully");
-                    console.log("🔍 File exists before opening:", fs.existsSync(basePath));
-                    // Open PowerPoint file after processing complete - WAIT for it to complete
-                    shell.openPath(basePath).then(() => {
-                      console.log("📂 PowerPoint file opened:", basePath);
-                      resolve({ ok: true });
-                    }).catch(openErr => {
-                      console.error("❌ Failed to open PowerPoint:", openErr);
-                      resolve({ ok: true }); // Still resolve as OK since file was created
-                    });
+                    console.log("� PowerPoint file created at:", basePath);
+                    console.log("📂 PowerShell will open the file automatically");
+                    resolve({ ok: true });
                   } else {
                     reject(postStderr || postError.message);
                   }
                 } else {
                   console.log("✅ ppt-post-process.ps1 complete");
-                  console.log("🔍 File exists before opening:", fs.existsSync(basePath));
-                  console.log("📂 About to call shell.openPath with:", basePath);
-                  // Open PowerPoint file using shell.openPath (works in both dev and production)
-                  shell.openPath(basePath).then(() => {
-                    console.log("📂 PowerPoint file opened successfully:", basePath);
-                    resolve({ ok: true });
-                  }).catch(openErr => {
-                    console.error("❌ Failed to open PowerPoint file:", openErr);
-                    resolve({ ok: true }); // Still resolve as OK since file was created
-                  });
+                  console.log("� PowerPoint file created at:", basePath);
+                  console.log("📂 PowerShell opened the file automatically");
+                  resolve({ ok: true });
                 }
               }
             );
