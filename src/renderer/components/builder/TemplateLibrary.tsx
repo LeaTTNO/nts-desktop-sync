@@ -377,6 +377,7 @@ export default function TemplateLibrary() {
   }
 
   function handleDelete(id: string, name: string) {
+    if (!confirm(`Slett "${name}"?\n\nMalen fjernes fra din lokale database. Synkroniser på nytt for å hente den tilbake.`)) return;
     deleteTemplate(id);
     toast.success(`"${name}" slettet`);
   }
@@ -754,17 +755,16 @@ export default function TemplateLibrary() {
                                 </Button>
                               )}
 
-                              {/* Delete button - kun admin eller egne filer */}
-                              {(userIsAdmin || isPersonalCategory) && (
-                                <Button
-                                  variant="ghost"
-                                  size="sm"
-                                  onClick={() => handleDelete(t.id, t.name)}
-                                  className="h-8 w-8 p-0 text-destructive hover:text-destructive"
-                                >
-                                  <Trash2 className="h-4 w-4" />
-                                </Button>
-                              )}
+                              {/* Delete button - alle brukere kan slette fra sin lokale database */}
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                onClick={() => handleDelete(t.id, t.name)}
+                                className="h-8 w-8 p-0 text-destructive hover:text-destructive"
+                                title="Slett fra lokal database"
+                              >
+                                <Trash2 className="h-4 w-4" />
+                              </Button>
                             </div>
                           </div>
                         ))}
