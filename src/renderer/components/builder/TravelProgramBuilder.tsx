@@ -111,8 +111,13 @@ export default function TravelProgramBuilder({ language = 'no' }: TravelProgramB
       searchingForCategoryName: baseCategory.name,
     });
     
-    // Hent alle templates i denne kategorien (bruk ID for robusthet)
-    const result = getTemplatesByCategoryId(baseCategory.id);
+    // Hent alle templates i denne kategorien – prøv ID først, fall tilbake til navn
+    let result = getTemplatesByCategoryId(baseCategory.id);
+
+    // Fallback: søk på kategorinavn (dekker filer lastet opp uten categoryId)
+    if (result.length === 0) {
+      result = getTemplatesByCategoryName(baseCategory.name);
+    }
     
     console.log('📦 Found templates:', result.length, result.map(t => ({
       name: t.name,

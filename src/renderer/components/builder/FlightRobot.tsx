@@ -2734,6 +2734,19 @@ function saveToPowerPointSingle(flight: ProcessedFlight, title: string) {
                   {language === "no" ? "Avslutt søk" : "Afbryd søgning"}
                 </Button>
               )}
+
+              {/* Nullstill flysøk - vises når søk er ferdig */}
+              {hasSearched && !isSearching && (
+                <Button
+                  onClick={handleReset}
+                  variant="outline"
+                  className="gap-2 border-2 border-muted-foreground text-muted-foreground hover:bg-muted min-w-[180px]"
+                  size="lg"
+                >
+                  <RotateCcw className="h-4 w-4" />
+                  {language === "no" ? "Nullstill flysøk" : "Nulstil flysøgning"}
+                </Button>
+              )}
             </div>
           </div> {/* slutten på Flexible Options */}
         </CardContent>
