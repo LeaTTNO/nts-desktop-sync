@@ -241,6 +241,8 @@ Eller hvis det bare er én liten fix:
 
 ### Steg 5e – Last opp de tre filene
 
+**Metode 1: Via GitHub i nettleser**
+
 Finn feltet som sier **"Attach binaries by dropping them here or selecting them"** (det er en stor stiplet boks nede på siden).
 
 Åpne File Explorer, naviger til `C:\Users\leaal\Desktop\NTS-Desktop-Sync\dist\` og dra disse **tre filene** inn i den stiplede boksen:
@@ -249,9 +251,24 @@ Finn feltet som sier **"Attach binaries by dropping them here or selecting them"
 2. `NTS Desktop Sync Setup 1.1.5.exe.blockmap`
 3. `latest.yml`
 
-> ⚠️ **Alle tre filene må lastes opp.** Det er fristende å bare laste opp `.exe`-filen siden det er den folk installerer, men `latest.yml` og `.blockmap` er det auto-update-systemet bruker for å sjekke og laste ned oppdateringer. Uten disse vil brukerne aldri få automatiske oppdateringer.
-
 Vent til alle tre filene er ferdig lastet opp (du ser en grønn hake ved siden av hvert filnavn).
+
+**Metode 2: Via kommandolinje (raskere)**
+
+Åpne PowerShell i prosjektmappen og kjør:
+
+```powershell
+gh release create v1.1.5 `
+  "dist\NTS-Desktop-Sync-Setup-1.1.5.exe" `
+  "dist\NTS-Desktop-Sync-Setup-1.1.5.exe.blockmap" `
+  "dist\latest.yml" `
+  --title "NTS Desktop Sync v1.1.5" `
+  --notes "**Hva er nytt:**`n`n- Fikset bug med template selection`n- Forbedret basefil synkronisering"
+```
+
+> **Tips:** Bytt ut versjonsnummer, tittel og notes med dine egne verdier. Backticks (\`) gjør at kommandoen kan deles over flere linjer.
+
+> ⚠️ **Alle tre filene må lastes opp.** Det er fristende å bare laste opp `.exe`-filen siden det er den folk installerer, men `latest.yml` og `.blockmap` er det auto-update-systemet bruker for å sjekke og laste ned oppdateringer. Uten disse vil brukerne aldri få automatiske oppdateringer.
 
 ### Steg 5f – Publiser
 
@@ -303,6 +320,10 @@ Du trenger ikke gjøre noe mer. Neste gang de starter appen:
               Tittel: NTS Desktop Sync v1.1.5
               Last opp: .exe + .exe.blockmap + latest.yml  (alle tre!)
               Klikk "Publish release"  (ikke Save as draft!)
+              
+              ELLER bruk kommandolinje:
+              gh release create v1.1.5 "dist\*.exe" "dist\*.blockmap" "dist\latest.yml" \
+                --title "v1.1.5" --notes "Beskrivelse av endringer"
 
 □ 6. VARSLE: Send melding til Gordon/Jakob om at ny versjon er ute
 ```

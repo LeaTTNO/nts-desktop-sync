@@ -100,11 +100,28 @@ export default function TravelProgramBuilder({ language = 'no' }: TravelProgramB
   const getUserBaseTemplates = () => {
     if (!userPrefix) return [];
     
-    // Hent brukerens basefil-kategori
+    // Hent brukerens "Reiseprogram og Tilbud"-kategori (basefilene)
     const baseCategory = getUserBaseCategory(userPrefix, userLanguage);
     
+    // DEBUG: Log hva vi søker etter
+    console.log('🔍 getUserBaseTemplates:', {
+      userPrefix,
+      userLanguage,
+      searchingForCategoryId: baseCategory.id,
+      searchingForCategoryName: baseCategory.name,
+    });
+    
     // Hent alle templates i denne kategorien (bruk ID for robusthet)
-    return getTemplatesByCategoryId(baseCategory.id);
+    const result = getTemplatesByCategoryId(baseCategory.id);
+    
+    console.log('📦 Found templates:', result.length, result.map(t => ({
+      name: t.name,
+      category: t.category,
+      categoryId: t.categoryId,
+      visibleInBuilder: t.visibleInBuilder
+    })));
+    
+    return result;
   };
 
   /* =========================

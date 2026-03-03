@@ -46,15 +46,15 @@ const mapFolderToCategory = (folderName: string, fullPath?: string): string => {
   if (lower === 'flyinformasjon' || lower === 'flyinformation' || lower === 'flight information') return 'flyinformasjon';
   if (lower === 'reiseprogram og tilbud' || lower === 'rejseprogram og tilbud' || lower === 'base program') return 'baseProgram';
   
-  // User-specific base files (bruker - basefiler / bruker - reiseprogram & tilbud)
-  if (lower.includes('lea') && (lower.includes('basefil') || lower.includes('reiseprogram'))) return 'base_lea';
-  if (lower.includes('gordon') && (lower.includes('basefil') || lower.includes('reiseprogram'))) return 'base_gordon';
-  if (lower.includes('jakob') && (lower.includes('basefil') || lower.includes('reiseprogram'))) return 'base_jakob';
-  if (lower.includes('camilla') && (lower.includes('basefil') || lower.includes('reiseprogram'))) return 'base_camilla';
-  if (lower.includes('sofia') && (lower.includes('basefil') || lower.includes('reiseprogram'))) return 'base_sofia';
-  if (lower.includes('lars') && (lower.includes('basefil') || lower.includes('reiseprogram'))) return 'base_lars';
-  if (lower.includes('info') && (lower.includes('basefil') || lower.includes('reiseprogram'))) return 'base_info';
-  if (lower.includes('lennie') && (lower.includes('basefil') || lower.includes('reiseprogram'))) return 'base_lennie';
+  // User-specific "Reiseprogram og tilbud" (basefilene - vises i dropdown)
+  if (lower.includes('lea') && (lower.includes('reiseprogram') || lower.includes('rejseprogram'))) return 'base_lea';
+  if (lower.includes('gordon') && (lower.includes('reiseprogram') || lower.includes('rejseprogram'))) return 'base_gordon';
+  if (lower.includes('jakob') && (lower.includes('reiseprogram') || lower.includes('rejseprogram'))) return 'base_jakob';
+  if (lower.includes('camilla') && (lower.includes('reiseprogram') || lower.includes('rejseprogram'))) return 'base_camilla';
+  if (lower.includes('sofia') && (lower.includes('reiseprogram') || lower.includes('rejseprogram'))) return 'base_sofia';
+  if (lower.includes('lars') && (lower.includes('reiseprogram') || lower.includes('rejseprogram'))) return 'base_lars';
+  if (lower.includes('info') && (lower.includes('reiseprogram') || lower.includes('rejseprogram'))) return 'base_info';
+  if (lower.includes('lennie') && (lower.includes('reiseprogram') || lower.includes('rejseprogram'))) return 'base_lennie';
   
   // Safari periods
   if (lower.includes('dec') || lower.includes('feb') || lower.includes('ndutu')) return 'safariDecFeb';

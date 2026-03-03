@@ -161,15 +161,15 @@ export function getAllUserBaseCategories(language: "no" | "da" = "no"): Template
 
   return users.map((user, index) => {
     const categoryName = language === "no"
-      ? `${user.name} - Basefiler`
-      : `${user.name} - Basefiler`;
+      ? `${user.name} - Reiseprogram og tilbud`
+      : `${user.name} - Rejseprogram og tilbud`;
 
     return {
       id: `base_${user.prefix}`,
       name: categoryName,
       kind: "base" as const,
-      order: 500 + index, // Høy order så de kommer til slutt
-      isDefault: false,
+      order: 10 + index, // Lav order så de vises tidlig
+      isDefault: true,
       userId: user.prefix,
     };
   });
@@ -180,18 +180,22 @@ export function getAllUserBaseCategories(language: "no" | "da" = "no"): Template
  * @param userPrefix - Brukerens prefix (lea, gordon, osv.)
  * @param language - Språk (no/da)
  */
+/**
+ * Generer brukerens "Reiseprogram og Tilbud"-kategori (basefilene i dropdown)
+ */
 export function getUserBaseCategory(userPrefix: string, language: "no" | "da" = "no"): TemplateCategory {
   const userName = userPrefix.charAt(0).toUpperCase() + userPrefix.slice(1);
   const categoryName = language === "no"
-    ? `${userName} - Basefiler`
-    : `${userName} - Basefiler`;
+    ? `${userName} - Reiseprogram og tilbud`
+    : `${userName} - Rejseprogram og tilbud`;
 
   return {
     id: `base_${userPrefix}`,
     name: categoryName,
     kind: "base",
-    order: 500,
-    isDefault: false,
+    order: 10, // Høy prioritet
+    isDefault: true,
     userId: userPrefix,
   };
 }
+
