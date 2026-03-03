@@ -198,20 +198,24 @@ export const useTemplateStore = create<Store>((set, get) => ({
   },
 
   getTemplatesByCategoryId: (catId) => {
-    // Søk først på categoryId direkte (viktigst)
-    const byId = get().templates.filter(t => t.categoryId === catId);
-    
-    // Hvis vi finner noe, returner det
-    if (byId.length > 0) return byId;
-    
-    // Fallback: Søk på category name – sjekk BEGGE norsk og dansk navn
+    // Alle gyldige kategori-IDer (for å unngå kryssforurensning i fallback)
+    const allKnownIds = new Set(defaultCategories.map(c => c.id));
+
+    // Norsk og dansk visningsnavn for ønsket kategori
     const category = defaultCategories.find(c => c.id === catId);
     const danishName = categoryNamesDanish[catId];
-    
-    return get().templates.filter(t =>
-      (category && t.category === category.name) ||
-      (danishName && t.category === danishName)
-    );
+    const validNames = [category?.name, danishName].filter(Boolean) as string[];
+
+    return get().templates.filter(t => {
+      // 1. Direkte treff på categoryId → alltid med
+      if (t.categoryId === catId) return true;
+
+      // 2. Har en ANNEN gyldig kategori-ID → aldri med (hindrer feilplassering)
+      if (t.categoryId && allKnownIds.has(t.categoryId) && t.categoryId !== catId) return false;
+
+      // 3. Ingen (gyldig) categoryId → bruk category-navnet som fallback
+      return validNames.includes(t.category);
+    });
   },
 
   getTemplatesByCategoryName: (catName) =>

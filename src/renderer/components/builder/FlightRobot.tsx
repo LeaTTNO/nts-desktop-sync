@@ -404,14 +404,15 @@ function isNightTime(dateTimeStr: string, startTime: string = "00:30", endTime: 
 /**
  * Check if flight has problematic night arrival/departure at CRITICAL ENDPOINTS ONLY:
  * BLOCKED: Arrival at final destination (JRO/ZNZ/DAR) between specified night period
- * BLOCKED: Departure from origin on return leg (JRO/ZNZ/DAR) between specified night period
+ * BLOCKED: Departure from origin on return leg (JRO/ZNZ/DAR) between 00:00-05:30
+ * EXCEPTION: KLM (KL) and Air France (AF) have more lenient return window: 01:06-05:30 (allows 01:05)
  * OK: Night layovers in between are allowed (ADD, DOH, AMS, etc)
  */
 function hasProblematicNightFlight(
   offer: FlightOffer, 
   allowNightFlights: boolean = false,
-  nightStart: string = "00:30",
-  nightEnd: string = "05:50"
+  nightStart: string = "00:00",
+  nightEnd: string = "05:30"
 ): boolean {
   // If night flights are allowed, don't filter them
   if (allowNightFlights) {
@@ -443,18 +444,36 @@ function hasProblematicNightFlight(
     const firstReturnSegment = returnItinerary.segments[0];
     const returnDepartureTime = firstReturnSegment.departure.at;
     
-    // Debug: Log return flight details for Turkish Airlines
+    // Get all carrier codes for return itinerary
     const returnCarrierCodes = returnItinerary.segments.map(seg => seg.carrierCode);
+    const hasKLM = returnCarrierCodes.includes('KL');
+    const hasAF = returnCarrierCodes.includes('AF');
     const hasReturnTurkish = returnCarrierCodes.includes('TK');
+    
+    // Debug logging
     if (hasReturnTurkish) {
       console.log(`🛬 TURKISH RETURN CHECK - Carriers: ${returnCarrierCodes.join(', ')}, Departure: ${returnDepartureTime}, Origin: ${firstReturnSegment.departure.iataCode}`);
     }
 
-    if (isNightTime(returnDepartureTime, nightStart, nightEnd)) {
-      if (hasReturnTurkish) {
-        console.log(`❌ BLOCKING Turkish return flight - departs at night: ${returnDepartureTime}`);
+    // KLM and AF have different night window: 01:06-05:30 (allows 01:05 departure)
+    // Other airlines: 00:00-05:30 (stricter)
+    const klmAfNightStart = "01:06";
+    const klmAfNightEnd = "05:30";
+    
+    if (hasKLM || hasAF) {
+      // Check KLM/AF with their own time window (01:06-05:30)
+      if (isNightTime(returnDepartureTime, klmAfNightStart, klmAfNightEnd)) {
+        console.log(`❌ BLOCKING KLM/AF return - departs 01:06-05:30: ${returnDepartureTime}`);
+        return true;
       }
-      return true; // BLOCKED: departs from return origin during night
+    } else {
+      // Check other airlines with standard time window (00:00-05:30)
+      if (isNightTime(returnDepartureTime, nightStart, nightEnd)) {
+        if (hasReturnTurkish) {
+          console.log(`❌ BLOCKING Turkish return flight - departs at night: ${returnDepartureTime}`);
+        }
+        return true; // BLOCKED: departs from return origin during night
+      }
     }
   }
 
@@ -859,8 +878,8 @@ export default function FlightRobot() {
   
   // Night flight filter settings
   const [allowNightFlights, setAllowNightFlights] = useState(false);
-  const [nightFlightStart, setNightFlightStart] = useState("00:30");
-  const [nightFlightEnd, setNightFlightEnd] = useState("05:50");
+  const [nightFlightStart, setNightFlightStart] = useState("00:00");
+  const [nightFlightEnd, setNightFlightEnd] = useState("05:30");
   
   // Dynamic description based on departure airport (computed after departure state)
   const maxBestAndCheapestHours = getMaxBestAndCheapestDurationHours(departure || 'OSL');
@@ -869,8 +888,8 @@ export default function FlightRobot() {
     ? `Beste og billigste: Max ${maxBestAndCheapestHours}t, Beste: Max ${maxBestQualityHours}t, ingen natfly (${nightFlightStart}-${nightFlightEnd})`
     : `Beste og billigste: Maks ${maxBestAndCheapestHours}t, Beste: Maks ${maxBestQualityHours}t, ingen nattfly (${nightFlightStart}-${nightFlightEnd})`;
   const noMainResultsCriteria = language === 'da'
-    ? `Ingen flyrejser indenfor hovedkriterier (Beste og billigste: max ${maxBestAndCheapestHours}t, Beste: max ${maxBestQualityHours}t, ingen natfly 00:30-05:50)`
-    : `Ingen flyreiser innenfor hovedkriterier (Beste og billigste: maks ${maxBestAndCheapestHours}t, Beste: maks ${maxBestQualityHours}t, ingen nattfly 00:30-05:50)`;
+    ? `Ingen flyrejser indenfor hovedkriterier (Beste og billigste: max ${maxBestAndCheapestHours}t, Beste: max ${maxBestQualityHours}t, ingen natfly 00:00-05:30, KLM/AF: 01:06-05:30)`
+    : `Ingen flyreiser innenfor hovedkriterier (Beste og billigste: maks ${maxBestAndCheapestHours}t, Beste: maks ${maxBestQualityHours}t, ingen nattfly 00:00-05:30, KLM/AF: 01:06-05:30)`;
   const [error, setError] = useState<string | null>(null);
 
   // Calendar limits - only allow 1 year ahead
