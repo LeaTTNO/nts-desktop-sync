@@ -542,7 +542,7 @@ ipcMain.handle("ppt:open-temp", async (_, { data, fileName }) => {
 // ✈️ Injiser flytabell i eksisterende Flyinformasjon PPTX
 // Fjerner det innebygde Excel OLE-objektet og erstatter med ekte PPTX-tabell
 // ──────────────────────────────────────────────
-async function injectFlightTable(buffer, segments, passengers) {
+async function injectFlightTable(buffer, segments, passengers, outboundSegmentCount) {
   const zip = await JSZip.loadAsync(buffer);
 
   const slideFiles = Object.keys(zip.files).filter(
@@ -737,7 +737,23 @@ async function injectFlightTable(buffer, segments, passengers) {
   const row3 = `<a:tr h="320000">${colHeaders.map(h => makeCell(h, { bg: '798D84', fontColor: 'FFFFFF', font: 'Montserrat', sz: '800', bold: false, algn: 'ctr' })).join('')}</a:tr>`;
 
   // Datarader: vekslende #F2F2F2/#D9D9D9, midtstilt (horisontal+vertikal), PT Sans 9pt, bunnlinje #BFBFBF
-  const dataRows = segments.map((seg, i) => {
+  // Bestem hvor mange outbound-segmenter det er (resten er inbound)
+  const insertAt = (typeof outboundSegmentCount === 'number' && outboundSegmentCount > 0 && outboundSegmentCount < segments.length)
+    ? outboundSegmentCount
+    : segments.length; // Ingen inbound = legg til sist
+
+  // Ekstra rad for manuell innenriksflyvning (standard: Arusha → Zanzibar, Precision Air)
+  const extraRowBg = insertAt % 2 === 0 ? 'F2F2F2' : 'D9D9D9';
+  const extraRowCells = [
+    '',            // Dato: tom – fylles inn manuelt
+    'Arusha',      // Fra
+    'Zanzibar',    // Til
+    '09.25 - 10.45', // Tid
+    'Precision Air', // Selskap
+  ];
+  const extraRow = `<a:tr h="300000">${extraRowCells.map(c => makeCell(c, { bg: extraRowBg, fontColor: '2C2C2C', font: 'PT Sans', sz: '800', bold: false, algn: 'ctr', bottomBorder: true })).join('')}</a:tr>`;
+
+  const dataRowsArr = segments.map((seg, i) => {
     const bg = i % 2 === 0 ? 'F2F2F2' : 'D9D9D9';
     const cells = [
       seg.date || '',
@@ -747,10 +763,14 @@ async function injectFlightTable(buffer, segments, passengers) {
       expandAirline(seg.airline),
     ];
     return `<a:tr h="300000">${cells.map(c => makeCell(c, { bg, fontColor: '2C2C2C', font: 'PT Sans', sz: '800', bold: false, algn: 'ctr', bottomBorder: true })).join('')}</a:tr>`;
-  }).join('');
+  });
 
-  // Høyde: 3 header-rader à 320000 + datarader à 300000
-  const tableHeight = 3 * 320000 + segments.length * 300000;
+  // Sett inn den ekstra raden mellom outbound og inbound (eller sist)
+  dataRowsArr.splice(insertAt, 0, extraRow);
+  const dataRows = dataRowsArr.join('');
+
+  // Høyde: 3 header-rader à 320000 + datarader à 300000 (inkl. den ekstra raden)
+  const tableHeight = 3 * 320000 + (segments.length + 1) * 300000;
   // Gapet mellom tekstboks 7 (bunn y=3715321) og Rektangel 10 (topp y=7631482)
   const gapTop = 3715321;
   const gapBottom = 7631482;
@@ -1003,11 +1023,12 @@ ipcMain.handle("ppt:generate", async (_, payload) => {
       );
       if (isFlight && flightData?.flights?.[0]?.segments?.length > 0) {
         const segments = flightData.flights[0].segments;
+        const outboundSegmentCount = flightData.flights[0].outboundSegmentCount ?? segments.length;
         const srcBuffer = Buffer.from(modules[i].buffer);
         let finalBuffer;
         if (srcBuffer.length > 100) {
           // Mal finnes — injiser tabell i eksisterende PPTX (bevarer design)
-          finalBuffer = await injectFlightTable(srcBuffer, segments, flightData.passengers);
+          finalBuffer = await injectFlightTable(srcBuffer, segments, flightData.passengers, outboundSegmentCount);
         } else {
           // Ingen mal — bygg fra scratch
           finalBuffer = await buildFlightPptxFromScratch(segments);

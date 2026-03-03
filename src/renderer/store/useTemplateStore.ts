@@ -1,6 +1,7 @@
 import { create } from "zustand";
 import { nanoid } from "nanoid";
 import { defaultCategories } from "../../config/templateCategories";
+import { categoryNamesDanish } from "../config/templateCategories";
 import {
   loadAllTemplates,
   saveTemplate,
@@ -203,11 +204,14 @@ export const useTemplateStore = create<Store>((set, get) => ({
     // Hvis vi finner noe, returner det
     if (byId.length > 0) return byId;
     
-    // Fallback: Søk på category name hvis det er en kjent kategori
+    // Fallback: Søk på category name – sjekk BEGGE norsk og dansk navn
     const category = defaultCategories.find(c => c.id === catId);
-    if (!category) return [];
+    const danishName = categoryNamesDanish[catId];
     
-    return get().templates.filter(t => t.category === category.name);
+    return get().templates.filter(t =>
+      (category && t.category === category.name) ||
+      (danishName && t.category === danishName)
+    );
   },
 
   getTemplatesByCategoryName: (catName) =>

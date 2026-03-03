@@ -1309,11 +1309,11 @@ function saveToPowerPointSingle(flight: ProcessedFlight, title: string) {
     try {
       // Extract segments from rawOffer
       const segments: any[] = [];
+      let outboundSegmentCount = 0;
       
       if (flight.rawOffer?.itineraries?.[0]?.segments) {
         flight.rawOffer.itineraries[0].segments.forEach((seg: any) => {
           const depDate = new Date(seg.departure.at);
-          const arrDate = new Date(seg.arrival.at);
           segments.push({
             date: format(depDate, 'dd.MM.yyyy'),
             from: seg.departure.iataCode,
@@ -1321,13 +1321,13 @@ function saveToPowerPointSingle(flight: ProcessedFlight, title: string) {
             time: `${formatTime(seg.departure.at)}–${formatTime(seg.arrival.at)}`,
             airline: seg.carrierCode || seg.operating?.carrierCode || 'N/A'
           });
+          outboundSegmentCount++;
         });
       }
       
       if (flight.rawOffer?.itineraries?.[1]?.segments) {
         flight.rawOffer.itineraries[1].segments.forEach((seg: any) => {
           const depDate = new Date(seg.departure.at);
-          const arrDate = new Date(seg.arrival.at);
           segments.push({
             date: format(depDate, 'dd.MM.yyyy'),
             from: seg.departure.iataCode,
@@ -1346,7 +1346,8 @@ function saveToPowerPointSingle(flight: ProcessedFlight, title: string) {
       flightData.flights.push({
         title,
         price: `${flight.price} ${flight.currency}`,
-        segments
+        segments,
+        outboundSegmentCount,
       });
       
       // Add flight slide to global store instead of localStorage
