@@ -383,6 +383,26 @@ export default function TravelProgramBuilder({ language = 'no' }: TravelProgramB
     setExtraSlides(false);
     setExtraSlidesId(null);
     setDepartureDate("");
+    
+    // Velg default basefil igjen (Safari & Zanzibar)
+    const baseTemplates = getUserBaseTemplates();
+    if (baseTemplates.length > 0) {
+      const defaultFileName = getBaseTemplateFileName(
+        { hasSafari: false, hasZanzibar: false, hasKilimanjaro: false },
+        userLanguage
+      );
+      
+      const defaultTemplate =
+        baseTemplates.find(t => t.name === defaultFileName) ??
+        baseTemplates.find(t => t.name.includes(defaultFileName)) ??
+        baseTemplates.find(t => t.name.toLowerCase().includes("safari") && t.name.toLowerCase().includes("zanzibar"));
+      
+      if (defaultTemplate) {
+        setBaseProgramId(defaultTemplate.id);
+        addSelectedTemplate(defaultTemplate.id);
+      }
+    }
+    
     toast.info("Skjema nullstilt");
   }
 

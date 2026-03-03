@@ -6,30 +6,30 @@ const dest = path.resolve("dist/main");
 
 fs.mkdirSync(dest, { recursive: true });
 
-fs.copyFileSync(
-  path.join(src, "electron-main.js"),
-  path.join(dest, "electron-main.js")
-);
+const filesToCopy = [
+  "electron-main.js",
+  "preload.js",
+  "ppt-dg-dto.js",
+  "ppt-build.ps1",
+  "ppt-post-process.ps1"
+];
 
-fs.copyFileSync(
-  path.join(src, "preload.js"),
-  path.join(dest, "preload.js")
-);
+console.log("\n🔨 Kopierer Electron main-filer til dist/main/...");
+console.log("=".repeat(50));
 
-fs.copyFileSync(
-  path.join(src, "ppt-dg-dto.js"),
-  path.join(dest, "ppt-dg-dto.js")
-);
+for (const file of filesToCopy) {
+  const srcPath = path.join(src, file);
+  const destPath = path.join(dest, file);
+  
+  if (!fs.existsSync(srcPath)) {
+    console.error(`❌ FEIL: ${file} finnes ikke i src/main/`);
+    process.exit(1);
+  }
+  
+  fs.copyFileSync(srcPath, destPath);
+  const stats = fs.statSync(destPath);
+  console.log(`✅ ${file.padEnd(25)} (${stats.size} bytes)`);
+}
 
-// PowerShell scripts for PowerPoint generation
-fs.copyFileSync(
-  path.join(src, "ppt-build.ps1"),
-  path.join(dest, "ppt-build.ps1")
-);
-
-fs.copyFileSync(
-  path.join(src, "ppt-post-process.ps1"),
-  path.join(dest, "ppt-post-process.ps1")
-);
-
-console.log("✅ Electron main & preload kopiert til dist/");
+console.log("=".repeat(50));
+console.log("✅ Alle Electron main-filer kopiert til dist/\n");

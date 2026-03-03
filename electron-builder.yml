@@ -16,10 +16,13 @@ files:
   - "!dist/*.yaml"
   - "!dist/*.7z"
 
-# Unpack PowerShell scripts from asar (they must be readable by powershell.exe)
+# Unpack PowerShell scripts and JavaScript from asar (they must be readable by powershell.exe and node)
+# KRITISK: Uten dette vil PowerShell-scriptene ikke fungere i production!
 asarUnpack:
   - "dist/main/*.ps1"
-  - "dist/main/*.js"
+  - "dist/main/ppt-dg-dto.js"
+  - "dist/main/electron-main.js"
+  - "dist/main/preload.js"
 
 win:
   target:
