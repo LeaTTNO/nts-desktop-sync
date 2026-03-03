@@ -33,9 +33,10 @@ import {
   AccordionItem,
   AccordionTrigger,
 } from "@/components/ui/accordion";
-import { Upload, Trash2, Eye, EyeOff, Plus, Edit2, FolderPlus, RefreshCw, Save, CheckSquare, Square } from "lucide-react";
+import { Upload, Trash2, Eye, EyeOff, Plus, Edit2, FolderPlus, RefreshCw, Save, CheckSquare, Square, Star } from "lucide-react";
 import { toast } from "sonner";
 import { useLanguage } from "@/contexts/LanguageContext";
+import { isAdminUser, toggleAdminUser } from "@/lib/adminManager";
 
 export default function TemplateLibrary() {
   const [uploading, setUploading] = useState<string | null>(null);
@@ -162,6 +163,33 @@ export default function TemplateLibrary() {
     }
   };
 
+  // Håndter toggle av admin-status for brukere
+  const handleToggleAdminStatus = (categoryUserId: string | undefined, e: React.MouseEvent) => {
+    e.stopPropagation();
+    
+    if (!categoryUserId) {
+      toast.error("Kan ikke finne bruker-ID for denne kategorien");
+      return;
+    }
+
+    // Check if current user is admin
+    if (!userIsAdmin) {
+      toast.error("Kun admin kan endre admin-rettigheter");
+      return;
+    }
+
+    // Toggle admin status
+    const newStatus = toggleAdminUser(categoryUserId);
+    
+    // Force reload to update UI (since isAdmin is cached in auth context)
+    toast.success(newStatus ? "Bruker gitt admin-rettigheter" : "Admin-rettigheter fjernet");
+    
+    // Trigger a re-render by forcing context update
+    setTimeout(() => {
+      window.location.reload();
+    }, 500);
+  };
+
   useEffect(() => {
     loadFromDB();
   }, [loadFromDB]);
@@ -239,25 +267,32 @@ export default function TemplateLibrary() {
     }))
   ].filter(cat => !hiddenCategories.includes(cat.id)).sort((a, b) => a.order - b.order);
   
+  // Filtrer kategorier basert på bruker
+  const visibleCategories = userIsAdmin
+    ? allCategories // Admin ser alle kategorier
+    : allCategories.filter(cat => {
+        // Vanlige brukere ser kun SINE egne kategorier
+        if (!userPrefix) return false; // Ikke logget inn = ingen kategorier
+        
+        // Sjekk om kategorien tilhører brukeren (userId matcher)
+        if ('userId' in cat && cat.userId === userPrefix) {
+          return true; // Brukerens egne kategorier (base_lea, user_lea_personal)
+        }
+        // Skjul alle andre kategorier
+        return false;
+      });
+  
   // Filtrer templates – ALT separert mellom NO og DK, ingen unntak
   const langFilteredTemplates = templates.filter(t => t.language === userLanguage);
   const filteredTemplates = userIsAdmin 
     ? langFilteredTemplates // Admin ser alle templates for aktivt språk
     : langFilteredTemplates.filter(t => {
-        // Skjul basefil-kategorier fra vanlige brukere (disse vises kun for admin)
-        // Sjekk både categoryId og category (navn) for bakoverkompatibilitet
-        const isBaseCategory = baseCategories.some(bc => 
-          bc.id === t.categoryId || bc.name === t.category || bc.id === t.category
+        // Vanlige brukere ser kun templates i SINE kategorier
+        // Sjekk om template tilhører brukerens kategorier
+        const belongsToUser = visibleCategories.some(cat => 
+          cat.id === t.categoryId || cat.name === t.category || cat.id === t.category
         );
-        if (isBaseCategory) return false;
-        
-        // Hvis det er brukerens personlige kategori, vis kun deres filer
-        if (personalCategory && (t.category === personalCategory.name || t.categoryId === personalCategory.id)) {
-          return true;
-        }
-        
-        // Alle andre filer vises for alle
-        return true;
+        return belongsToUser;
     });
   
   const handleCreateCategory = () => {
@@ -532,7 +567,7 @@ export default function TemplateLibrary() {
           onValueChange={setOpenCategories}
         >
         <div className="grid grid-cols-1 md:grid-cols-2 gap-2 mb-4 items-start">
-          {allCategories.map((cat) => {
+          {visibleCategories.map((cat) => {
               // Filtrer templates basert på categoryId (hvis tilgjengelig) eller category navn
               let list = filteredTemplates.filter((t) => 
                 t.categoryId === cat.id || t.category === cat.name || t.category === cat.id
@@ -645,6 +680,18 @@ export default function TemplateLibrary() {
                               <Edit2 className="h-4 w-4 text-blue-600" />
                             </span>
                           )}
+                          {/* Admin star - only visible to admins for user categories */}
+                          {userIsAdmin && 'userId' in cat && cat.userId && (
+                            <span 
+                              className="inline-flex items-center justify-center h-7 w-7 rounded-md hover:bg-accent hover:text-accent-foreground cursor-pointer" 
+                              onClick={e => handleToggleAdminStatus(cat.userId, e)} 
+                              title={isAdminUser(cat.userId) ? "Fjern admin-rettigheter" : "Gi admin-rettigheter"}
+                            >
+                              <Star 
+                                className={`h-4 w-4 ${isAdminUser(cat.userId) ? 'fill-yellow-500 text-yellow-500' : 'text-gray-400'}`}
+                              />
+                            </span>
+                          )}
                           {isPersonalCategory && (
                             <span className="text-xs px-1.5 py-0.5 bg-blue-100 text-blue-700 rounded">
                               Personlig
@@ -739,7 +786,7 @@ export default function TemplateLibrary() {
                                     <SelectValue />
                                   </SelectTrigger>
                                   <SelectContent position="popper" className="max-h-[300px] overflow-y-auto">
-                                    {allCategories.map((c) => (
+                                    {visibleCategories.map((c) => (
                                       <SelectItem key={c.id} value={c.name}>
                                         {c.name}
                                       </SelectItem>

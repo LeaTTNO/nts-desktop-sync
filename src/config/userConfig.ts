@@ -12,15 +12,30 @@ export type SupportedLanguage = "no" | "da";
 // ------------------------------------------------------------
 // 0. Admin-system
 // ------------------------------------------------------------
-const ADMIN_EMAILS = [
-  "lea@tanzaniatours.dk",
-  "jakob@tanzaniatours.dk",
-  "info@tanzaniatours.dk",
-  // Legg til flere admin-brukere her ved behov
-];
-
+// Admin management is now handled by src/renderer/lib/adminManager.ts
+// This function is kept for backward compatibility and uses dynamic admin list
 export function isAdmin(email: string): boolean {
-  return ADMIN_EMAILS.includes(email.toLowerCase());
+  // Check if running in renderer context (localStorage available)
+  if (typeof localStorage !== 'undefined') {
+    try {
+      // Dynamically import adminManager to avoid issues in main process
+      const adminStorage = localStorage.getItem('adminUsers');
+      if (adminStorage) {
+        const admins = JSON.parse(adminStorage);
+        return admins.includes(email.toLowerCase());
+      }
+    } catch (error) {
+      console.error('Failed to check admin status:', error);
+    }
+  }
+  
+  // Fallback to default admins if localStorage not available or error
+  const DEFAULT_ADMINS = [
+    "lea@tanzaniatours.dk",
+    "jakob@tanzaniatours.dk",
+    "info@tanzaniatours.dk",
+  ];
+  return DEFAULT_ADMINS.includes(email.toLowerCase());
 }
 
 // ------------------------------------------------------------
