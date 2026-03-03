@@ -23,6 +23,7 @@ asarUnpack:
   - "dist/main/ppt-dg-dto.js"
   - "dist/main/electron-main.js"
   - "dist/main/preload.js"
+  - "dist/main/logo-white.ico"
 
 win:
   target:

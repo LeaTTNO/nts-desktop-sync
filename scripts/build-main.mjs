@@ -14,6 +14,10 @@ const filesToCopy = [
   "ppt-post-process.ps1"
 ];
 
+// Also copy icon from build/ to dist/main/
+const iconSrc = path.resolve("build/logo-white.ico");
+const iconDest = path.join(dest, "logo-white.ico");
+
 console.log("\n🔨 Kopierer Electron main-filer til dist/main/...");
 console.log("=".repeat(50));
 
@@ -29,6 +33,15 @@ for (const file of filesToCopy) {
   fs.copyFileSync(srcPath, destPath);
   const stats = fs.statSync(destPath);
   console.log(`✅ ${file.padEnd(25)} (${stats.size} bytes)`);
+}
+
+// Copy icon
+if (fs.existsSync(iconSrc)) {
+  fs.copyFileSync(iconSrc, iconDest);
+  const iconStats = fs.statSync(iconDest);
+  console.log(`✅ ${"logo-white.ico".padEnd(25)} (${iconStats.size} bytes)`);
+} else {
+  console.warn(`⚠️ Warning: logo-white.ico not found in build/`);
 }
 
 console.log("=".repeat(50));

@@ -943,23 +943,52 @@ async function buildFlightPptxFromScratch(segments) {
   return zip.generateAsync({ type: 'nodebuffer', compression: 'DEFLATE' });
 }
 
+// ========================================
+// HELPER: Get unpacked path for PowerShell scripts
+// ========================================
+function getUnpackedPath(filename) {
+  if (app.isPackaged) {
+    // Production: PowerShell cannot read from app.asar, use app.asar.unpacked
+    const asarPath = path.join(__dirname, filename);
+    return asarPath.replace('app.asar', 'app.asar.unpacked');
+  } else {
+    // Dev mode: use direct path
+    return path.join(__dirname, filename);
+  }
+}
+
+// ========================================
+// IPC: Generate PowerPoint
+// ========================================
 ipcMain.handle("ppt:generate", async (_, payload) => {
   const { base, modules, departureDate, language, flightData, baseTemplateName } = payload;
   
-  console.log('📅 ppt:generate called with departureDate:', JSON.stringify(departureDate));
-  console.log('📅 departureDate type:', typeof departureDate);
+  // CRITICAL DEBUG: Write to file for production debugging
+  const logPath = path.join(os.tmpdir(), 'nts-ppt-debug.log');
+  
+  function debugLog(msg) {
+    const fullMsg = `[${new Date().toISOString()}] ${msg}\n`;
+    fs.appendFileSync(logPath, fullMsg);
+    console.log(msg);
+  }
+  
+  debugLog(`ppt:generate called. departureDate=${departureDate}, modules=${modules?.length}, language=${language}, isPackaged=${app.isPackaged}`);
   
   try {
-    // Lag temp-mappe for filene
+    debugLog('Step 1: Creating temp directory...');
     const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'pptgen-'));
-    // Use language-specific filename
+    debugLog(`Step 1 OK: tmpDir=${tmpDir}`);
+    
+    debugLog('Step 2: Preparing base file...');
     const fileName = language === 'da' ? 'Rejseprogram og Tilbud.pptx' : 'Reiseprogram og Tilbud.pptx';
     const basePath = path.join(tmpDir, fileName);
+    debugLog(`Step 2 OK: basePath=${basePath}`);
     
-    // Skriv base-fil
+    debugLog(`Step 3: Writing base file (size=${base?.length || 0} bytes)...`);
     fs.writeFileSync(basePath, Buffer.from(base));
+    debugLog('Step 3 OK: Base file written');
     
-    // Skriv modul-filer (behold originalt filnavn for å støtte flyinformasjon-deteksjon i PS1)
+    debugLog(`Step 4: Writing ${modules.length} module files...`);
     const modulePaths = [];
     for (let i = 0; i < modules.length; i++) {
       const safeName = (modules[i].name || `mod${i + 1}`)
@@ -990,16 +1019,19 @@ ipcMain.handle("ppt:generate", async (_, payload) => {
       }
       modulePaths.push(modPath);
     }
+    debugLog(`Step 4 OK: All ${modules.length} module files written`);
     
+    debugLog('Step 5: Calling ppt-build.ps1...');
     // Kall eksisterende build-handler
     const result = await new Promise((resolve, reject) => {
-      const scriptPath = path.join(__dirname, "ppt-build.ps1");
+      const scriptPath = getUnpackedPath("ppt-build.ps1");
       
-      console.log('🔧 Starting ppt-build.ps1...');
-      console.log('  Script path:', scriptPath);
-      console.log('  Base path:', basePath);
-      console.log('  Departure date:', departureDate || "(ingen)");
-      console.log('  Module count:', modulePaths.length);
+      debugLog(`  Script path: ${scriptPath}`);
+      debugLog(`  Base path: ${basePath}`);
+      debugLog(`  Departure date: ${departureDate || "(ingen)"}`);
+      debugLog(`  Module count: ${modulePaths.length}`);
+      
+      debugLog('Step 5a: Spawning powershell.exe...');
       
       execFile(
         "powershell.exe",
@@ -1013,18 +1045,27 @@ ipcMain.handle("ppt:generate", async (_, payload) => {
           ...modulePaths
         ],
         (error, stdout, stderr) => {
+          debugLog('Step 5b: PowerShell callback received');
           // ALWAYS log output from PowerShell
-          if (stdout) console.log('📝 PowerShell (ppt-build) output:\n' + stdout);
-          if (stderr) console.warn('⚠️ PowerShell (ppt-build) warnings:\n' + stderr);
+          if (stdout) {
+            debugLog('PowerShell stdout: ' + stdout);
+            console.log('📝 PowerShell (ppt-build) output:\n' + stdout);
+          }
+          if (stderr) {
+            debugLog('PowerShell stderr: ' + stderr);
+            console.warn('⚠️ PowerShell (ppt-build) warnings:\n' + stderr);
+          }
           
           if (error) {
+            debugLog(`PowerShell ERROR: ${error.message}`);
             console.error("❌ PowerPoint build error:", error);
             reject(stderr || error.message);
           } else {
+            debugLog('Step 5c: ppt-build.ps1 SUCCESS');
             console.log('✅ ppt-build.ps1 completed successfully');
             console.log('✅ ppt-build.ps1 completed successfully');
             // After successful build, run post-processing
-            const postProcessPath = path.join(__dirname, "ppt-post-process.ps1");
+            const postProcessPath = getUnpackedPath("ppt-post-process.ps1");
             const flightDataJson = flightData ? JSON.stringify(flightData) : "";
             
             // Debug: Log flight data being sent
@@ -1097,9 +1138,13 @@ ipcMain.handle("ppt:generate", async (_, payload) => {
       );
     });
     
+    debugLog('Step 6: All PowerShell scripts completed successfully');
+    debugLog(`Final result: ${JSON.stringify(result)}`);
     console.log('🎁 Final result:', result);
     return result;
   } catch (error) {
+    debugLog(`FATAL ERROR: ${error.message}`);
+    debugLog(`Error stack: ${error.stack}`);
     console.error('❌ ppt:generate error:', error);
     console.error('Error stack:', error.stack);
     return { ok: false, error: String(error) };
@@ -1117,7 +1162,7 @@ ipcMain.handle("ppt:build-in-open-powerpoint", async (_, payload) => {
   const { basePath, modulePaths, departureDate, language, flightData } = payload;
 
   return new Promise((resolve, reject) => {
-    const scriptPath = path.join(__dirname, "ppt-build.ps1");
+    const scriptPath = getUnpackedPath("ppt-build.ps1");
     execFile(
       "powershell.exe",
       [
@@ -1430,9 +1475,9 @@ function createWindow() {
     maximizable: true,        // tillatt
     center: true,
 
-    icon: path.join(__dirname, "../../public/logo-white.ico"),
+    icon: getUnpackedPath("logo-white.ico"),
     webPreferences: {
-      preload: path.join(__dirname, "preload.js"),
+      preload: getUnpackedPath("preload.js"),
       contextIsolation: true,
       nodeIntegration: false
     }
