@@ -9,6 +9,7 @@ const allowedInvokes = [
   "farewise:searchFlights",
   "onedrive:auto-sync",
   "onedrive:sync-now",
+  "onedrive:get-file",
   "onedrive:upload-template",
   "dialog:select-file",
   "file:read"

@@ -1371,54 +1371,62 @@ ipcMain.handle("onedrive:sync-now", async (event, args) => {
       };
     }
     
-    // Read manifest
+    // Read manifest – returner kun metadata, IKKE fildata (unngår minnekrasj)
     const manifestData = fs.readFileSync(manifestPath, 'utf8');
     const manifest = JSON.parse(manifestData);
     
     console.log(`📁 Found ${manifest.length} files in manifest`);
-    
-    // Read each file listed in manifest (using relative paths)
-    const filesWithData = [];
-    
-    for (const entry of manifest) {
-      try {
-        // Use filePath (relative path) or fall back to fileName for old manifests
+
+    // Filtrer ut filer som faktisk eksisterer
+    const fileList = manifest
+      .map(entry => {
         const relPath = entry.filePath || entry.fileName;
         const fullPath = path.join(oneDrivePath, relPath);
-        
         if (!fs.existsSync(fullPath)) {
           console.log(`⚠️ File not found: ${relPath}`);
-          continue;
+          return null;
         }
-        
-        const buffer = fs.readFileSync(fullPath);
-        filesWithData.push({
+        return {
           name: entry.fileName || path.basename(relPath),
+          relPath,
           category: entry.category,
-          categoryId: entry.categoryId, // Include for robust lookup
+          categoryId: entry.categoryId,
           order: entry.order,
-          data: buffer.toString('base64'),
-          size: buffer.length,
           uploadedAt: entry.uploadedAt,
           uploadedBy: entry.uploadedBy,
-        });
-        
-        console.log(`✅ Read: ${relPath} (category: ${entry.category})`);
-      } catch (error) {
-        console.error(`❌ Failed to read ${entry.filePath || entry.fileName}:`, error.message);
-      }
-    }
+          size: fs.statSync(fullPath).size,
+        };
+      })
+      .filter(Boolean);
     
     return { 
       success: true, 
-      files: filesWithData,
-      count: filesWithData.length,
+      files: fileList,       // Kun metadata – ingen base64-data
+      count: fileList.length,
       sourcePath: oneDrivePath,
       language: language
     };
     
   } catch (error) {
     console.error("❌ OneDrive sync error:", error);
+    return { success: false, error: error.message };
+  }
+});
+
+// Henter én fil av gangen – unngår at alle filer lastes inn i minnet på én gang
+ipcMain.handle("onedrive:get-file", async (event, args) => {
+  const { language, relPath } = args;
+  try {
+    const oneDrivePath = getOneDriveSharedPath(language);
+    if (!oneDrivePath) return { success: false, error: 'OneDrive mappe ikke funnet' };
+
+    const fullPath = path.join(oneDrivePath, relPath);
+    if (!fs.existsSync(fullPath)) return { success: false, error: `Fil ikke funnet: ${relPath}` };
+
+    const buffer = fs.readFileSync(fullPath);
+    return { success: true, data: buffer.toString('base64') };
+  } catch (error) {
+    console.error(`❌ Failed to read file ${relPath}:`, error.message);
     return { success: false, error: error.message };
   }
 });

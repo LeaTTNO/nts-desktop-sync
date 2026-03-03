@@ -478,17 +478,33 @@ export default function TemplateLibrary() {
         console.log(`🧹 Slettet gammel onedrive-mal: ${old.id}`);
       }
 
-      // Save each file to IndexedDB
+      // Save each file to IndexedDB – henter én fil av gangen for å unngå minnekrasj
       let successCount = 0;
       let errorCount = 0;
       
-      for (const file of files) {
+      for (let i = 0; i < files.length; i++) {
+        const file = files[i];
         try {
+          toast.info(`Laster fil ${i + 1} av ${count}: ${file.name}`);
+
+          // Hent binærdata for én fil av gangen via IPC
+          // @ts-ignore - Electron IPC
+          const fileResult = await window.electron.invoke("onedrive:get-file", {
+            language: userLanguage,
+            relPath: file.relPath,
+          });
+
+          if (!fileResult.success) {
+            console.error(`❌ Could not fetch file data: ${file.name}`, fileResult.error);
+            errorCount++;
+            continue;
+          }
+
           // Convert base64 back to ArrayBuffer
-          const binaryString = atob(file.data);
+          const binaryString = atob(fileResult.data);
           const bytes = new Uint8Array(binaryString.length);
-          for (let i = 0; i < binaryString.length; i++) {
-            bytes[i] = binaryString.charCodeAt(i);
+          for (let j = 0; j < binaryString.length; j++) {
+            bytes[j] = binaryString.charCodeAt(j);
           }
           const arrayBuffer = bytes.buffer;
           
