@@ -1951,6 +1951,7 @@ function saveToPowerPointSingle(flight: ProcessedFlight, title: string) {
       // 4. DATE INTERVAL SEARCH (search all dates in range with user-specified number of nights)
       // FOLLOWS "BESTE OG BILLIGSTE" CRITERIA
       if (useDateInterval && earliestDeparture && latestDeparture) {
+        console.log('📅 INTERVAL SEARCH START:', { departure, destination, returnFrom, returnTo, earliestDeparture: format(new Date(earliestDeparture), 'yyyy-MM-dd'), latestDeparture: format(new Date(latestDeparture), 'yyyy-MM-dd'), intervalNights, pax, currency });
         const MAX_BEST_AND_CHEAPEST_HOURS = getMaxBestAndCheapestDurationHours(departure);
         const tripNights = intervalNights; // Use user-selected number of nights
         let bestInterval: ProcessedFlight | null = null;
@@ -2550,6 +2551,13 @@ function saveToPowerPointSingle(flight: ProcessedFlight, title: string) {
                     </PopoverContent>
                   </Popover>
                 </div>
+                
+                {/* Airport route reminder when interval is enabled */}
+                {useDateInterval && (
+                  <div className="text-xs text-muted-foreground bg-muted/40 rounded px-2 py-1">
+                    {departure} → {destination} / {returnFrom} → {returnTo}
+                  </div>
+                )}
                 
                 {/* Earliest departure */}
                 <div className="space-y-1 flex-1 min-w-[180px]">
@@ -3160,6 +3168,9 @@ function saveToPowerPointSingle(flight: ProcessedFlight, title: string) {
                   {language === 'da' ? 'Afrejse' : 'Avreise'}: {format(new Date(dateIntervalResult.searchDate), "dd.MM.yyyy")}
                 </p>
               )}
+              <p className="text-xs text-muted-foreground mt-0.5">
+                {language === 'da' ? 'Søgt' : 'Søkte'}: {departure} → {destination} / {returnFrom} → {returnTo}
+              </p>
             </div>
           </div>
           <FlightResultCard
