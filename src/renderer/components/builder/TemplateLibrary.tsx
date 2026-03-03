@@ -245,11 +245,14 @@ export default function TemplateLibrary() {
     ? langFilteredTemplates // Admin ser alle templates for aktivt språk
     : langFilteredTemplates.filter(t => {
         // Skjul basefil-kategorier fra vanlige brukere (disse vises kun for admin)
-        const isBaseCategory = baseCategories.some(bc => bc.name === t.category);
+        // Sjekk både categoryId og category (navn) for bakoverkompatibilitet
+        const isBaseCategory = baseCategories.some(bc => 
+          bc.id === t.categoryId || bc.name === t.category || bc.id === t.category
+        );
         if (isBaseCategory) return false;
         
         // Hvis det er brukerens personlige kategori, vis kun deres filer
-        if (personalCategory && t.category === personalCategory.name) {
+        if (personalCategory && (t.category === personalCategory.name || t.categoryId === personalCategory.id)) {
           return true;
         }
         
@@ -530,7 +533,10 @@ export default function TemplateLibrary() {
         >
         <div className="grid grid-cols-1 md:grid-cols-2 gap-2 mb-4 items-start">
           {allCategories.map((cat) => {
-              let list = filteredTemplates.filter((t) => t.category === cat.name);
+              // Filtrer templates basert på categoryId (hvis tilgjengelig) eller category navn
+              let list = filteredTemplates.filter((t) => 
+                t.categoryId === cat.id || t.category === cat.name || t.category === cat.id
+              );
 
               // Safari-sortering: tall først numerisk, så resten alfabetisk, så de uten tall til sist
               if (cat.name.toLowerCase().includes('safari')) {

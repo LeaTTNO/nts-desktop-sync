@@ -2166,7 +2166,7 @@ function saveToPowerPointSingle(flight: ProcessedFlight, title: string) {
                     <Calendar
                       mode="single"
                       selected={returnDate}
-                      month={departureDate || returnDate}
+                      defaultMonth={departureDate || returnDate || today}
                       onSelect={(date) => {
                         setReturnDate(date);
                         setReturnDateInput(date ? format(date, 'dd.MM.yyyy') : '');
@@ -2444,6 +2444,7 @@ function saveToPowerPointSingle(flight: ProcessedFlight, title: string) {
                         <Calendar
                           mode="single"
                           selected={earliestDeparture}
+                          defaultMonth={earliestDeparture || today}
                           onSelect={(date) => {
                             setEarliestDeparture(date);
                             setEarliestDateInput(date ? format(date, 'dd.MM.yyyy') : '');
@@ -2507,7 +2508,7 @@ function saveToPowerPointSingle(flight: ProcessedFlight, title: string) {
                         <Calendar
                           mode="single"
                           selected={latestDeparture}
-                          month={earliestDeparture || latestDeparture}
+                          defaultMonth={earliestDeparture || latestDeparture || today}
                           onSelect={(date) => {
                             setLatestDeparture(date);
                             setLatestDateInput(date ? format(date, 'dd.MM.yyyy') : '');

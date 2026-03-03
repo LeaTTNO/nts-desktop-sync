@@ -103,8 +103,8 @@ export default function TravelProgramBuilder({ language = 'no' }: TravelProgramB
     // Hent brukerens basefil-kategori
     const baseCategory = getUserBaseCategory(userPrefix, userLanguage);
     
-    // Hent alle templates i denne kategorien
-    return getTemplatesByCategoryName(baseCategory.name);
+    // Hent alle templates i denne kategorien (bruk ID for robusthet)
+    return getTemplatesByCategoryId(baseCategory.id);
   };
 
   /* =========================
@@ -269,22 +269,15 @@ export default function TravelProgramBuilder({ language = 'no' }: TravelProgramB
       }
 
       // Hent alle valgte moduler (unntatt basefil)
-      // VIKTIG: Modulene skal være i NØYAKTIG den rekkefølgen brukeren har valgt dem
-      // (kan endres via drag-and-drop i "Valgte slides"-listen)
-      // Kun flyinformasjon flyttes til slutten
+      // Flyinformasjon skal alltid settes inn sist (= nest siste side i basefilen)
       const moduleTemplates = selectedTemplateIds
         .filter(id => id !== baseProgramId)
         .map((id) => templates.find((t) => t.id === id))
         .filter(Boolean)
         .sort((a, b) => {
-          // Flyinformasjon skal alltid være sist
-          const aFlight = (a!.category === FLIGHT || a!.name.toLowerCase().includes('flyinformasjon'));
-          const bFlight = (b!.category === FLIGHT || b!.name.toLowerCase().includes('flyinformasjon'));
-          if (aFlight && !bFlight) return 1;  // a (flight) kommer etter b
-          if (!aFlight && bFlight) return -1; // b (flight) kommer etter a
-          
-          // Ellers: BEHOLD opprinnelig rekkefølge fra selectedTemplateIds
-          return 0;
+          const aFlight = (a!.category === FLIGHT || a!.name.toLowerCase().includes('flyinformasjon')) ? 1 : 0;
+          const bFlight = (b!.category === FLIGHT || b!.name.toLowerCase().includes('flyinformasjon')) ? 1 : 0;
+          return aFlight - bFlight;
         }) as typeof templates;
 
       // Konverter blobs til ArrayBuffers
@@ -365,6 +358,7 @@ export default function TravelProgramBuilder({ language = 'no' }: TravelProgramB
 
   function handleReset() {
     clearSelectedTemplates();
+    removeFlightSlides(); // Fjern også flyinformasjon
     setBaseProgramId(null);
     setFirstNightId(null);
     setLastNightId(null);
@@ -936,7 +930,7 @@ export default function TravelProgramBuilder({ language = 'no' }: TravelProgramB
               <SelectValue placeholder="Velg hotell" />
             </SelectTrigger>
             <SelectContent position="popper" className="bg-gray-50 z-50 max-h-[300px] overflow-y-auto">
-              {getFilteredTemplatesByCategoryName(FIRST_NIGHT_CATEGORY)
+              {getFilteredTemplatesByCategoryName(FIRST_NIGHT_CATEGORY, "arusha_first_night")
                 .filter((t) => t.visibleInBuilder)
                 .map((t) => (
                   <SelectItem key={t.id} value={t.id}>
@@ -979,7 +973,7 @@ export default function TravelProgramBuilder({ language = 'no' }: TravelProgramB
               <SelectValue placeholder="Velg hotell" />
             </SelectTrigger>
             <SelectContent position="popper" className="bg-gray-50 z-50 max-h-[300px] overflow-y-auto">
-              {getFilteredTemplatesByCategoryName(LAST_NIGHT_CATEGORY)
+              {getFilteredTemplatesByCategoryName(LAST_NIGHT_CATEGORY, "last_safari_night")
                 .filter((t) => t.visibleInBuilder)
                 .map((t) => (
                   <SelectItem key={t.id} value={t.id}>
