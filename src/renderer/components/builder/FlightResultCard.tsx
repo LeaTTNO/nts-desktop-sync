@@ -33,6 +33,7 @@ interface ProcessedFlight {
   hasNightFlight: boolean;
   searchDate?: string;
   nightsDiff?: number;
+  hasKlmAfMidnightReturn?: boolean;
 }
 
 interface FlightResultCardProps {
@@ -431,6 +432,11 @@ export default function FlightResultCard({
           {hasNightFlight && (
             <Badge variant="outline" className="text-amber-600 border-amber-300 text-[10px] px-1.5 py-0">
               ⚠️ {language === "no" ? "Nattfly" : "Natfly"}
+            </Badge>
+          )}
+          {flight.hasKlmAfMidnightReturn && (
+            <Badge variant="outline" className="text-blue-600 border-blue-300 text-[10px] px-1.5 py-0">
+              🌙 {language === "no" ? "Hjemreise etter midnatt (KLM/AF har dagsfly)" : "Hjemrejse efter midnat (KLM/AF har dagsfly)"}
             </Badge>
           )}
         </div>

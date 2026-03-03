@@ -108,6 +108,7 @@ interface ProcessedFlight {
   combinedDurationMinutes?: number; // Combined out+in duration (for scoring)
   hasNightFlight: boolean;
   hasInvalidOsloLayover?: boolean; // Oslo layover < 2 hours (NO only)
+  hasKlmAfMidnightReturn?: boolean; // KLM/AF return departs 00:00-01:06 (allowed but show warning)
   searchDate?: string;
   nightsDiff?: number;
 }
@@ -513,6 +514,39 @@ function hasInvalidOsloLayover(offer: FlightOffer): boolean {
   return false; // OK: No Oslo layovers or all Oslo layovers are ≥2 hours
 }
 
+/**
+ * Check if return flight departs after midnight (00:00-01:06) for KLM/AF
+ * This is allowed but should show a warning to users
+ */
+function hasKlmAfMidnightReturn(offer: FlightOffer): boolean {
+  if (offer.itineraries.length > 1) {
+    const returnItinerary = offer.itineraries[1];
+    const firstReturnSegment = returnItinerary.segments[0];
+    const returnDepartureTime = firstReturnSegment.departure.at;
+    
+    // Check if it's KLM or AF
+    const returnCarrierCodes = returnItinerary.segments.map(seg => seg.carrierCode);
+    const hasKLM = returnCarrierCodes.includes('KL');
+    const hasAF = returnCarrierCodes.includes('AF');
+    
+    if (hasKLM || hasAF) {
+      // Parse time from ISO string
+      const timeMatch = returnDepartureTime.match(/T(\d{2}):(\d{2})/);
+      if (timeMatch) {
+        const hours = parseInt(timeMatch[1]);
+        const minutes = parseInt(timeMatch[2]);
+        const timeInMinutes = hours * 60 + minutes;
+        
+        // Check if between 00:00-01:06 (0-66 minutes after midnight)
+        if (timeInMinutes >= 0 && timeInMinutes <= 66) {
+          return true;
+        }
+      }
+    }
+  }
+  return false;
+}
+
 function addDays(dateStr: string, days: number): string {
   const date = new Date(dateStr);
   date.setDate(date.getDate() + days);
@@ -641,6 +675,7 @@ function processFlightOffers(
       combinedDurationMinutes: combinedDuration, // Total out+in for scoring
       hasNightFlight: hasProblematicNightFlight(offer, allowNightFlights, nightStart, nightEnd),
       hasInvalidOsloLayover: hasInvalidOsloLayover(offer),
+      hasKlmAfMidnightReturn: hasKlmAfMidnightReturn(offer),
       searchDate: searchInfo?.date,
       nightsDiff: searchInfo?.nightsDiff,
     };
@@ -884,9 +919,20 @@ export default function FlightRobot() {
   // Dynamic description based on departure airport (computed after departure state)
   const maxBestAndCheapestHours = getMaxBestAndCheapestDurationHours(departure || 'OSL');
   const maxBestQualityHours = getMaxBestQualityDurationHours(departure || 'OSL');
-  const mainResultsDesc = language === 'da' 
-    ? `Beste og billigste: Max ${maxBestAndCheapestHours}t, Beste: Max ${maxBestQualityHours}t, ingen natfly (${nightFlightStart}-${nightFlightEnd})`
-    : `Beste og billigste: Maks ${maxBestAndCheapestHours}t, Beste: Maks ${maxBestQualityHours}t, ingen nattfly (${nightFlightStart}-${nightFlightEnd})`;
+  
+  // Separate descriptions for each category
+  const bestAndCheapestDesc = language === 'da'
+    ? `Maks ${maxBestAndCheapestHours}t, ingen natfly (${nightFlightStart}-${nightFlightEnd}, KLM/AF: 01:06-05:30)`
+    : `Maks ${maxBestAndCheapestHours}t, ingen nattfly (${nightFlightStart}-${nightFlightEnd}, KLM/AF: 01:06-05:30)`;
+  
+  const bestQualityDesc = language === 'da'
+    ? `Maks ${maxBestQualityHours}t, ingen natfly (${nightFlightStart}-${nightFlightEnd}, KLM/AF: 01:06-05:30)`
+    : `Maks ${maxBestQualityHours}t, ingen nattfly (${nightFlightStart}-${nightFlightEnd}, KLM/AF: 01:06-05:30)`;
+  
+  const cheapestExtendedDesc = language === 'da'
+    ? `Maks 25t, nattfly tilladt`
+    : `Maks 25t, nattfly tillatt`;
+  
   const noMainResultsCriteria = language === 'da'
     ? `Ingen flyrejser indenfor hovedkriterier (Beste og billigste: max ${maxBestAndCheapestHours}t, Beste: max ${maxBestQualityHours}t, ingen natfly 00:00-05:30, KLM/AF: 01:06-05:30)`
     : `Ingen flyreiser innenfor hovedkriterier (Beste og billigste: maks ${maxBestAndCheapestHours}t, Beste: maks ${maxBestQualityHours}t, ingen nattfly 00:00-05:30, KLM/AF: 01:06-05:30)`;
@@ -2717,7 +2763,7 @@ function saveToPowerPointSingle(flight: ProcessedFlight, title: string) {
                 <Star className="h-5 w-5 text-primary fill-primary" />
                 <div>
                   <h3 className="font-semibold text-foreground">{t.bestAndCheapest}</h3>
-                  <p className="text-xs text-muted-foreground">{mainResultsDesc}</p>
+                  <p className="text-xs text-muted-foreground">{bestAndCheapestDesc}</p>
                 </div>
               </div>
               <div className="relative">
@@ -2744,7 +2790,7 @@ function saveToPowerPointSingle(flight: ProcessedFlight, title: string) {
                 <Star className="h-5 w-5 text-blue-500 fill-blue-500" />
                 <div>
                   <h3 className="font-semibold text-foreground">{preferredAirlineResults.bestAndCheapest.recommendReason}</h3>
-                  <p className="text-xs text-muted-foreground">{mainResultsDesc}</p>
+                  <p className="text-xs text-muted-foreground">{bestAndCheapestDesc}</p>
                 </div>
               </div>
               <div className="relative">
@@ -2788,7 +2834,7 @@ function saveToPowerPointSingle(flight: ProcessedFlight, title: string) {
                 <Trophy className="h-5 w-5 text-amber-500" />
                 <div>
                   <h3 className="font-semibold text-foreground">{t.beste}</h3>
-                  <p className="text-xs text-muted-foreground">{t.bestQualityDesc || "Best overall flight based on duration and connections"}</p>
+                  <p className="text-xs text-muted-foreground">{bestQualityDesc}</p>
                 </div>
               </div>
               <FlightResultCard
@@ -2813,7 +2859,7 @@ function saveToPowerPointSingle(flight: ProcessedFlight, title: string) {
                 <Trophy className="h-5 w-5 text-blue-500" />
                 <div>
                   <h3 className="font-semibold text-foreground">{preferredAirlineResults.bestQuality.recommendReason}</h3>
-                  <p className="text-xs text-muted-foreground">{t.bestQualityDesc || "Best overall flight based on duration and connections"}</p>
+                  <p className="text-xs text-muted-foreground">{bestQualityDesc}</p>
                 </div>
               </div>
               <FlightResultCard
@@ -2855,7 +2901,7 @@ function saveToPowerPointSingle(flight: ProcessedFlight, title: string) {
                 <TrendingDown className="h-5 w-5 text-green-500" />
                 <div>
                   <h3 className="font-semibold text-foreground">{t.cheapest}</h3>
-                  <p className="text-xs text-muted-foreground">{t.cheapestWithFlexibility || "Cheapest option up to 25 hours"}</p>
+                  <p className="text-xs text-muted-foreground">{cheapestExtendedDesc}</p>
                 </div>
               </div>
               <FlightResultCard
@@ -2880,7 +2926,7 @@ function saveToPowerPointSingle(flight: ProcessedFlight, title: string) {
                 <TrendingDown className="h-5 w-5 text-blue-500" />
                 <div>
                   <h3 className="font-semibold text-foreground">{preferredAirlineResults.cheapestExtended.recommendReason}</h3>
-                  <p className="text-xs text-muted-foreground">{t.cheapestWithFlexibility || "Cheapest option up to 25 hours"}</p>
+                  <p className="text-xs text-muted-foreground">{cheapestExtendedDesc}</p>
                 </div>
               </div>
               <FlightResultCard

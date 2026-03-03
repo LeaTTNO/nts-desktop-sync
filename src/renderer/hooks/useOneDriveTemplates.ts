@@ -6,6 +6,7 @@ export interface OneDriveTemplate {
   id: string;
   name: string;
   category: string;
+  categoryId?: string; // Add categoryId field
   fileId: string;
   order?: number;
   folderName?: string;
@@ -18,7 +19,7 @@ export interface TemplateCategory {
   includeInDropdown: boolean;
 }
 
-// Mapping fra mappenavn til kategori ID
+// Mapping fra mappenavn til kategori ID - OPPDATERT TIL NYE KATEGORI-IDer
 const mapFolderToCategory = (folderName: string, fullPath?: string): string => {
   const lower = folderName.toLowerCase().trim();
   const pathLower = fullPath?.toLowerCase() || '';
@@ -27,43 +28,33 @@ const mapFolderToCategory = (folderName: string, fullPath?: string): string => {
   const isNoDomain = pathLower.includes('nts no') || pathLower.includes('nts_no');
   const isDkDomain = pathLower.includes('nts dk') || pathLower.includes('nts_dk');
   
-  // Exact folder name mapping (prefer these over partial matches)
-  // Handle Danish/Norwegian folder names
+  // Exact folder name mapping - BRUKER NYE KATEGORI-IDer FRA templateCategories.ts
   if (lower === 'arusha første nat' || lower === 'arusha første natt' || lower === 'arusha first night') {
-    return 'arushaFirstNight';
+    return 'arusha_first_night';
   }
   
   if (lower === 'sidste nat safari' || lower === 'siste natt safari' || lower === 'last night safari') {
-    return 'lastNightSafari';
+    return 'last_safari_night';
   }
   
-  if (lower === 'zanzibar hotel 1') return 'zanzibarHotel1';
-  if (lower === 'zanzibar hotel 2') return 'zanzibarHotel2';
-  if (lower === 'stone town') return 'stoneTownHotel';
+  if (lower === 'zanzibar hotel 1') return 'zanzibar_hotel_1';
+  if (lower === 'zanzibar hotel 2') return 'zanzibar_hotel_2';
+  if (lower === 'stone town') return 'zanzibar_hotel_2';
   if (lower === 'kilimanjaro') return 'kilimanjaro';
-  if (lower === 'arusha aktiviteter' || lower === 'arusha activities') return 'activitiesArusha';
-  if (lower === 'fastland' || lower === 'mainland') return 'diverseMainland';
+  if (lower === 'arusha aktiviteter' || lower === 'arusha activities') return 'arusha_activities_slides';
+  if (lower === 'fastland' || lower === 'mainland' || lower === 'diverse mainland') return 'diverse_mainland';
   if (lower === 'flyinformasjon' || lower === 'flyinformation' || lower === 'flight information') return 'flyinformasjon';
-  if (lower === 'reiseprogram og tilbud' || lower === 'rejseprogram og tilbud' || lower === 'base program') return 'baseProgram';
+  if (lower === 'reiseprogram og tilbud' || lower === 'rejseprogram og tilbud' || lower === 'base program') return 'base_program';
+  if (lower === 'ekstra slides' || lower === 'extra slides') return 'extra_slides';
   
-  // User-specific "Reiseprogram og tilbud" (basefilene - vises i dropdown)
-  if (lower.includes('lea') && (lower.includes('reiseprogram') || lower.includes('rejseprogram'))) return 'base_lea';
-  if (lower.includes('gordon') && (lower.includes('reiseprogram') || lower.includes('rejseprogram'))) return 'base_gordon';
-  if (lower.includes('jakob') && (lower.includes('reiseprogram') || lower.includes('rejseprogram'))) return 'base_jakob';
-  if (lower.includes('camilla') && (lower.includes('reiseprogram') || lower.includes('rejseprogram'))) return 'base_camilla';
-  if (lower.includes('sofia') && (lower.includes('reiseprogram') || lower.includes('rejseprogram'))) return 'base_sofia';
-  if (lower.includes('lars') && (lower.includes('reiseprogram') || lower.includes('rejseprogram'))) return 'base_lars';
-  if (lower.includes('info') && (lower.includes('reiseprogram') || lower.includes('rejseprogram'))) return 'base_info';
-  if (lower.includes('lennie') && (lower.includes('reiseprogram') || lower.includes('rejseprogram'))) return 'base_lennie';
-  
-  // Safari periods
-  if (lower.includes('dec') || lower.includes('feb') || lower.includes('ndutu')) return 'safariDecFeb';
-  if (lower.includes('marts') || lower.includes('march')) return 'safariMarch';
-  if (lower.includes('april') || lower.includes('mai') || lower.includes('may')) return 'safariAprMay';
-  if (lower.includes('juni') || lower.includes('june')) return 'safariJunJul';
-  if (lower.includes('juli') || lower.includes('july') || lower.includes('sep')) return 'safariJulSep';
-  if (lower.includes('okt') || lower.includes('oct')) return 'safariOct';
-  if (lower.includes('nov')) return 'safariNovDec';
+  // Safari periods - NYE IDs
+  if (lower.includes('dec') || lower.includes('feb') || lower.includes('ndutu')) return 'safari_mid_dec_feb_ndutu';
+  if (lower.includes('marts') || lower.includes('march')) return 'safari_march_ndutu_no_tar';
+  if (lower.includes('april') || lower.includes('mai') || lower.includes('may')) return 'safari_april_may_ser_no_tar';
+  if (lower.includes('juni') || lower.includes('june') && lower.includes('juli')) return 'safari_june_10july_ser';
+  if (lower.includes('juli') || lower.includes('july') || lower.includes('sep')) return 'safari_10july_sep_tar_ser_north';
+  if (lower.includes('okt') || lower.includes('oct')) return 'safari_oct_tar_ser';
+  if (lower.includes('nov') && (lower.includes('dec') || lower.includes('middec'))) return 'safari_nov_middec_tar_ser';
   
   console.log('  ⚠️ No category mapping for folder:', folderName, (fullPath ? `(path: ${fullPath})` : ''), '-> using folder name as category');
   return folderName;
@@ -422,12 +413,14 @@ export const useOneDriveTemplates = (language: 'no' | 'da') => {
       }
       
       const newTemplates: OneDriveTemplate[] = filesWithFolders.map(({ file, folderName, fullPath }) => {
-        const category = mapFolderToCategory(folderName, fullPath);
-        console.log(`  📄 ${file.name} (folder: ${folderName}, path: ${fullPath}) → category: ${category}`);
+        const categoryId = mapFolderToCategory(folderName, fullPath); // Use as categoryId (modern system)
+        const category = folderName; // Keep original folder name as display category
+        console.log(`  📄 ${file.name} (folder: ${folderName}, path: ${fullPath}) → categoryId: ${categoryId}, category: ${category}`);
         return {
-          id: `${category}_${file.id}`,
+          id: `${categoryId}_${file.id}`,
           name: file.name,
           category,
+          categoryId, // KRITISK: This will be used by useTemplateStore filtering
           fileId: file.id,
           folderName,
           fullPath,
