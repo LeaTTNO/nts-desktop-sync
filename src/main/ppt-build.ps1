@@ -81,22 +81,21 @@ if ($flightModulePath -and (Test-Path $flightModulePath)) {
         $false
     )
     
-    # SIKRE METODE: Ta vare på den nåværende tellingen
-    $slideCountBeforeFlight = $presentation.Slides.Count
-    Write-Host "Slides før flyinformasjon: $slideCountBeforeFlight"
+    # KORREKT METODE: Sett inn på nest siste posisjon direkte
+    $totalSlides = $presentation.Slides.Count
+    $insertPos = [Math]::Max(1, $totalSlides)  # Insert BEFORE siste slide
+    Write-Host "Setter inn flyinformasjon på posisjon: $insertPos (av $totalSlides slides totalt)"
     
-    # Sett inn flyinformasjon helt til slutt først...
+    # Sett inn flyinformasjon slides på nest siste posisjon
+    $slideOffset = 0
     foreach ($slide in $modulePres.Slides) {
         $slide.Copy()
-        $presentation.Slides.Paste($presentation.Slides.Count + 1)
+        $presentation.Slides.Paste($insertPos + $slideOffset)
+        $slideOffset++
     }
     
-    # ...så flytt den siste urspronglige slide ETTER flyinformasjon
-    $originalLastSlide = $presentation.Slides.Item($slideCountBeforeFlight)
-    $originalLastSlide.MoveTo($presentation.Slides.Count + 1)
-    
     $modulePres.Close()
-    Write-Host "Flyinformasjon nå på nest siste posisjon (pos $slideCountBeforeFlight til $($presentation.Slides.Count - 1))"
+    Write-Host "Flyinformasjon lagt til på posisjon $insertPos - siste slide er nå posisjon $($presentation.Slides.Count)"
 }
 
 # --------------------------------------------------

@@ -133,20 +133,18 @@ function getMaxBestAndCheapestDurationHours(departureAirport: string): number {
   return MAJOR_HUBS.includes(departureAirport.toUpperCase()) ? 20 : 22;
 }
 
-// 2. BESTE KVALITET: Maks 17t (HAM/CPH/OSL) eller 19t (BLL, AAL) eller 20t (TRD, SVG, BGO, KRS, TRF)
+// 2. BESTE KVALITET: Maks 17t (HAM/CPH/OSL) eller 19.5t (BLL, AAL, TRD, SVG, BGO, KRS, TRF)
 function getMaxBestQualityDurationHours(departureAirport: string): number {
   const PREMIUM_HUBS = ['HAM', 'CPH', 'OSL'];
-  const MAJOR_HUBS = ['BLL', 'AAL'];
   const code = departureAirport.toUpperCase();
   
   if (PREMIUM_HUBS.includes(code)) return 17;
-  if (MAJOR_HUBS.includes(code)) return 19;
-  return 20; // TRD, SVG, BGO, KRS, TRF
+  return 19.5; // BLL, AAL, TRD, SVG, BGO, KRS, TRF
 }
 
-const MAX_EXTENDED_DURATION_HOURS = 23;  // 3. BILLIGSTE (UTVIDET): max 23 hours
-const NIGHT_START_MINUTES = 30;          // Night period starts 00:30 (30 minutes)
-const NIGHT_END_MINUTES = 350;           // Night period ends 05:50 (5*60 + 50 = 350 minutes)
+const MAX_EXTENDED_DURATION_HOURS = 23;  // 3. BILLIGSTE: maks 23 timer
+const NIGHT_START_MINUTES = 0;            // Night period starts 00:00 (0 minutes)
+const NIGHT_END_MINUTES = 330;             // Night period ends 05:30 (5*60 + 30 = 330 minutes)
 
 // =============================================================================
 // TRANSLATIONS
@@ -175,7 +173,7 @@ const translations = {
     cheapest: "Billigste",
     beste: "Beste",
     bestQualityDesc: "Beste reise etter varighet og forbindelser",
-    cheapestWithFlexibility: "Billigste (opptil 25 timer, ingen nattfly)",
+    cheapestWithFlexibility: "Billigste (maks 23t, ingen nattfly)",
     bestExtended: "Beste (utvidet)",
     cheapestExtended: "Billigste (utvidet)",
     outbound: "UTREISE",
@@ -192,18 +190,18 @@ const translations = {
     fillFields: "Fyll ut alle obligatoriske felt",
     duration: "Reisetid",
     flexibleDates: "Fleksible datoer ±",
-    flexibleDatesInfo: "Søker på alternative datoer før og etter valgt avreisedato. Bruker samme kriterier som 'Beste og billigste' (maks 21-23t, ingen nattfly). Viser det beste og billigste alternativet i perioden.",
+    flexibleDatesInfo: "Søker på alternative datoer før og etter valgt avreisedato. Bruker samme kriterier som 'Beste og billigste' (maks 20-22t, ingen nattfly). Viser det beste og billigste alternativet i perioden.",
     nights: "",
     addNights: "Legg til netter +",
-    addNightsInfo: "Søker flyreiser med lengre opphold (flere netter på destinasjonen). Bruker samme kriterier som 'Beste og billigste' (maks 21-23t, ingen nattfly). Viser det beste og billigste alternativet med ekstra netter.",
+    addNightsInfo: "Søker flyreiser med lengre opphold (flere netter på destinasjonen). Bruker samme kriterier som 'Beste og billigste' (maks 20-22t, ingen nattfly). Viser det beste og billigste alternativet med ekstra netter.",
     removeNights: "Fjern netter -",
-    removeNightsInfo: "Søker flyreiser med kortere opphold (færre netter på destinasjonen). Bruker samme kriterier som 'Beste og billigste' (maks 21-23t, ingen nattfly). Viser det beste og billigste alternativet med færre netter.",
+    removeNightsInfo: "Søker flyreiser med kortere opphold (færre netter på destinasjonen). Bruker samme kriterier som 'Beste og billigste' (maks 20-22t, ingen nattfly). Viser det beste og billigste alternativet med færre netter.",
     nightsExtra: "",
     nightsLess: "",
     mainResults: "Hovedresultater",
-    mainResultsDesc: "Max 21t reisetid, ingen nattfly (00:30-05:50)",
+    mainResultsDesc: "Max 20-22t reisetid, ingen nattfly (00:00-05:30, KLM/AF: 01:06-05:30)",
     extendedResults: "Utvidede alternativer",
-    extendedResultsDesc: "Max 25t reisetid, tillater nattfly",
+    extendedResultsDesc: "Maks 23t reisetid, ingen nattfly",
     cheaperFlexible: "Billigere med andre datoer",
     cheaperExtended: "Billigere med",
     extraNights: "ekstra netter",
@@ -214,7 +212,7 @@ const translations = {
     seats: "seter",
     layover: "mellomland.",
     dateInterval: "Dato-intervall",
-    dateIntervalInfo: "Søker på alle datoer i perioden med valgt antall netter. Bruker samme kriterier som 'Beste og billigste' (maks 21-23t, ingen nattfly). Viser det beste og billigste alternativet i hele perioden, og andre datoer med lignende pris (±600 kr).",
+    dateIntervalInfo: "Søker på alle datoer i perioden med valgt antall netter. Bruker samme kriterier som 'Beste og billigste' (maks 20-22t, ingen nattfly). Viser det beste og billigste alternativet i hele perioden, og andre datoer med lignende pris (±600 kr).",
     earliestDeparture: "Tidligste avreise",
     latestDeparture: "Seneste avreise",
     searchInInterval: "Søk billigste i periode",
@@ -222,8 +220,8 @@ const translations = {
     showDetails: "Vis detaljer",
     hideDetails: "Skjul detaljer",
     noFlightsFound: "Ingen flyreiser funnet som oppfyller kriteriene",
-    noFlightsMainCriteria: "Ingen flyreiser innenfor hovedkriterier (max 21t, ingen nattfly 00:30-05:50)",
-    onlyLongerFlights: "Det finnes kun flyreiser med lengre reisetid (over 25 timer)",
+    noFlightsMainCriteria: "Ingen flyreiser innenfor hovedkriterier (max 20-22t, ingen nattfly 00:00-05:30, KLM/AF: 01:06-05:30)",
+    onlyLongerFlights: "Det finnes kun flyreiser med lengre reisetid (over 23 timer)",
     tryExtendingSearch: "Prøv å utvide søket eller endre datoene",
     preferredAirline: "Velg flyselskap",
     preferredAirlineInfo: "Filtrer søket til å kun vise resultater med valgte flyselskap. Du kan velge flere flyselskap. Resultatet vises som egne kategorier sammen med hovedresultatene.",
@@ -252,7 +250,7 @@ const translations = {
     cheapest: "Billigste",
     beste: "Bedste",
     bestQualityDesc: "Bedste rejse efter varighed og forbindelser",
-    cheapestWithFlexibility: "Billigste (op til 25 timer, ingen natfly)",
+    cheapestWithFlexibility: "Billigste (maks 23t, ingen natfly)",
     bestExtended: "Bedste (udvidet)",
     cheapestExtended: "Billigste (udvidet)",
     outbound: "UDREJSE",
@@ -269,18 +267,18 @@ const translations = {
     fillFields: "Udfyld alle obligatoriske felter",
     duration: "Rejsetid",
     flexibleDates: "Fleksible datoer ±",
-    flexibleDatesInfo: "Søger på alternative datoer før og efter valgt afrejsedato. Bruger samme kriterier som 'Bedste og billigste' (maks 21-23t, ingen natfly). Viser det bedste og billigste alternativ i perioden.",
+    flexibleDatesInfo: "Søger på alternative datoer før og efter valgt afrejsedato. Bruger samme kriterier som 'Bedste og billigste' (maks 20-22t, ingen natfly). Viser det bedste og billigste alternativ i perioden.",
     nights: "",
     addNights: "Tilføj nætter +",
-    addNightsInfo: "Søger flyrejser med længere ophold (flere nætter på destinationen). Bruger samme kriterier som 'Bedste og billigste' (maks 21-23t, ingen natfly). Viser det bedste og billigste alternativ med ekstra nætter.",
+    addNightsInfo: "Søger flyrejser med længere ophold (flere nætter på destinationen). Bruger samme kriterier som 'Bedste og billigste' (maks 20-22t, ingen natfly). Viser det bedste og billigste alternativ med ekstra nætter.",
     removeNights: "Fjern nætter -",
-    removeNightsInfo: "Søger flyrejser med kortere ophold (færre nætter på destinationen). Bruger samme kriterier som 'Bedste og billigste' (maks 21-23t, ingen natfly). Viser det bedste og billigste alternativ med færre nætter.",
+    removeNightsInfo: "Søger flyrejser med kortere ophold (færre nætter på destinationen). Bruger samme kriterier som 'Bedste og billigste' (maks 20-22t, ingen natfly). Viser det bedste og billigste alternativ med færre nætter.",
     nightsExtra: "",
     nightsLess: "",
     mainResults: "Hovedresultater",
-    mainResultsDesc: "Max 21t rejsetid, ingen natfly (00:30-05:50)",
+    mainResultsDesc: "Max 20-22t rejsetid, ingen natfly (00:00-05:30, KLM/AF: 01:06-05:30)",
     extendedResults: "Udvidede alternativer",
-    extendedResultsDesc: "Max 25t rejsetid, tillader natfly",
+    extendedResultsDesc: "Maks 23t rejsetid, ingen natfly",
     cheaperFlexible: "Billigere med andre datoer",
     cheaperExtended: "Billigere med",
     extraNights: "ekstra nætter",
@@ -291,7 +289,7 @@ const translations = {
     seats: "sæder",
     layover: "mellemland.",
     dateInterval: "Datointervall",
-    dateIntervalInfo: "Søger på alle datoer i perioden med valgt antal nætter. Bruger samme kriterier som 'Bedste og billigste' (maks 21-23t, ingen natfly). Viser det bedste og billigste alternativ i hele perioden, og andre datoer med lignende pris (±600 kr).",
+    dateIntervalInfo: "Søger på alle datoer i perioden med valgt antal nætter. Bruger samme kriterier som 'Bedste og billigste' (maks 20-22t, ingen natfly). Viser det bedste og billigste alternativ i hele perioden, og andre datoer med lignende pris (±600 kr).",
     earliestDeparture: "Tidligste afrejse",
     latestDeparture: "Seneste afrejse",
     searchInInterval: "Søg billigste i periode",
@@ -299,8 +297,8 @@ const translations = {
     showDetails: "Vis detaljer",
     hideDetails: "Skjul detaljer",
     noFlightsFound: "Ingen flyrejser fundet som opfylder kriterierne",
-    noFlightsMainCriteria: "Ingen flyrejser inden for hovedkriterier (max 21t, ingen natfly 00:30-05:50)",
-    onlyLongerFlights: "Der findes kun flyrejser med længere rejsetid (over 25 timer)",
+    noFlightsMainCriteria: "Ingen flyrejser inden for hovedkriterier (max 20-22t, ingen natfly 00:00-05:30, KLM/AF: 01:06-05:30)",
+    onlyLongerFlights: "Der findes kun flyrejser med længere rejsetid (over 23 timer)",
     tryExtendingSearch: "Prøv at udvide søgningen eller ændre datoerne",
     preferredAirline: "Vælg flyselskab",
     preferredAirlineInfo: "Filtrer søgningen til kun at vise resultater med valgte flyselskaber. Du kan vælge flere flyselskaber. Resultatet vises som egne kategorier sammen med hovedresultaterne.",
@@ -376,7 +374,7 @@ function getTotalMinutes(isoDuration: string): number {
  * Check if a time falls in the night period
  * Parse time directly from ISO string to avoid timezone conversion issues
  */
-function isNightTime(dateTimeStr: string, startTime: string = "00:30", endTime: string = "05:50"): boolean {
+function isNightTime(dateTimeStr: string, startTime: string = "00:00", endTime: string = "05:30"): boolean {
   // Parse time directly from ISO string: "2026-05-06T04:05:00+00:00"
   const timeMatch = dateTimeStr.match(/T(\d{2}):(\d{2})/);
   if (!timeMatch) {
@@ -648,7 +646,7 @@ function processFlightOffers(
       });
     }
 
-    // Max duration of single leg for filtering (keep ≤22h or ≤25h check)
+    // Max duration of single leg for filtering (keep ≤22h or ≤23h check)
     const maxSingleLegDuration = Math.max(outDuration, inDuration);
     // Combined total duration for scoring (prioritize shortest total journey)
     const combinedDuration = outDuration + inDuration;
@@ -699,7 +697,7 @@ function calculateFlightScore(flight: ProcessedFlight): number {
  * ALWAYS returns 3 main categories:
  * 1. Best and cheapest (≤21h or ≤23h, no night flights) 
  * 2. Best overall by quality (≤19h, ≤20h or ≤21h, no night flights)
- * 3. Cheapest (≤25h, NO night flights - longer time allowed but still no night departures/arrivals)
+ * 3. Cheapest (≤23h, NO night flights - longer time allowed but still no night departures/arrivals)
  */
 function categorizeFlights(
   flights: ProcessedFlight[], 
@@ -713,7 +711,7 @@ function categorizeFlights(
 } {
   const MAX_BEST_AND_CHEAPEST_HOURS = getMaxBestAndCheapestDurationHours(departureAirport);
   const MAX_BEST_QUALITY_HOURS = getMaxBestQualityDurationHours(departureAirport);
-  console.log(`🔍 CATEGORIZE: ${flights.length} flights - BestAndCheapest≤${MAX_BEST_AND_CHEAPEST_HOURS}h, BestQuality≤${MAX_BEST_QUALITY_HOURS}h, Extended≤25h (${departureAirport})`);
+  console.log(`🔍 CATEGORIZE: ${flights.length} flights - BestAndCheapest≤${MAX_BEST_AND_CHEAPEST_HOURS}h, BestQuality≤${MAX_BEST_QUALITY_HOURS}h, Extended≤23h (${departureAirport})`);
   
   // HARD FILTER: Never show flights over 25 hours
   let validFlights = flights.filter(f =>
@@ -730,7 +728,7 @@ function categorizeFlights(
     }
   }
 
-  console.log(`✅ Valid flights (≤25h): ${validFlights.length}`);
+  console.log(`✅ Valid flights (≤23h): ${validFlights.length}`);
   
   if (validFlights.length === 0) {
     console.warn('⚠️ NO flights under 25 hours - showing nothing');
@@ -750,7 +748,7 @@ function categorizeFlights(
   console.log(`✅ BestAndCheapest flights (≤${MAX_BEST_AND_CHEAPEST_HOURS}h, no night): ${bestAndCheapestFlights.length}`);
   console.log(`✅ BestQuality flights (≤${MAX_BEST_QUALITY_HOURS}h, no night): ${bestQualityFlights.length}`);
   console.log(`🌙 Flights with night departures/arrivals: ${validFlights.filter(f => f.hasNightFlight).length}`);
-  console.log(`⏱️ Flights over ${MAX_BEST_AND_CHEAPEST_HOURS}h (but under 25h): ${validFlights.filter(f => f.totalDurationMinutes > MAX_BEST_AND_CHEAPEST_HOURS * 60).length}`);
+  console.log(`⏱️ Flights over ${MAX_BEST_AND_CHEAPEST_HOURS}h (but under 23h): ${validFlights.filter(f => f.totalDurationMinutes > MAX_BEST_AND_CHEAPEST_HOURS * 60).length}`);
 
   // CATEGORY 1: BESTE OG BILLIGSTE
   // Score flights with special handling for similar prices and fare types
@@ -830,7 +828,7 @@ function categorizeFlights(
     bestQuality = qualitySorted[0];
   }
 
-  // CATEGORY 3: BILLIGSTE (UTVIDET) - Cheapest (≤25h, NO night flights)
+  // CATEGORY 3: BILLIGSTE - Cheapest (≤23h, NO night flights)
   // This is the CHEAPEST within extended time - allows longer duration but NO night flights!
   // CRITICAL RULE: Can NEVER have shorter duration than "Beste og billigste" or "Beste"
   const extendedFlights = validFlights.filter(f =>
@@ -930,8 +928,8 @@ export default function FlightRobot() {
     : `Maks ${maxBestQualityHours}t, ingen nattfly (${nightFlightStart}-${nightFlightEnd}, KLM/AF: 01:06-05:30)`;
   
   const cheapestExtendedDesc = language === 'da'
-    ? `Maks 25t, nattfly tilladt`
-    : `Maks 25t, nattfly tillatt`;
+    ? `Maks 23t, ingen natfly (00:00-05:30, KLM/AF: 01:06-05:30)`
+    : `Maks 23t, ingen nattfly (00:00-05:30, KLM/AF: 01:06-05:30)`;
   
   const noMainResultsCriteria = language === 'da'
     ? `Ingen flyrejser indenfor hovedkriterier (Beste og billigste: max ${maxBestAndCheapestHours}t, Beste: max ${maxBestQualityHours}t, ingen natfly 00:00-05:30, KLM/AF: 01:06-05:30)`
@@ -1258,7 +1256,7 @@ export default function FlightRobot() {
       return null;
     }
     
-    // CRITICAL: ALL categories must filter out night flights (00:30-05:50)
+    // CRITICAL: ALL categories must filter out night flights (00:00-05:30, KLM/AF: 01:06-05:30)
     filtered = filtered.filter(f => !f.hasNightFlight);
     console.log(`    After night flight filter: ${filtered.length} flights`);
     
@@ -2753,7 +2751,7 @@ function saveToPowerPointSingle(flight: ProcessedFlight, title: string) {
         </Card>
       )}
 
-      {/* MAIN RESULTS - ALWAYS SHOW ALL 3 CATEGORIES (≤21h/≤25h, varying night restrictions) */}
+      {/* MAIN RESULTS - ALWAYS SHOW ALL 3 CATEGORIES (≤20-22h/≤23h, NO night flights) */}
       {hasSearched && (mainResults.bestAndCheapest || bestQualityResult || cheapestExtendedResult) && (
         <div className="space-y-6">
           {/* CATEGORY 1: Best and Cheapest (≤21h, no night) */}
@@ -2894,7 +2892,7 @@ function saveToPowerPointSingle(flight: ProcessedFlight, title: string) {
             </Card>
           )}
 
-          {/* CATEGORY 3: Cheapest (≤25h, NO night flights) */}
+          {/* CATEGORY 3: Cheapest (≤23h, NO night flights) */}
           {cheapestExtendedResult && (
             <div className="space-y-4">
               <div className="flex items-center gap-2">
