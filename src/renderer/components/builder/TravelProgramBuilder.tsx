@@ -463,9 +463,11 @@ export default function TravelProgramBuilder({ language = 'no' }: TravelProgramB
     templates.forEach(t => {
       // Ekstraher hotellnavn: alt (inkl. spesialtegn som &, -, ') før første tall
       // Eksempel: "Pongwe + Tembo 4 + 1 nætter" → "Pongwe + Tembo"
-      // Eksempel: "Baraza & Essque 7 nætter" → "Baraza & Essque"
+      // Eksempel: "Karafuu + Mizingani - 4 + 1 nætter" → "Karafuu + Mizingani"
       const match = t.name.match(/^(.*?)(?=\s+\d)/);
-      const hotelName = match ? match[1].trim() : t.name;
+      const hotelName = (match ? match[1].trim() : t.name)
+        .replace(/\s*-\s*$/, '') // fjern trailing " -" fra kombonavn
+        .trim();
       
       if (!groups[hotelName]) {
         groups[hotelName] = [];

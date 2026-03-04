@@ -101,7 +101,7 @@ export default function TemplateDropdown({
   // "Jambiani + Mizingani 4 + 1 nætter" → "Jambiani + Mizingani"
   function getComboName(templateName: string): string {
     const match = templateName.match(/^(.+?)\s+\d/);
-    return match ? match[1].trim() : templateName;
+    return match ? match[1].trim().replace(/\s*-\s*$/, '').trim() : templateName;
   }
 
   // Extract Stone Town hotel (last word after final " + " in combo name)
