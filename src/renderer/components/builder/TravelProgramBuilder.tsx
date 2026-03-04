@@ -519,13 +519,32 @@ export default function TravelProgramBuilder({ language = 'no' }: TravelProgramB
   }) {
     const [isOpen, setIsOpen] = useState(false);
     const [selectedHotel, setSelectedHotel] = useState<string | null>(null);
+    const [selectedCombo, setSelectedCombo] = useState<string | null>(null);
     
     const categoryTemplates = getFilteredTemplatesByCategoryName(category, categoryId).filter(t => t.visibleInBuilder);
+    // zanzibar_hotel_2 = 3-trinns: Stone Town-hotell → kombinasjon → netter
+    const isComboCategory = categoryId === "zanzibar_hotel_2";
     // Zanzibar-hotell: to-trinns dropdown
     const isZanzibarHotel = [ZANZIBAR_MAIN, ZANZIBAR_HOTEL_2].includes(category) || 
       categoryId === "zanzibar_hotel_1" || categoryId === "zanzibar_hotel_2";
     const groupedTemplates = isZanzibarHotel ? groupTemplatesByHotel(categoryTemplates) : (groupByHotel ? groupTemplatesByHotel(categoryTemplates) : null);
     const hotelNames = groupedTemplates ? Object.keys(groupedTemplates).sort() : [];
+
+    // For 3-trinns: grupper kombinasjonsnavn etter Stone Town-hotell
+    function getStoneHotelFromCombo(comboName: string): string {
+      const parts = comboName.split(/\s*\+\s*/);
+      return parts[parts.length - 1].trim();
+    }
+    // stone → [combo1, combo2, ...]
+    const stoneTownGroups: Record<string, string[]> = {};
+    if (isComboCategory) {
+      hotelNames.forEach(combo => {
+        const stone = getStoneHotelFromCombo(combo);
+        if (!stoneTownGroups[stone]) stoneTownGroups[stone] = [];
+        stoneTownGroups[stone].push(combo);
+      });
+    }
+    const stoneTownHotels = Object.keys(stoneTownGroups).sort();
     
     const selectedTemplate = selectedId ? templates.find(t => t.id === selectedId) : null;
     
@@ -533,6 +552,7 @@ export default function TravelProgramBuilder({ language = 'no' }: TravelProgramB
     useEffect(() => {
       if (!isOpen) {
         setSelectedHotel(null);
+        setSelectedCombo(null);
       }
     }, [isOpen]);
     
@@ -577,58 +597,110 @@ export default function TravelProgramBuilder({ language = 'no' }: TravelProgramB
             <PopoverContent className="w-[300px] p-0 bg-background z-50" align="start" onPointerDownOutside={(e) => e.preventDefault()}>
               <div className="max-h-[300px] overflow-y-auto">
                 {isZanzibarHotel ? (
-                  !selectedHotel ? (
-                    <div className="p-1">
-                      {hotelNames.map((hotelName) => (
-                        <button
-                          key={hotelName}
-                          onClick={(e) => {
-                            e.preventDefault();
-                            e.stopPropagation();
-                            setSelectedHotel(hotelName);
-                          }}
-                          className="w-full text-left px-3 py-2 text-sm rounded-sm hover:bg-accent hover:text-accent-foreground transition-colors"
-                        >
-                          {hotelName}
-                        </button>
-                      ))}
-                    </div>
-                  ) : (
-                    <div className="p-1">
-                      <button
-                        onClick={(e) => {
-                          e.preventDefault();
-                          e.stopPropagation();
-                          setSelectedHotel(null);
-                        }}
-                        className="w-full text-left px-3 py-2 text-sm rounded-sm hover:bg-accent hover:text-accent-foreground transition-colors text-muted-foreground flex items-center gap-2"
-                      >
-                        <ArrowLeft className="h-3 w-3" />
-                        Tilbake
-                      </button>
-                      <div className="px-3 py-1 text-xs font-semibold text-primary border-b mb-1">
-                        {selectedHotel}
+                  isComboCategory ? (
+                    // 3-trinns: Stone Town-hotell → kombinasjon → netter
+                    !selectedHotel ? (
+                      <div className="p-1">
+                        {stoneTownHotels.map((stone) => (
+                          <button
+                            key={stone}
+                            onClick={(e) => { e.preventDefault(); e.stopPropagation(); setSelectedHotel(stone); }}
+                            className="w-full text-left px-3 py-2 text-sm rounded-sm hover:bg-accent hover:text-accent-foreground transition-colors flex items-center justify-between"
+                          >
+                            <span>+ {stone}</span>
+                            <span className="text-xs text-muted-foreground">{stoneTownGroups[stone].length} hotell</span>
+                          </button>
+                        ))}
                       </div>
-                      {sortTemplatesByDays(groupedTemplates[selectedHotel] || []).map((t) => (
+                    ) : !selectedCombo ? (
+                      <div className="p-1">
                         <button
-                          key={t.id}
-                          onClick={(e) => {
-                            e.preventDefault();
-                            e.stopPropagation();
-                            replaceTemplate(selectedId, t.id);
-                            onSelectChange(t.id);
-                            setIsOpen(false);
-                          }}
-                          className={cn(
-                            "w-full text-left px-3 py-2 text-sm rounded-sm hover:bg-accent hover:text-accent-foreground transition-colors flex items-center justify-between",
-                            selectedId === t.id && "bg-accent"
-                          )}
+                          onClick={(e) => { e.preventDefault(); e.stopPropagation(); setSelectedHotel(null); }}
+                          className="w-full text-left px-3 py-2 text-sm rounded-sm hover:bg-accent hover:text-accent-foreground transition-colors text-muted-foreground flex items-center gap-2"
                         >
-                          {t.name}
-                          {selectedId === t.id && <Check className="h-4 w-4" />}
+                          <ArrowLeft className="h-3 w-3" />Tilbake
                         </button>
-                      ))}
-                    </div>
+                        <div className="px-3 py-1 text-xs font-semibold text-primary border-b mb-1">+ {selectedHotel}</div>
+                        {(stoneTownGroups[selectedHotel!] || []).sort().map((combo) => (
+                          <button
+                            key={combo}
+                            onClick={(e) => { e.preventDefault(); e.stopPropagation(); setSelectedCombo(combo); }}
+                            className="w-full text-left px-3 py-2 text-sm rounded-sm hover:bg-accent hover:text-accent-foreground transition-colors"
+                          >
+                            {combo}
+                          </button>
+                        ))}
+                      </div>
+                    ) : (
+                      <div className="p-1">
+                        <button
+                          onClick={(e) => { e.preventDefault(); e.stopPropagation(); setSelectedCombo(null); }}
+                          className="w-full text-left px-3 py-2 text-sm rounded-sm hover:bg-accent hover:text-accent-foreground transition-colors text-muted-foreground flex items-center gap-2"
+                        >
+                          <ArrowLeft className="h-3 w-3" />Tilbake
+                        </button>
+                        <div className="px-3 py-1 text-xs font-semibold text-primary border-b mb-1">{selectedCombo}</div>
+                        {sortTemplatesByDays(groupedTemplates![selectedCombo!] || []).map((t) => (
+                          <button
+                            key={t.id}
+                            onClick={(e) => {
+                              e.preventDefault(); e.stopPropagation();
+                              replaceTemplate(selectedId, t.id);
+                              onSelectChange(t.id);
+                              setIsOpen(false);
+                            }}
+                            className={cn(
+                              "w-full text-left px-3 py-2 text-sm rounded-sm hover:bg-accent hover:text-accent-foreground transition-colors flex items-center justify-between",
+                              selectedId === t.id && "bg-accent"
+                            )}
+                          >
+                            {t.name}{selectedId === t.id && <Check className="h-4 w-4" />}
+                          </button>
+                        ))}
+                      </div>
+                    )
+                  ) : (
+                    // 2-trinns: kombinasjonsnavn → netter (zanzibar_hotel_1)
+                    !selectedHotel ? (
+                      <div className="p-1">
+                        {hotelNames.map((hotelName) => (
+                          <button
+                            key={hotelName}
+                            onClick={(e) => { e.preventDefault(); e.stopPropagation(); setSelectedHotel(hotelName); }}
+                            className="w-full text-left px-3 py-2 text-sm rounded-sm hover:bg-accent hover:text-accent-foreground transition-colors"
+                          >
+                            {hotelName}
+                          </button>
+                        ))}
+                      </div>
+                    ) : (
+                      <div className="p-1">
+                        <button
+                          onClick={(e) => { e.preventDefault(); e.stopPropagation(); setSelectedHotel(null); }}
+                          className="w-full text-left px-3 py-2 text-sm rounded-sm hover:bg-accent hover:text-accent-foreground transition-colors text-muted-foreground flex items-center gap-2"
+                        >
+                          <ArrowLeft className="h-3 w-3" />Tilbake
+                        </button>
+                        <div className="px-3 py-1 text-xs font-semibold text-primary border-b mb-1">{selectedHotel}</div>
+                        {sortTemplatesByDays(groupedTemplates![selectedHotel] || []).map((t) => (
+                          <button
+                            key={t.id}
+                            onClick={(e) => {
+                              e.preventDefault(); e.stopPropagation();
+                              replaceTemplate(selectedId, t.id);
+                              onSelectChange(t.id);
+                              setIsOpen(false);
+                            }}
+                            className={cn(
+                              "w-full text-left px-3 py-2 text-sm rounded-sm hover:bg-accent hover:text-accent-foreground transition-colors flex items-center justify-between",
+                              selectedId === t.id && "bg-accent"
+                            )}
+                          >
+                            {t.name}{selectedId === t.id && <Check className="h-4 w-4" />}
+                          </button>
+                        ))}
+                      </div>
+                    )
                   )
                 ) : (
                   groupByHotel && groupedTemplates ? (
