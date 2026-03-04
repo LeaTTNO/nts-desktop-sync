@@ -15,7 +15,6 @@ export type SupportedLanguage = "no" | "da";
 const ADMIN_EMAILS = [
   "lea@tanzaniatours.dk",
   "jakob@tanzaniatours.dk",
-  "info@tanzaniatours.dk",
   // Legg til flere admin-brukere her ved behov
 ];
 
@@ -43,7 +42,6 @@ export const userFolders: UserFolder[] = [
   { email: "jakob@tanzaniatours.dk",   language: "da", folder: "jakob-Rejseprogram og tilbud" },
   { email: "sofia@tanzaniatours.dk",   language: "da", folder: "sofia-Rejseprogram og tilbud" },
   { email: "lennie@tanzaniatours.dk",  language: "da", folder: "lennie-Rejseprogram og tilbud" },
-  { email: "info@tanzaniatours.dk",    language: "da", folder: "info-Rejseprogram og tilbud" },
 ];
 
 // ------------------------------------------------------------

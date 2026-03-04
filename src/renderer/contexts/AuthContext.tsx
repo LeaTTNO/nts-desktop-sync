@@ -72,10 +72,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   };
 
   useEffect(() => {
-    // Restore last selected user from localStorage — no MSAL needed for identity
+    // Restore last selected user from localStorage — validate it's still a known user
     const savedEmail = localStorage.getItem("selectedUserEmail");
-    if (savedEmail) {
+    if (savedEmail && userFolders.some(u => u.email === savedEmail)) {
       loginAsDemo(savedEmail);
+    } else if (savedEmail) {
+      // Stale/unknown email in localStorage — clear it so user picks again
+      localStorage.removeItem("selectedUserEmail");
     }
     setIsLoading(false);
   }, []);

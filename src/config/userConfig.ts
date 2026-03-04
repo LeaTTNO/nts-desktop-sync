@@ -33,7 +33,6 @@ export function isAdmin(email: string): boolean {
   const DEFAULT_ADMINS = [
     "lea@tanzaniatours.dk",
     "jakob@tanzaniatours.dk",
-    "info@tanzaniatours.dk",
   ];
   return DEFAULT_ADMINS.includes(email.toLowerCase());
 }

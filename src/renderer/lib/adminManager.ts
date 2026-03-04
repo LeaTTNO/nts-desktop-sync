@@ -11,7 +11,6 @@ const ADMIN_STORAGE_KEY = "adminUsers";
 const DEFAULT_ADMINS = [
   "lea@tanzaniatours.dk",
   "jakob@tanzaniatours.dk",
-  "info@tanzaniatours.dk",
 ];
 
 /**
@@ -25,7 +24,14 @@ export function getAdminUsers(): string[] {
     return DEFAULT_ADMINS;
   }
   try {
-    return JSON.parse(stored);
+    const parsed: string[] = JSON.parse(stored);
+    // Filter out removed accounts (e.g. info@tanzaniatours.dk)
+    const filtered = parsed.filter(e => DEFAULT_ADMINS.includes(e) || !e.startsWith("info@"));
+    const cleanFiltered = filtered.filter(e => e !== "info@tanzaniatours.dk");
+    if (cleanFiltered.length !== parsed.length) {
+      localStorage.setItem(ADMIN_STORAGE_KEY, JSON.stringify(cleanFiltered));
+    }
+    return cleanFiltered;
   } catch (error) {
     console.error("Failed to parse admin users from localStorage:", error);
     return DEFAULT_ADMINS;
