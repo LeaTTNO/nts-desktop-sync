@@ -14,11 +14,12 @@ import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue, SelectGroup, SelectLabel } from "@/components/ui/select";
 import { Input } from "@/components/ui/input";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { Calendar } from "@/components/ui/calendar";
 import { CalendarIcon } from "lucide-react";
 import { format } from "date-fns";
 import { nb, da } from "date-fns/locale";
-import { GripVertical, X, FileDown, RotateCcw, Loader2, ChevronDown, ArrowLeft, Check } from "lucide-react";
+import { GripVertical, X, FileDown, RotateCcw, Loader2, ChevronDown, ArrowLeft, Check, Info } from "lucide-react";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 
@@ -406,6 +407,7 @@ export default function TravelProgramBuilder({ language = 'no' }: TravelProgramB
     setExtraSlides(false);
     setExtraSlidesId(null);
     setDepartureDate("");
+    setDepartureDateInput("");
     
     // Velg default basefil igjen (Safari & Zanzibar)
     const baseTemplates = getUserBaseTemplates();
@@ -829,6 +831,24 @@ export default function TravelProgramBuilder({ language = 'no' }: TravelProgramB
   // Trenger denne for type-inference
   const categoryTemplates: ReturnType<typeof getTemplatesByCategoryName> = [];
 
+  // Info-tooltip hjelpekomponent
+  function InfoTip({ text }: { text: string }) {
+    return (
+      <TooltipProvider delayDuration={0}>
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <button type="button" className="text-muted-foreground hover:text-foreground transition-colors ml-1">
+              <Info className="h-3.5 w-3.5" />
+            </button>
+          </TooltipTrigger>
+          <TooltipContent side="top" className="max-w-[260px] text-xs">
+            {text}
+          </TooltipContent>
+        </Tooltip>
+      </TooltipProvider>
+    );
+  }
+
   /* =========================
      RENDER
   ========================= */
@@ -839,11 +859,13 @@ export default function TravelProgramBuilder({ language = 'no' }: TravelProgramB
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
         {/* 1. Reiseprogram og Tilbud (Base) - Automatisk valg */}
         <div className="space-y-2">
-          <div className="flex items-center justify-between">
+          <div className="flex items-center gap-1">
             <Label className="text-base font-semibold">
               {userLanguage === 'da' ? 'Rejseprogram og Tilbud' : 'Reiseprogram og Tilbud'}
             </Label>
-            <span />
+            <InfoTip text={userLanguage === 'da'
+              ? 'Vælg basis-skabelon for rejseprogrammet. Dette er den første slide og danner grundlaget for hele dokumentet – normalt din personlige Reiseprogram & Tilbud-fil.'
+              : 'Velg base-mal for reiseprogrammet. Dette er første slide og danner grunnlaget for hele dokumentet – vanligvis din personlige Reiseprogram & Tilbud-fil.'} />
           </div>
           <Select
             value={baseProgramId ?? ""}
@@ -947,7 +969,12 @@ export default function TravelProgramBuilder({ language = 'no' }: TravelProgramB
         {/* 3. Arusha første natt */}
         {isBuiltinCategoryVisible("arusha_first_night") && (
         <div className="space-y-2">
-          <Label>Arusha første natt</Label>
+          <div className="flex items-center gap-1">
+            <Label>{userLanguage === 'da' ? 'Arusha første nat' : 'Arusha første natt'}</Label>
+            <InfoTip text={userLanguage === 'da'
+              ? 'Vælg hotellet for ankomstnatten i Arusha – natten før safarien starter.'
+              : 'Velg hotell for ankomstnatten i Arusha – natten før safarien starter.'} />
+          </div>
           <Select
             value={firstNightId ?? ""}
             onValueChange={(value) => {
@@ -977,7 +1004,12 @@ export default function TravelProgramBuilder({ language = 'no' }: TravelProgramB
         {/* 4. Safariperiode - To-trinns i SAMME dropdown med Popover */}
         {isBuiltinCategoryVisible("safari_period_group") && (
         <div className="space-y-2">
-          <Label>Safariperiode</Label>
+          <div className="flex items-center gap-1">
+            <Label>{userLanguage === 'da' ? 'Safariperiode' : 'Safariperiode'}</Label>
+            <InfoTip text={userLanguage === 'da'
+              ? 'Vælg først safariperiode (baseret på migrationsmønster), derefter den konkrete skabelon. Perioderne afspejler årstider og dyreliv i Serengeti/Ndutu.'
+              : 'Velg først safariperiode (basert på migrasjonsmønster), deretter konkret mal. Periodene gjenspeiler årstider og dyreliv i Serengeti/Ndutu.'} />
+          </div>
           <SafariDropdown
             selectedPeriod={selectedSafariPeriod}
             setSelectedPeriod={setSelectedSafariPeriod}
@@ -990,7 +1022,12 @@ export default function TravelProgramBuilder({ language = 'no' }: TravelProgramB
         {/* 5. Siste natt safari */}
         {isBuiltinCategoryVisible("last_safari_night") && (
         <div className="space-y-2">
-          <Label>Siste natt safari</Label>
+          <div className="flex items-center gap-1">
+            <Label>{userLanguage === 'da' ? 'Sidste nat safari' : 'Siste natt safari'}</Label>
+            <InfoTip text={userLanguage === 'da'
+              ? 'Vælg hotellet for den sidste nat på safarien, inden videre til Zanzibar.'
+              : 'Velg hotell for siste natt på safarien, før videre til Zanzibar.'} />
+          </div>
           <Select
             value={lastNightId ?? ""}
             onValueChange={(value) => {
@@ -1020,7 +1057,12 @@ export default function TravelProgramBuilder({ language = 'no' }: TravelProgramB
           {/* 6. Zanzibar Hotel */}
           {isBuiltinCategoryVisible("zanzibar_hotel_1") && (
           <div className="space-y-2">
-            <Label>{ZANZIBAR_MAIN}</Label>
+            <div className="flex items-center gap-1">
+              <Label>{ZANZIBAR_MAIN}</Label>
+              <InfoTip text={userLanguage === 'da'
+                ? 'Vælg Zanzibar-hotel. Klik på hotelnavnet for at se tilgængelige rompakker med antal nætter.'
+                : 'Velg Zanzibar-hotell. Klikk på hotellnavnet for å se tilgjengelige rompakker med antall netter.'} />
+            </div>
             <CheckboxWithDropdown
               id="zanzibar-hotel-1"
               label=""
@@ -1039,7 +1081,12 @@ export default function TravelProgramBuilder({ language = 'no' }: TravelProgramB
           {/* 7. Zanzibar & StoneTown */}
           {isBuiltinCategoryVisible("zanzibar_hotel_2") && (
           <div className="space-y-2">
-            <Label>{ZANZIBAR_HOTEL_2}</Label>
+            <div className="flex items-center gap-1">
+              <Label>{ZANZIBAR_HOTEL_2}</Label>
+              <InfoTip text={userLanguage === 'da'
+                ? 'Vælg hotel for Stone Town-opholdet eller en kombineret Stone Town + strandhytte-pakke.'
+                : 'Velg hotell for Stone Town-oppholdet, eller en kombinert Stone Town + strandhotell-pakke.'} />
+            </div>
             <CheckboxWithDropdown
               id="zanzibar-hotel-2"
               label=""
@@ -1058,7 +1105,12 @@ export default function TravelProgramBuilder({ language = 'no' }: TravelProgramB
 
         {/* Rad 4: Tilleggsmoduler - 2 rader med checkbokser */}
         <div className="space-y-4">
-          <Label className="text-base font-semibold">Tilleggsmoduler</Label>
+          <div className="flex items-center gap-1">
+            <Label className="text-base font-semibold">{userLanguage === 'da' ? 'Tillægsmoduler' : 'Tilleggsmoduler'}</Label>
+            <InfoTip text={userLanguage === 'da'
+              ? 'Markér de valgfrie moduler du ønsker at inkludere i rejseprogrammet. Vælg derefter den tilhørende skabelon i dropdown-menuen.'
+              : 'Kryss av for valgfrie moduler du ønsker å inkludere i reiseprogrammet. Velg deretter tilhørende mal i dropdown-menyen.'} />
+          </div>
           
           {/* Første rad tilleggsmoduler */}
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -1156,7 +1208,12 @@ export default function TravelProgramBuilder({ language = 'no' }: TravelProgramB
 
         {/* Valgte slides - full bredde (inkluderer flight slide fra global state) */}
         <div className="space-y-3">
-          <Label className="text-base font-semibold">Valgte slides</Label>
+          <div className="flex items-center gap-1">
+            <Label className="text-base font-semibold">{userLanguage === 'da' ? 'Valgte slides' : 'Valgte slides'}</Label>
+            <InfoTip text={userLanguage === 'da'
+              ? 'Her vises alle valgte slides i rækkefølge. Træk i ☰-ikonet for at ændre rækkefølgen. Den første slide (basis-skabelon) er låst og kan ikke flyttes. Klik ✕ for at fjerne en slide.'
+              : 'Her vises alle valgte slides i rekkefølge. Dra i ☰-ikonet for å endre rekkefølgen. Første slide (base-mal) er låst og kan ikke flyttes. Klikk ✕ for å fjerne en slide.'} />
+          </div>
           <div className="border rounded-lg p-3 min-h-[120px] bg-muted/30">
             {selectedTemplateIds.length === 0 && slides.filter(s => typeof s === "object" && s.type === "flight").length === 0 ? (
               <p className="text-muted-foreground text-sm text-center py-4">

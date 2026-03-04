@@ -89,20 +89,8 @@ interface UserFolder {
 }
 
 export const userFolders: UserFolder[] = [
-  // NO
-  {
-    email: "info@tanzaniatours.no",
-    language: "no",
-    folder: "info-Reiseprogram og tilbud",
-  },
-  {
-    email: "lea@tanzaniatours.no",
-    language: "no",
-    folder: "lea-Reiseprogram og tilbud",
-  },
-
   // DK
-  { email: "lea@tanzaniatours.dk", language: "da", folder: "lea-Rejseprogram og tilbud" },
+  { email: "lea@tanzaniatours.dk", language: "no", folder: "lea-Rejseprogram og tilbud" },
   { email: "gordon@tanzaniatours.dk", language: "da", folder: "gordon-Rejseprogram og tilbud" },
   { email: "lars@tanzaniatours.dk", language: "da", folder: "lars-Rejseprogram og tilbud" },
   { email: "camilla@tanzaniatours.dk", language: "da", folder: "camilla-Rejseprogram og tilbud" },

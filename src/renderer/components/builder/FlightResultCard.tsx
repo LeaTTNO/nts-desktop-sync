@@ -436,7 +436,7 @@ export default function FlightResultCard({
           )}
           {flight.hasKlmAfMidnightReturn && (
             <Badge variant="outline" className="text-blue-600 border-blue-300 text-[10px] px-1.5 py-0">
-              🌙 {language === "no" ? "Hjemreise etter midnatt (KLM/AF har dagsfly)" : "Hjemrejse efter midnat (KLM/AF har dagsfly)"}
+              🌙 {language === "no" ? "Hjemreise etter midnatt (OK - KLM/AF pga dagsfly på utreisen)" : "Hjemrejse efter midnat (OK - KLM/AF pga dagsfly på udrejsen)"}
             </Badge>
           )}
         </div>

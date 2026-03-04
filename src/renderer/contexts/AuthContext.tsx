@@ -1,6 +1,6 @@
 import React, { createContext, useContext, useState, useEffect, ReactNode } from "react";
-import { PublicClientApplication, AccountInfo, InteractionRequiredAuthError } from "@azure/msal-browser";
-import { msalConfig, loginRequest } from "@/config/msalConfig";
+import { PublicClientApplication, AccountInfo, InteractionRequiredAuthError, Configuration } from "@azure/msal-browser";
+import { msalConfig as baseMsalConfig, loginRequest } from "@/config/msalConfig";
 import { getUserBaseFolder, getActiveLanguage, isAdmin, SupportedLanguage } from "@/config/userConfig";
 
 interface AuthContextType {
@@ -23,8 +23,16 @@ interface AuthContextType {
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
-// Initialize MSAL instance
-let msalInstance: PublicClientApplication | null = null;
+// Use localStorage so the Microsoft session persists across restarts
+const msalConfigWithStorage: Configuration = {
+  ...baseMsalConfig,
+  cache: {
+    cacheLocation: "localStorage",
+    storeAuthStateInCookie: false,
+  },
+};
+
+const msalInstance = new PublicClientApplication(msalConfigWithStorage);
 
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [isAuthenticated, setIsAuthenticated] = useState(false);
@@ -38,52 +46,73 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const userLanguage = getActiveLanguage(userEmail);
   const userFolder = getUserBaseFolder(userEmail, userLanguage);
 
-  // Check if running in iframe (Lovable preview)
+  // Check if running in iframe
   const isInIframe = typeof window !== 'undefined' && window.self !== window.top;
 
-  // Demo login for testing (works in iframe)
-  const loginAsDemo = (email: string = "info@tanzaniatours.no") => {
+  function applyAccount(acc: AccountInfo) {
+    msalInstance.setActiveAccount(acc);
+    setAccount(acc);
+    setIsAuthenticated(true);
+  }
+
+  // Fallback demo login (kept for offline/dev use)
+  const loginAsDemo = (email: string = "info@tanzaniatours.dk") => {
     const name = email.split("@")[0];
-    setAccount({
-      homeAccountId: "demo-user",
+    const fakeAccount = {
+      homeAccountId: `demo-${email}`,
       environment: "demo",
       tenantId: "demo",
       username: email,
-      localAccountId: "demo",
+      localAccountId: `demo-${email}`,
       name: name.charAt(0).toUpperCase() + name.slice(1),
-    } as AccountInfo);
+    } as AccountInfo;
+    setAccount(fakeAccount);
     setIsAuthenticated(true);
-    // Lagre valgt bruker i localStorage
     localStorage.setItem("selectedUserEmail", email);
   };
 
   useEffect(() => {
     async function initMsal() {
-      // Skip MSAL initialization - we use simple user selection instead
-      // MSAL is only needed for OneDrive access, not for basic login
-      
-      // Auto-login med sist valgte bruker fra localStorage
-      const savedEmail = localStorage.getItem("selectedUserEmail");
-      if (savedEmail) {
-        loginAsDemo(savedEmail);
+      try {
+        await msalInstance.initialize();
+
+        // Handle redirect response (if any)
+        await msalInstance.handleRedirectPromise();
+
+        // Check for an already-cached account
+        const accounts = msalInstance.getAllAccounts();
+        if (accounts.length > 0) {
+          applyAccount(accounts[0]);
+          setIsLoading(false);
+          return;
+        }
+
+        // No cached account — try Windows/Azure silent SSO
+        try {
+          const response = await msalInstance.ssoSilent({ scopes: loginRequest.scopes });
+          applyAccount(response.account);
+        } catch {
+          // Silent SSO failed — user will need to click "Logg inn"
+          console.log("Silent SSO not available — manual login required");
+        }
+      } catch (err) {
+        console.error("MSAL init error:", err);
+      } finally {
+        setIsLoading(false);
       }
-      // Ikke logg inn automatisk hvis ingen bruker er lagret - la brukeren velge
-      setIsLoading(false);
     }
 
     initMsal();
   }, []);
 
   const login = async () => {
-    if (!msalInstance) return;
-
     try {
       setError(null);
       const response = await msalInstance.loginPopup(loginRequest);
       if (response.account) {
-        msalInstance.setActiveAccount(response.account);
-        setAccount(response.account);
-        setIsAuthenticated(true);
+        applyAccount(response.account);
+        // Clear any old demo email
+        localStorage.removeItem("selectedUserEmail");
       }
     } catch (err: any) {
       console.error("Login error:", err);
@@ -92,23 +121,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   };
 
   const logout = async () => {
-    // Demo mode - just clear state
-    if (!msalInstance || isInIframe) {
-      setAccount(null);
-      setIsAuthenticated(false);
-      // Fjern lagret bruker fra localStorage
-      localStorage.removeItem("selectedUserEmail");
-      return;
-    }
-
     try {
-      await msalInstance.logoutPopup({ account: account });
-      setAccount(null);
-      setIsAuthenticated(false);
-      localStorage.removeItem("selectedUserEmail");
-    } catch (err: any) {
-      console.error("Logout error:", err);
-      // Still clear local state even if popup fails
+      await msalInstance.logoutPopup({ account: account ?? undefined });
+    } catch (err) {
+      console.warn("Logout popup failed, clearing locally:", err);
+    } finally {
       setAccount(null);
       setIsAuthenticated(false);
       localStorage.removeItem("selectedUserEmail");
@@ -116,24 +133,18 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   };
 
   const getAccessToken = async (): Promise<string> => {
-    if (!msalInstance || !account) {
-      throw new Error("Ikke innlogget");
-    }
+    if (!account) throw new Error("Ikke innlogget");
 
     try {
       const response = await msalInstance.acquireTokenSilent({
         ...loginRequest,
-        account: account,
+        account,
       });
       return response.accessToken;
     } catch (error) {
       if (error instanceof InteractionRequiredAuthError) {
-        // Token expired, need interactive login
         const popupResponse = await msalInstance.acquireTokenPopup(loginRequest);
-        if (popupResponse.account) {
-          msalInstance.setActiveAccount(popupResponse.account);
-          setAccount(popupResponse.account);
-        }
+        if (popupResponse.account) applyAccount(popupResponse.account);
         return popupResponse.accessToken;
       }
       throw error;

@@ -61,13 +61,13 @@ export default function Index() {
             </nav>
 
             <div className="tt-header-right">
-              <UserMenu />
               <div className="tt-lang-below">
                 <LanguageToggle
                   language={language}
                   onLanguageChange={setLanguage}
                 />
               </div>
+              <UserMenu />
             </div>
           </div>
         </header>

@@ -42,11 +42,10 @@
 
 .tt-header-right {
   display: flex;
-  flex-direction: column;
+  flex-direction: row;
   align-items: center;
   margin-left: auto;
-  min-width: 120px;
-  gap: 8px;
+  gap: 12px;
 }
 
 .tt-lang-below {

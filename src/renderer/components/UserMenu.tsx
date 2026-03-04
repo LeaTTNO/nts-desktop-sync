@@ -1,6 +1,5 @@
 import React from "react";
 import { useAuth } from "@/contexts/AuthContext";
-import { userFolders } from "@/config/userConfig";
 import { version } from "../../../package.json";
 import { Button } from "@/components/ui/button";
 import {
@@ -14,7 +13,7 @@ import {
 import { User, LogIn, LogOut } from "lucide-react";
 
 export default function UserMenu() {
-  const { isAuthenticated, isLoading, isInIframe, userName, userEmail, userFolder, login, loginAsDemo, logout } = useAuth();
+  const { isAuthenticated, isLoading, userName, userEmail, userFolder, login, logout } = useAuth();
 
   if (isLoading) {
     return (
@@ -23,52 +22,17 @@ export default function UserMenu() {
   }
 
   if (!isAuthenticated) {
-    // Group users by language
-    const noUsers = userFolders.filter(u => u.language === "no");
-    const dkUsers = userFolders.filter(u => u.language === "da");
-
-    const getUserDisplayName = (email: string) => {
-      const name = email.split("@")[0];
-      return name.charAt(0).toUpperCase() + name.slice(1);
-    };
-
     return (
-      <DropdownMenu>
-        <DropdownMenuTrigger asChild>
-          <Button
-            variant="ghost"
-            size="sm"
-            className="text-white gap-2 px-6 py-2.5 rounded-full border border-white/80 bg-white/25 hover:bg-white/40 backdrop-blur transition-all font-semibold"
-            style={{ fontFamily: '"Montserrat", sans-serif', fontSize: '13px', fontWeight: 600 }}
-          >
-            <LogIn className="h-4 w-4" />
-            <span className="hidden sm:inline">Logg inn</span>
-          </Button>
-        </DropdownMenuTrigger>
-        <DropdownMenuContent align="end" className="bg-background min-w-[200px] max-h-[400px] overflow-y-auto">
-          <DropdownMenuLabel>🇳🇴 Norge</DropdownMenuLabel>
-          {noUsers.map(user => (
-            <DropdownMenuItem 
-              key={user.email} 
-              onClick={() => loginAsDemo(user.email)} 
-              className="cursor-pointer"
-            >
-              {getUserDisplayName(user.email)}
-            </DropdownMenuItem>
-          ))}
-          <DropdownMenuSeparator />
-          <DropdownMenuLabel>🇩🇰 Danmark</DropdownMenuLabel>
-          {dkUsers.map(user => (
-            <DropdownMenuItem 
-              key={user.email} 
-              onClick={() => loginAsDemo(user.email)} 
-              className="cursor-pointer"
-            >
-              {getUserDisplayName(user.email)}
-            </DropdownMenuItem>
-          ))}
-        </DropdownMenuContent>
-      </DropdownMenu>
+      <Button
+        variant="ghost"
+        size="sm"
+        className="text-white gap-2 px-6 py-2.5 rounded-full border border-white/80 bg-white/25 hover:bg-white/40 backdrop-blur transition-all font-semibold"
+        style={{ fontFamily: '"Montserrat", sans-serif', fontSize: '13px', fontWeight: 600 }}
+        onClick={login}
+      >
+        <LogIn className="h-4 w-4" />
+        <span className="hidden sm:inline">Logg inn med Microsoft</span>
+      </Button>
     );
   }
 

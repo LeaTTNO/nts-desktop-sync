@@ -50,6 +50,7 @@ import {
   FileDown,
   RotateCcw,
   Info,
+  AlertTriangle,
   ChevronDown,
 } from "lucide-react";
 
@@ -2583,21 +2584,31 @@ function saveToPowerPointSingle(flight: ProcessedFlight, title: string) {
                   <Label htmlFor="dateInterval" className="cursor-pointer whitespace-nowrap">
                     {t.dateInterval}:
                   </Label>
-                  <Popover>
-                    <PopoverTrigger asChild>
-                      <button className="text-muted-foreground hover:text-foreground transition-colors">
-                        <Info className="h-4 w-4" />
-                      </button>
-                    </PopoverTrigger>
-                    <PopoverContent className="w-80">
-                      <div className="flex gap-2">
-                        <Info className="h-5 w-5 text-blue-500 flex-shrink-0 mt-0.5" />
-                        <p className="text-sm text-muted-foreground">
-                          {t.dateIntervalInfo}
-                        </p>
-                      </div>
-                    </PopoverContent>
-                  </Popover>
+                  <TooltipProvider delayDuration={0}>
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <button className="text-amber-500 hover:text-amber-600 transition-colors">
+                          <AlertTriangle className="h-4 w-4" />
+                        </button>
+                      </TooltipTrigger>
+                      <TooltipContent side="top" className="w-80 p-3">
+                        <div className="flex gap-2">
+                          <AlertTriangle className="h-5 w-5 text-amber-500 flex-shrink-0 mt-0.5" />
+                          <div className="text-sm space-y-1">
+                            <p className="font-semibold text-amber-500">
+                              {language === 'da' ? 'OBS: Kan tage lang tid!' : 'OBS: Kan ta lang tid!'}
+                            </p>
+                            <p className="text-muted-foreground">
+                              {language === 'da'
+                                ? <span>Søger på <strong className="text-foreground">ALLE</strong> datoer i perioden med valgt antal nætter. Bruger samme kriterier som &apos;Bedste og billigste&apos;. Viser det bedste og billigste alternativ og andre datoer med lignende pris (±600 kr).</span>
+                                : <span>Søker på <strong className="text-foreground">ALLE</strong> datoer i perioden med valgt antall netter. Bruker samme kriterier som &apos;Beste og billigste&apos;. Viser det beste og billigste alternativet og andre datoer med lignende pris (±600 kr).</span>
+                              }
+                            </p>
+                          </div>
+                        </div>
+                      </TooltipContent>
+                    </Tooltip>
+                  </TooltipProvider>
                 </div>
                 
                 {/* Airport route reminder when interval is enabled */}

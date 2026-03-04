@@ -753,20 +753,31 @@ async function injectFlightTable(buffer, segments, passengers, outboundSegmentCo
   ];
   const extraRow = `<a:tr h="300000">${extraRowCells.map(c => makeCell(c, { bg: extraRowBg, fontColor: '2C2C2C', font: 'PT Sans', sz: '800', bold: false, algn: 'ctr', bottomBorder: true })).join('')}</a:tr>`;
 
-  const dataRowsArr = segments.map((seg, i) => {
-    const bg = i % 2 === 0 ? 'F2F2F2' : 'D9D9D9';
-    const cells = [
-      seg.date || '',
-      expandAirport(seg.from),
-      expandAirport(seg.to),
-      seg.time || '',
-      expandAirline(seg.airline),
-    ];
-    return `<a:tr h="300000">${cells.map(c => makeCell(c, { bg, fontColor: '2C2C2C', font: 'PT Sans', sz: '800', bold: false, algn: 'ctr', bottomBorder: true })).join('')}</a:tr>`;
-  });
+  // Bygg dataradene med korrekt vekslende farge.
+  // Rader ETTER den ekstra raden (inbound) er forskjøvet +1 i endelig posisjon,
+  // så de må få fargen basert på sin globale indeks (ikke den opprinnelige segmentindeksen).
+  const dataRowsArr = [];
 
-  // Sett inn den ekstra raden mellom outbound og inbound (eller sist)
-  dataRowsArr.splice(insertAt, 0, extraRow);
+  // Outbound-segmenter (indeks 0 .. insertAt-1) — globalt indeks = i
+  for (let i = 0; i < insertAt && i < segments.length; i++) {
+    const bg = i % 2 === 0 ? 'F2F2F2' : 'D9D9D9';
+    const seg = segments[i];
+    const cells = [seg.date || '', expandAirport(seg.from), expandAirport(seg.to), seg.time || '', expandAirline(seg.airline)];
+    dataRowsArr.push(`<a:tr h="300000">${cells.map(c => makeCell(c, { bg, fontColor: '2C2C2C', font: 'PT Sans', sz: '800', bold: false, algn: 'ctr', bottomBorder: true })).join('')}</a:tr>`);
+  }
+
+  // Ekstra rad (Arusha → Zanzibar) — globalt indeks = insertAt
+  dataRowsArr.push(extraRow);
+
+  // Inbound-segmenter (indeks insertAt .. end) — globalt indeks = i + 1 (forskjøvet av ekstra rad)
+  for (let i = insertAt; i < segments.length; i++) {
+    const globalIdx = i + 1;
+    const bg = globalIdx % 2 === 0 ? 'F2F2F2' : 'D9D9D9';
+    const seg = segments[i];
+    const cells = [seg.date || '', expandAirport(seg.from), expandAirport(seg.to), seg.time || '', expandAirline(seg.airline)];
+    dataRowsArr.push(`<a:tr h="300000">${cells.map(c => makeCell(c, { bg, fontColor: '2C2C2C', font: 'PT Sans', sz: '800', bold: false, algn: 'ctr', bottomBorder: true })).join('')}</a:tr>`);
+  }
+
   const dataRows = dataRowsArr.join('');
 
   // Høyde: 3 header-rader à 320000 + datarader à 300000 (inkl. den ekstra raden)
