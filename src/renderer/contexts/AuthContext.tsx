@@ -72,59 +72,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   };
 
   useEffect(() => {
-    async function initMsal() {
-      try {
-        await msalInstance.initialize();
-        await msalInstance.handleRedirectPromise();
-
-        // 1) MSAL already has a cached account (from previous login) → use it
-        const accounts = msalInstance.getAllAccounts();
-        if (accounts.length > 0) {
-          applyAccount(accounts[0]);
-          setIsLoading(false);
-          return;
-        }
-
-        // 2) Try ssoSilent with each known email as loginHint.
-        //    The one that matches the logged-in Microsoft account on this PC will succeed.
-        for (const user of userFolders) {
-          try {
-            const response = await msalInstance.ssoSilent({
-              scopes: loginRequest.scopes,
-              loginHint: user.email,
-            });
-            applyAccount(response.account);
-            localStorage.setItem("selectedUserEmail", response.account.username);
-            setIsLoading(false);
-            return;
-          } catch {
-            // This email is not logged in on this PC — try next
-          }
-        }
-
-        // 3) Fallback: restore identity from saved email (after first-time popup login)
-        const savedEmail = localStorage.getItem("selectedUserEmail");
-        if (savedEmail) {
-          const name = savedEmail.split("@")[0];
-          setAccount({
-            homeAccountId: `restored-${savedEmail}`,
-            environment: "login.microsoftonline.com",
-            tenantId: "restored",
-            username: savedEmail,
-            localAccountId: `restored-${savedEmail}`,
-            name: name.charAt(0).toUpperCase() + name.slice(1),
-          } as AccountInfo);
-          setIsAuthenticated(true);
-        }
-        // 4) Nothing found → show "Logg inn med Microsoft" button
-      } catch (err) {
-        console.error("MSAL init error:", err);
-      } finally {
-        setIsLoading(false);
-      }
+    // Restore last selected user from localStorage — no MSAL needed for identity
+    const savedEmail = localStorage.getItem("selectedUserEmail");
+    if (savedEmail) {
+      loginAsDemo(savedEmail);
     }
-
-    initMsal();
+    setIsLoading(false);
   }, []);
 
   const login = async () => {
