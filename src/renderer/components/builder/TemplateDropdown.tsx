@@ -97,7 +97,72 @@ export default function TemplateDropdown({
         return { key: hotelKey, label, id: hotelKey };
       });
   }
-  function getNestedItems(catName: string, hotel: string): NestedItem[] {
+  // Extract combo name (everything before the first digit)
+  // "Jambiani + Mizingani 4 + 1 nætter" → "Jambiani + Mizingani"
+  function getComboName(templateName: string): string {
+    const match = templateName.match(/^(.+?)\s+\d/);
+    return match ? match[1].trim() : templateName;
+  }
+
+  // Extract Stone Town hotel (last word after final " + " in combo name)
+  // "Jambiani + Mizingani" → "mizingani"
+  function getStoneTownHotelKey(comboName: string): string {
+    const parts = comboName.split(/\s*\+\s*/);
+    return parts[parts.length - 1].trim().toLowerCase();
+  }
+
+  // ---- 3-LEVEL helpers for "Zanzibar & Stone Town" category ----
+
+  // Level 1: unique Stone Town hotels, label = "Strandhotel + {Name}"
+  function getThreeLevelCategories(catName: string): NestedCategory[] {
+    const templates = getTemplatesByCategoryName(catName)
+      .filter(t => t.visibleInBuilder && !selectedTemplateIds.includes(t.id));
+    const seen = new Set<string>();
+    const result: NestedCategory[] = [];
+    templates.forEach(t => {
+      const combo = getComboName(t.name);
+      const stKey = getStoneTownHotelKey(combo);
+      if (!seen.has(stKey)) {
+        seen.add(stKey);
+        const stLabel = combo.split(/\s*\+\s*/).pop()!.trim();
+        result.push({ key: stKey, label: `Strandhotel + ${stLabel}`, id: stKey });
+      }
+    });
+    return result.sort((a, b) => a.label.localeCompare(b.label));
+  }
+
+  // Level 2: unique combo names for a given Stone Town hotel key
+  function getSubCategoriesForStoneTown(catName: string, stoneKey: string): NestedCategory[] {
+    const templates = getTemplatesByCategoryName(catName)
+      .filter(t => t.visibleInBuilder && !selectedTemplateIds.includes(t.id));
+    const seen = new Set<string>();
+    const result: NestedCategory[] = [];
+    templates.forEach(t => {
+      const combo = getComboName(t.name);
+      if (getStoneTownHotelKey(combo) === stoneKey && !seen.has(combo.toLowerCase())) {
+        seen.add(combo.toLowerCase());
+        result.push({ key: combo.toLowerCase(), label: combo, id: combo.toLowerCase() });
+      }
+    });
+    return result.sort((a, b) => a.label.localeCompare(b.label));
+  }
+
+  // Level 3: all night variants for a given combo key
+  function getItemsForCombo(catName: string, comboKey: string): NestedItem[] {
+    const templates = getTemplatesByCategoryName(catName)
+      .filter(t => t.visibleInBuilder && !selectedTemplateIds.includes(t.id))
+      .filter(t => getComboName(t.name).toLowerCase() === comboKey);
+    // Sort by total nights
+    templates.sort((a, b) => {
+      const numA = parseInt(a.name.match(/\d+/)?.[0] || '0', 10);
+      const numB = parseInt(b.name.match(/\d+/)?.[0] || '0', 10);
+      return numA - numB;
+    });
+    return templates.map(t => ({ id: t.id, label: t.name }));
+  }
+
+  // Combo categories (zanzibar_hotel_2 = "Zanzibar & Stone Town") use 3-level
+  const COMBO_CATEGORY_NORMALIZED = normalizeHotelName("Zanzibar & Stone Town");
     let templates = getTemplatesByCategoryName(catName)
       .filter((t) => t.visibleInBuilder && !selectedTemplateIds.includes(t.id));
     templates = templates.filter(t => {
@@ -124,6 +189,7 @@ export default function TemplateDropdown({
         const normalizedCatName = normalizeHotelName(cat.name);
         if (zanzibarCategories.includes(normalizedCatName)) {
           // Bruk NestedDropdown for Zanzibar-hotell
+          const isComboCategory = normalizeHotelName(cat.name) === COMBO_CATEGORY_NORMALIZED;
           return (
             <React.Fragment key={cat.id}>
               <Button
@@ -139,14 +205,20 @@ export default function TemplateDropdown({
                 open={!!nestedOpenMap[cat.name]}
                 onOpenChange={open => setNestedOpenMap(map => ({ ...map, [cat.name]: open }))}
                 anchorRef={{ current: nestedAnchorRefs.current[cat.name] }}
-                categories={getNestedCategories(cat.name)}
+                categories={isComboCategory
+                  ? getThreeLevelCategories(cat.name)
+                  : getNestedCategories(cat.name)}
                 getItemsForCategory={(hotelKey) => getNestedItems(cat.name, hotelKey)}
                 onSelectItem={(item) => {
                   setSelectedId(item.id);
                   setNestedOpenMap(map => ({ ...map, [cat.name]: false }));
                   onInclude(item.id);
                 }}
-                title={`Velg hotell og antall netter`}
+                title={isComboCategory ? "Velg Stone Town-hotell og kombinasjon" : "Velg hotell og antall netter"}
+                {...(isComboCategory ? {
+                  getSubCategories: (stoneKey) => getSubCategoriesForStoneTown(cat.name, stoneKey),
+                  getItemsForSubCategory: (_stoneKey, comboKey) => getItemsForCombo(cat.name, comboKey),
+                } : {})}
               />
             </React.Fragment>
           );

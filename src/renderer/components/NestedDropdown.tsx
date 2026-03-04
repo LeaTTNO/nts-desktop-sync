@@ -24,6 +24,9 @@ type NestedDropdownProps = {
   onSelectItem: (item: NestedItem, categoryKey: string) => void;
   initialCategoryKey?: string | null;
   title?: string;
+  // 3-level support (optional)
+  getSubCategories?: (categoryKey: string) => NestedCategory[];
+  getItemsForSubCategory?: (categoryKey: string, subKey: string) => NestedItem[];
 };
 
 export const NestedDropdown: React.FC<NestedDropdownProps> = ({
@@ -35,10 +38,14 @@ export const NestedDropdown: React.FC<NestedDropdownProps> = ({
   onSelectItem,
   initialCategoryKey = null,
   title,
+  getSubCategories,
+  getItemsForSubCategory,
 }) => {
   const [selectedKey, setSelectedKey] = useState<string | null>(initialCategoryKey);
+  const [selectedSubKey, setSelectedSubKey] = useState<string | null>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const [pos, setPos] = useState<{ top: number; left: number; width: number }>({ top: 0, left: 0, width: 240 });
+  const isThreeLevel = !!getSubCategories && !!getItemsForSubCategory;
 
   useEffect(() => {
     if (!open) return;
@@ -60,6 +67,10 @@ export const NestedDropdown: React.FC<NestedDropdownProps> = ({
   useEffect(() => {
     if (open && !selectedKey && categories.length > 0) {
       setSelectedKey(categories[0].key);
+      setSelectedSubKey(null);
+    }
+    if (!open) {
+      setSelectedSubKey(null);
     }
   }, [open, selectedKey, categories]);
 
@@ -82,14 +93,33 @@ export const NestedDropdown: React.FC<NestedDropdownProps> = ({
     return () => document.removeEventListener("pointerdown", onDocPointerDown);
   }, [open, onOpenChange, anchorRef]);
 
-  const items = useMemo(() => (selectedKey ? getItemsForCategory(selectedKey) : []), [selectedKey, getItemsForCategory]);
+  const subCategories = useMemo(() =>
+    (isThreeLevel && selectedKey) ? getSubCategories!(selectedKey) : [],
+    [isThreeLevel, selectedKey, getSubCategories]
+  );
+
+  // Auto-select first sub-category when level-1 changes
+  useEffect(() => {
+    if (isThreeLevel && subCategories.length > 0) {
+      setSelectedSubKey(subCategories[0].key);
+    }
+  }, [isThreeLevel, subCategories]);
+
+  const items = useMemo(() => {
+    if (isThreeLevel) {
+      return (selectedKey && selectedSubKey)
+        ? getItemsForSubCategory!(selectedKey, selectedSubKey)
+        : [];
+    }
+    return selectedKey ? getItemsForCategory(selectedKey) : [];
+  }, [isThreeLevel, selectedKey, selectedSubKey, getItemsForCategory, getItemsForSubCategory]);
 
   if (!open) return null;
 
   return createPortal(
     <div
       ref={containerRef}
-      style={{ position: "absolute", top: pos.top, left: pos.left, zIndex: 1000, minWidth: Math.max(280, pos.width) }}
+      style={{ position: "absolute", top: pos.top, left: pos.left, zIndex: 1000, minWidth: Math.max(isThreeLevel ? 620 : 280, pos.width) }}
       onPointerDown={(e) => e.stopPropagation()}
     >
       <div className="rounded border bg-popover text-popover-foreground shadow-md">
@@ -105,12 +135,12 @@ export const NestedDropdown: React.FC<NestedDropdownProps> = ({
             ✕
           </button>
         </div>
-        <div className="grid grid-cols-2 gap-0">
-          <div className="max-h-80 overflow-auto p-2 min-w-[180px]">
+        <div className={`grid gap-0 ${isThreeLevel ? "grid-cols-3" : "grid-cols-2"}`}>
+          {/* Level 1: Stone Town hotel OR regular hotel */}
+          <div className="max-h-80 overflow-auto p-2 min-w-[180px] border-r">
             {categories.map((c) => {
               const [editing, setEditing] = useState(false);
               const [editValue, setEditValue] = useState(c.label);
-              // Wire up renaming to zustand store if c has id
               const handleRename = (newName: string) => {
                 if (c.id && window.useUserCategoryStore) {
                   window.useUserCategoryStore.getState().updateCategory(c.id, newName);
@@ -126,6 +156,7 @@ export const NestedDropdown: React.FC<NestedDropdownProps> = ({
                       e.preventDefault();
                       e.stopPropagation();
                       setSelectedKey(c.key);
+                      setSelectedSubKey(null);
                     }
                   }}
                 >
@@ -155,24 +186,51 @@ export const NestedDropdown: React.FC<NestedDropdownProps> = ({
                   ) : (
                     <>
                       <span className="flex-1">{c.label}</span>
-                      <button
-                        className="ml-2 text-xs text-muted-foreground hover:text-primary"
-                        title="Endre navn"
-                        onPointerDown={e => {
-                          e.preventDefault();
-                          e.stopPropagation();
-                          setEditing(true);
-                        }}
-                        style={{ background: "none", border: "none", cursor: "pointer" }}
-                      >
-                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4 12.5-12.5z"/></svg>
-                      </button>
+                      {!isThreeLevel && (
+                        <button
+                          className="ml-2 text-xs text-muted-foreground hover:text-primary"
+                          title="Endre navn"
+                          onPointerDown={e => {
+                            e.preventDefault();
+                            e.stopPropagation();
+                            setEditing(true);
+                          }}
+                          style={{ background: "none", border: "none", cursor: "pointer" }}
+                        >
+                          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4 12.5-12.5z"/></svg>
+                        </button>
+                      )}
                     </>
                   )}
                 </div>
               );
             })}
           </div>
+
+          {/* Level 2: Beach hotel combos (only in 3-level mode) */}
+          {isThreeLevel && (
+            <div className="max-h-80 overflow-auto p-2 min-w-[200px] border-r">
+              {subCategories.length === 0 ? (
+                <div className="text-sm text-muted-foreground px-2 py-1">Ingen kombinasjoner</div>
+              ) : (
+                subCategories.map((sc) => (
+                  <div
+                    key={sc.key}
+                    className={`px-2 py-1 rounded cursor-pointer hover:bg-muted-foreground/5 ${selectedSubKey === sc.key ? "bg-accent" : ""}`}
+                    onPointerDown={(e) => {
+                      e.preventDefault();
+                      e.stopPropagation();
+                      setSelectedSubKey(sc.key);
+                    }}
+                  >
+                    {sc.label}
+                  </div>
+                ))
+              )}
+            </div>
+          )}
+
+          {/* Level 3 (or Level 2 in 2-level mode): Items */}
           <div className="max-h-80 overflow-auto p-2 min-w-[220px]">
             {items.length === 0 ? (
               <div className="text-sm text-muted-foreground px-2 py-1">Ingen filer</div>
