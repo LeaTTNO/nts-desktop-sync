@@ -116,13 +116,20 @@ export default function TravelProgramBuilder({ language = 'no' }: TravelProgramB
 
     // Fallback: søk på kategorinavn (dekker filer lastet opp uten categoryId)
     if (result.length === 0) {
-      result = getTemplatesByCategoryName(baseCategory.name);
+      // Prøv begge språknavn som fallback
+      const noName = `${userPrefix.charAt(0).toUpperCase() + userPrefix.slice(1)} - Reiseprogram & Tilbud`;
+      const daName = `${userPrefix.charAt(0).toUpperCase() + userPrefix.slice(1)} - Rejseprogram & Tilbud`;
+      result = getTemplatesByCategoryName(noName).concat(getTemplatesByCategoryName(daName));
     }
+    
+    // Filtrer på aktivt språk
+    result = result.filter(t => t.language === userLanguage);
     
     console.log('📦 Found templates:', result.length, result.map(t => ({
       name: t.name,
       category: t.category,
       categoryId: t.categoryId,
+      language: t.language,
       visibleInBuilder: t.visibleInBuilder
     })));
     

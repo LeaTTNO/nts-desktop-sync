@@ -2,7 +2,7 @@ import React, { useState, useEffect } from "react";
 import { useTemplateStore } from "@/store/useTemplateStore";
 import { useUserCategoryStore } from "@/store/useUserCategoryStore";
 import { useAuth } from "@/contexts/AuthContext";
-import { getUploadableCategories, getUserPersonalCategory, getAllUserBaseCategories, getCategoryNameForLanguage } from "@/config/templateCategories";
+import { getUploadableCategories, getUserPersonalCategory, getAllUserBaseCategories, getUserBaseCategory, getCategoryNameForLanguage } from "@/config/templateCategories";
 import { getUserPrefix } from "@/config/userConfig";
 import { saveTemplate, deleteTemplateFromStorage, clearAllTemplates, type TemplateEntry } from "@/services/templateStorage";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -194,6 +194,19 @@ export default function TemplateLibrary() {
     loadFromDB();
   }, [loadFromDB]);
 
+  // 🌐 Auto-sync når språk endres (NO ↔ DK) – henter filer fra korrekt OneDrive-mappe
+  const isFirstRender = React.useRef(true);
+  useEffect(() => {
+    if (isFirstRender.current) {
+      isFirstRender.current = false;
+      return; // Ikke synk ved første render – DB lastes allerede ovenfor
+    }
+    // Språk har endret seg – synk fra riktig OneDrive-mappe (NTS NO eller NTS DK)
+    console.log(`🌐 Språk endret til ${userLanguage} – starter auto-sync fra OneDrive`);
+    handleSyncNow();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [userLanguage]);
+
   // Synkroniser innebygd kategori-synlighet fra store ved oppstart
   useEffect(() => {
     const uploadable = getUploadableCategories();
@@ -208,7 +221,22 @@ export default function TemplateLibrary() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [userCategories.length]);
 
-  // 🔄 Auto-sync listener - triggered daily at 08:00 by main process
+  // � Startup-sync: synk automatisk ved oppstart hvis appen ikke var åpen kl. 08:00
+  useEffect(() => {
+    const today = new Date().toDateString();
+    const lastSyncDate = localStorage.getItem('onedrive-last-sync-date');
+    if (lastSyncDate !== today) {
+      console.log(`🚀 Startup-sync: siste synk var ${lastSyncDate ?? 'aldri'} – synkroniserer nå`);
+      // Liten forsinkelse så appen er ferdig å laste før sync starter
+      const timer = setTimeout(() => {
+        handleSyncNow();
+      }, 3000);
+      return () => clearTimeout(timer);
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []); // Kjør kun én gang ved oppstart
+
+  // �🔄 Auto-sync listener - triggered daily at 08:00 by main process
   useEffect(() => {
     if (!window.electron?.on) return;
 
@@ -234,8 +262,12 @@ export default function TemplateLibrary() {
   // Get uploadable categories
   const uploadableCategories = getUploadableCategories();
 
-  // Get base categories for all users (kun for admin)
-  const baseCategories = userIsAdmin ? getAllUserBaseCategories(userLanguage) : [];
+  // Get base categories:
+  // - Admin sees ALL users' base categories
+  // - Regular user sees ONLY their own base category
+  const baseCategories = userIsAdmin
+    ? getAllUserBaseCategories(userLanguage)
+    : (userPrefix ? [getUserBaseCategory(userPrefix, userLanguage)] : []);
 
   // Helper function to get category name: 1) admin-override, 2) aktivt språk, 3) norsk default
   const getCategoryDisplayName = (catId: string, defaultName: string): string => {
@@ -370,8 +402,10 @@ export default function TemplateLibrary() {
             language: userLanguage, // 🌐 Skiller NO og DK maler
           });
           
-          // If admin: Register file in OneDrive manifest (file already exists in OneDrive folder)
-          if (userIsAdmin) {
+          // If admin AND not a personal category: Register file in OneDrive manifest
+          // Personal categories (user_*_personal) are always local-only, never synced
+          const isPersonalCategory = categoryId.startsWith('user_') && categoryId.endsWith('_personal');
+          if (userIsAdmin && !isPersonalCategory) {
             try {
               // @ts-ignore - Electron IPC
               const result = await window.electron.invoke("onedrive:upload-template", {
@@ -442,126 +476,167 @@ export default function TemplateLibrary() {
     await handleSyncNow();
   }
 
+  // Synkroniser filer for ETT språk fra OneDrive → IndexedDB
+  // Returnerer { successCount, errorCount }
+  async function syncLanguage(lang: 'no' | 'da'): Promise<{ successCount: number; errorCount: number }> {
+    // @ts-ignore - Electron IPC
+    const result = await window.electron.invoke("onedrive:sync-now", { language: lang });
+
+    if (!result.success) {
+      console.warn(`⚠️ Sync feilet for ${lang.toUpperCase()}: ${result.error}`);
+      return { successCount: 0, errorCount: 0 };
+    }
+
+    const { files } = result;
+    console.log(`📁 ${lang.toUpperCase()}: ${files.length} filer i manifest`);
+
+    // --- Inkrementell synk: bruk tidsstempel for å hoppe over uendrede filer ---
+    const lastSyncKey = `onedrive-last-sync-ts-${lang}`;
+    const lastSyncTs = localStorage.getItem(lastSyncKey);
+    const lastSyncDate = lastSyncTs ? new Date(lastSyncTs) : null;
+    console.log(`🕐 ${lang.toUpperCase()}: siste synk ${lastSyncDate?.toLocaleString() ?? 'aldri'}`);
+
+    // Regn ut forventet ID for hver manifestfil
+    const getExpectedId = (f: { categoryId?: string; category?: string; name: string }) => {
+      const safeCatKey = (f.categoryId || f.category || 'uncategorized').replace(/[^a-zA-Z0-9_-]/g, '_');
+      return `onedrive-${lang}-${safeCatKey}-${f.name}`;
+    };
+
+    if (files.length === 0) {
+      localStorage.setItem(lastSyncKey, new Date().toISOString());
+      return { successCount: 0, errorCount: 0 };
+    }
+
+    // Slett maler som er fjernet fra OneDrive (finnes i DB men ikke i manifest)
+    const manifestIds = new Set(files.map(getExpectedId));
+    const removedFromOneDrive = templates.filter(
+      t => t.id.startsWith(`onedrive-${lang}-`) && !manifestIds.has(t.id)
+    );
+    for (const old of removedFromOneDrive) {
+      await deleteTemplateFromStorage(old.id);
+      console.log(`🗑️ Slettet (fjernet fra OneDrive): ${old.id}`);
+    }
+
+    // Filtrer til kun filer som er nye/oppdaterte siden siste synk, eller mangler i DB
+    const filesToDownload = files.filter(f => {
+      const expectedId = getExpectedId(f);
+      const alreadyInDB = templates.some(t => t.id === expectedId);
+      const isNewOrUpdated = !lastSyncDate || (f.uploadedAt && new Date(f.uploadedAt) > lastSyncDate);
+      return isNewOrUpdated || !alreadyInDB;
+    });
+
+    console.log(`⬇️ ${lang.toUpperCase()}: ${filesToDownload.length} av ${files.length} filer trenger nedlasting`);
+
+    if (filesToDownload.length === 0) {
+      localStorage.setItem(lastSyncKey, new Date().toISOString());
+      return { successCount: 0, errorCount: 0 };
+    }
+
+    let successCount = 0;
+    let errorCount = 0;
+
+    for (let i = 0; i < filesToDownload.length; i++) {
+      const file = filesToDownload[i];
+      try {
+        toast.info(`[${lang.toUpperCase()}] Laster fil ${i + 1} av ${filesToDownload.length}: ${file.name}`);
+
+        // @ts-ignore - Electron IPC
+        const fileResult = await window.electron.invoke("onedrive:get-file", {
+          language: lang,
+          relPath: file.relPath,
+        });
+
+        if (!fileResult.success) {
+          console.error(`❌ Kunne ikke hente: ${file.name}`, fileResult.error);
+          errorCount++;
+          continue;
+        }
+
+        const binaryString = atob(fileResult.data);
+        const bytes = new Uint8Array(binaryString.length);
+        for (let j = 0; j < binaryString.length; j++) {
+          bytes[j] = binaryString.charCodeAt(j);
+        }
+        const arrayBuffer = bytes.buffer;
+
+        const safeCatKey = (file.categoryId || file.category || 'uncategorized')
+          .replace(/[^a-zA-Z0-9_-]/g, '_');
+        const newId = `onedrive-${lang}-${safeCatKey}-${file.name}`;
+
+        // Finn duplikater i gamle ID-formater
+        const duplicates = templates.filter(t =>
+          t.fileName === file.name &&
+          t.id !== newId &&
+          (t.categoryId === file.categoryId ||
+           t.category === (file.category || 'onedrive-sync') ||
+           t.id === `onedrive-${file.name}` ||
+           t.id === `onedrive-${safeCatKey}-${file.name}`)
+        );
+
+        const template: TemplateEntry = {
+          id: newId,
+          name: file.name.replace(/\.pptx?$/i, ''),
+          category: file.category || 'onedrive-sync',
+          categoryId: file.categoryId,
+          language: lang, // 🌐 NO eller DK
+          order: file.order || 999,
+          visibleInBuilder: true,
+          blob: arrayBuffer,
+          fileName: file.name,
+          createdAt: Date.now(),
+        };
+
+        await saveTemplate(template);
+        for (const dup of duplicates) {
+          await deleteTemplateFromStorage(dup.id);
+          console.log(`🗑️ Fjernet duplikat: ${dup.id}`);
+        }
+        successCount++;
+        console.log(`✅ Lagret [${lang.toUpperCase()}]: ${file.name} (${file.category})`);
+      } catch (error) {
+        console.error(`❌ Feil ved lagring av ${file.name}:`, error);
+        errorCount++;
+      }
+    }
+
+    // Lagre tidsstempel for denne synken – brukes til inkrementell synk neste gang
+    localStorage.setItem(lastSyncKey, new Date().toISOString());
+    return { successCount, errorCount };
+  }
+
   async function handleSyncNow() {
     setIsSyncing(true);
     try {
-      console.log("🔄 Starting OneDrive sync (local filesystem)...");
-      console.log("📁 User language:", userLanguage);
-      toast.info("Synkroniserer fra OneDrive-mappe...");
-      
-      // Call main process to read files from local OneDrive folder
-      // @ts-ignore - Electron IPC
-      const result = await window.electron.invoke("onedrive:sync-now", { language: userLanguage });
-      
-      if (!result.success) {
-        toast.error(result.error || "Kunne ikke synkronisere");
-        setIsSyncing(false);
-        return;
-      }
-      
-      const { files, count } = result;
-      console.log(`📁 Received ${count} files from OneDrive`);
-      
-      if (count === 0) {
-        toast.info("Ingen PowerPoint-filer funnet i OneDrive");
-        setIsSyncing(false);
-        return;
-      }
-      
-      toast.info(`Lagrer ${count} fil${count > 1 ? 'er' : ''}...`);
+      console.log("🔄 Starting OneDrive sync – NO + DK...");
+      toast.info("Synkroniserer NO og DK fra OneDrive...");
 
-      // Slett ALLE onedrive-maler uansett språk – frisk start ved hver synk
-      // Sikrer at ingen NO-filer henger igjen hos DK-bruker og vice versa
-      const allOnedriveMaler = templates.filter(t => t.id.startsWith('onedrive-'));
-      for (const old of allOnedriveMaler) {
-        await deleteTemplateFromStorage(old.id);
-        console.log(`🧹 Slettet gammel onedrive-mal: ${old.id}`);
-      }
+      // Synk begge språk i sekvens
+      const [resNo, resDk] = await Promise.all([
+        syncLanguage('no'),
+        syncLanguage('da'),
+      ]);
 
-      // Save each file to IndexedDB – henter én fil av gangen for å unngå minnekrasj
-      let successCount = 0;
-      let errorCount = 0;
-      
-      for (let i = 0; i < files.length; i++) {
-        const file = files[i];
-        try {
-          toast.info(`Laster fil ${i + 1} av ${count}: ${file.name}`);
+      const totalSuccess = resNo.successCount + resDk.successCount;
+      const totalErrors = resNo.errorCount + resDk.errorCount;
 
-          // Hent binærdata for én fil av gangen via IPC
-          // @ts-ignore - Electron IPC
-          const fileResult = await window.electron.invoke("onedrive:get-file", {
-            language: userLanguage,
-            relPath: file.relPath,
-          });
-
-          if (!fileResult.success) {
-            console.error(`❌ Could not fetch file data: ${file.name}`, fileResult.error);
-            errorCount++;
-            continue;
-          }
-
-          // Convert base64 back to ArrayBuffer
-          const binaryString = atob(fileResult.data);
-          const bytes = new Uint8Array(binaryString.length);
-          for (let j = 0; j < binaryString.length; j++) {
-            bytes[j] = binaryString.charCodeAt(j);
-          }
-          const arrayBuffer = bytes.buffer;
-          
-          // Create template entry using category from manifest
-          // ID inkluderer language + categoryId for å unngå kollisjon mellom NO/DK og ulike kategorier
-          const safeCatKey = (file.categoryId || file.category || 'uncategorized')
-            .replace(/[^a-zA-Z0-9_-]/g, '_');
-          const newId = `onedrive-${userLanguage}-${safeCatKey}-${file.name}`;
-          
-          // Dedup: slett alle gamle entries med samme filnavn + kategori (uansett ID-format)
-          const duplicates = templates.filter(t =>
-            t.fileName === file.name &&
-            t.id !== newId &&
-            (t.categoryId === file.categoryId ||
-             t.category === (file.category || 'onedrive-sync') ||
-             t.id === `onedrive-${file.name}` ||
-             t.id === `onedrive-${safeCatKey}-${file.name}`) // gammelt ID-format uten language
-          );
-          for (const dup of duplicates) {
-            await deleteTemplateFromStorage(dup.id);
-            console.log(`🗑️ Removed duplicate: ${dup.id}`);
-          }
-
-          const template: TemplateEntry = {
-            id: newId,
-            name: file.name.replace(/\.pptx?$/i, ''),
-            category: file.category || 'onedrive-sync',
-            categoryId: file.categoryId,
-            language: userLanguage, // 🆕 Skiller NO og DK maler
-            order: file.order || 999,
-            visibleInBuilder: true,
-            blob: arrayBuffer,
-            fileName: file.name,
-            createdAt: Date.now(),
-          };
-          
-          await saveTemplate(template);
-          successCount++;
-          console.log(`✅ Saved: ${file.name} (category: ${file.category})`);
-        } catch (error) {
-          console.error(`❌ Failed to save ${file.name}:`, error);
-          errorCount++;
-        }
-      }
-      
       // Reload UI
       await loadFromDB();
-      
+
       // Show result
-      if (successCount > 0) {
-        toast.success(`✅ Synkronisert ${successCount} mal${successCount > 1 ? 'er' : ''} fra OneDrive`);
+      if (totalSuccess > 0) {
+        const noPart = resNo.successCount > 0 ? `${resNo.successCount} NO-mal${resNo.successCount !== 1 ? 'er' : ''}` : null;
+        const dkPart = resDk.successCount > 0 ? `${resDk.successCount} DK-mal${resDk.successCount !== 1 ? 'er' : ''}` : null;
+        toast.success(`✅ Synkronisert ${[noPart, dkPart].filter(Boolean).join(' + ')}`);
+      } else {
+        toast.info("✅ Alt er oppdatert – ingen nye filer siden siste synk");
       }
-      if (errorCount > 0) {
-        toast.error(`⚠️ ${errorCount} feil under synkronisering`);
+      if (totalErrors > 0) {
+        toast.error(`⚠️ ${totalErrors} feil under synkronisering`);
       }
-      
-      console.log(`🎉 Sync complete: ${successCount} success, ${errorCount} errors`);
+
+      // Lagre dato for siste vellykkede synk (brukes til startup-synk)
+      localStorage.setItem('onedrive-last-sync-date', new Date().toDateString());
+      console.log(`🎉 Sync complete: ${totalSuccess} success, ${totalErrors} errors`);
       
     } catch (error) {
       console.error("❌ Sync error:", error);

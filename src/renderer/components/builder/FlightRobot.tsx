@@ -1190,6 +1190,41 @@ export default function FlightRobot() {
   function handleReset() {
     clearFlights();
     resetFlightStore();
+
+    // IATA-koder – tilbake til default
+    setDeparture(language === "da" ? "CPH" : "OSL");
+    setReturnTo(language === "da" ? "CPH" : "OSL");
+    setDestination("JRO");
+    setReturnFrom("ZNZ");
+
+    // Datoer
+    setDepartureDate(undefined);
+    setReturnDate(undefined);
+    setDepartureDateInput("");
+    setReturnDateInput("");
+
+    // Passasjerer
+    setPassengers("1");
+    setChildren("0");
+
+    // Nattfly-filter
+    setAllowNightFlights(false);
+    setNightFlightStart("00:00");
+    setNightFlightEnd("05:30");
+
+    // Tilvalg: fleksible datoer
+    setFlexibleDates(false);
+    setFlexibleNights(1);
+
+    // Tilvalg: ekstra netter
+    setAddNights(false);
+    setAddNightsCount(1);
+    setRemoveNights(false);
+    setRemoveNightsCount(1);
+
+    // Tilvalg: foretrukket flyselskap
+    setUsePreferredAirline(false);
+    setSelectedAirlines([]);
     setHasPreferredAirlineResults(false);
     setPreferredAirlineResults({
       bestAndCheapest: null,
@@ -1200,6 +1235,19 @@ export default function FlightRobot() {
       removeNights: null,
       dateInterval: null,
     });
+
+    // Tilvalg: dato-intervall
+    setUseDateInterval(false);
+    setEarliestDeparture(undefined);
+    setLatestDeparture(undefined);
+    setEarliestDateInput("");
+    setLatestDateInput("");
+    setIntervalNights(12);
+    setIntervalAlternatives([]);
+    setShowIntervalAlternatives(false);
+
+    // Feilmelding
+    setError(null);
   }
 
   // Helper function to check if flight includes preferred airline

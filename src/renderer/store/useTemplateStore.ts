@@ -13,6 +13,17 @@ import {
 // Re-export TemplateEntry type
 export type { TemplateEntry };
 
+// All known user prefixes – used for user base category ID resolution
+const USER_PREFIXES = ["lea", "gordon", "jakob", "camilla", "sofia", "lars", "info", "lennie"];
+
+// Build name→categoryId map for user base categories (both NO and DK names)
+const userBaseCategoryNames: Record<string, string> = {};
+USER_PREFIXES.forEach(prefix => {
+  const capitalized = prefix.charAt(0).toUpperCase() + prefix.slice(1);
+  userBaseCategoryNames[`${capitalized} - Reiseprogram & Tilbud`] = `base_${prefix}`;
+  userBaseCategoryNames[`${capitalized} - Rejseprogram & Tilbud`] = `base_${prefix}`;
+});
+
 export type Category = {
   id: string;
   name: string;
@@ -199,12 +210,19 @@ export const useTemplateStore = create<Store>((set, get) => ({
 
   getTemplatesByCategoryId: (catId) => {
     // Alle gyldige kategori-IDer (for å unngå kryssforurensning i fallback)
-    const allKnownIds = new Set(defaultCategories.map(c => c.id));
+    const allKnownIds = new Set([
+      ...defaultCategories.map(c => c.id),
+      ...USER_PREFIXES.map(p => `base_${p}`),
+    ]);
 
     // Norsk og dansk visningsnavn for ønsket kategori
     const category = defaultCategories.find(c => c.id === catId);
     const danishName = categoryNamesDanish[catId];
-    const validNames = [category?.name, danishName].filter(Boolean) as string[];
+    // Also resolve user base category display names (e.g., base_sofia → "Sofia - Reiseprogram & Tilbud")
+    const userBaseNames = Object.entries(userBaseCategoryNames)
+      .filter(([, id]) => id === catId)
+      .map(([name]) => name);
+    const validNames = [category?.name, danishName, ...userBaseNames].filter(Boolean) as string[];
 
     return get().templates.filter(t => {
       // 1. Direkte treff på categoryId → alltid med
