@@ -1,7 +1,7 @@
 import React, { createContext, useContext, useState, useEffect, ReactNode } from "react";
 import { PublicClientApplication, AccountInfo, InteractionRequiredAuthError, Configuration } from "@azure/msal-browser";
 import { msalConfig as baseMsalConfig, loginRequest } from "@/config/msalConfig";
-import { getUserBaseFolder, getActiveLanguage, isAdmin, SupportedLanguage } from "@/config/userConfig";
+import { getUserBaseFolder, getActiveLanguage, isAdmin, SupportedLanguage, userFolders } from "@/config/userConfig";
 
 interface AuthContextType {
   isAuthenticated: boolean;
@@ -75,11 +75,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     async function initMsal() {
       try {
         await msalInstance.initialize();
-
-        // Handle redirect response (if any)
         await msalInstance.handleRedirectPromise();
 
-        // Check for an already-cached account
+        // 1) MSAL already has a cached account (from previous login) → use it
         const accounts = msalInstance.getAllAccounts();
         if (accounts.length > 0) {
           applyAccount(accounts[0]);
@@ -87,14 +85,38 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           return;
         }
 
-        // No cached account — try Windows/Azure silent SSO
-        try {
-          const response = await msalInstance.ssoSilent({ scopes: loginRequest.scopes });
-          applyAccount(response.account);
-        } catch {
-          // Silent SSO failed — user will need to click "Logg inn"
-          console.log("Silent SSO not available — manual login required");
+        // 2) Try ssoSilent with each known email as loginHint.
+        //    The one that matches the logged-in Microsoft account on this PC will succeed.
+        for (const user of userFolders) {
+          try {
+            const response = await msalInstance.ssoSilent({
+              scopes: loginRequest.scopes,
+              loginHint: user.email,
+            });
+            applyAccount(response.account);
+            localStorage.setItem("selectedUserEmail", response.account.username);
+            setIsLoading(false);
+            return;
+          } catch {
+            // This email is not logged in on this PC — try next
+          }
         }
+
+        // 3) Fallback: restore identity from saved email (after first-time popup login)
+        const savedEmail = localStorage.getItem("selectedUserEmail");
+        if (savedEmail) {
+          const name = savedEmail.split("@")[0];
+          setAccount({
+            homeAccountId: `restored-${savedEmail}`,
+            environment: "login.microsoftonline.com",
+            tenantId: "restored",
+            username: savedEmail,
+            localAccountId: `restored-${savedEmail}`,
+            name: name.charAt(0).toUpperCase() + name.slice(1),
+          } as AccountInfo);
+          setIsAuthenticated(true);
+        }
+        // 4) Nothing found → show "Logg inn med Microsoft" button
       } catch (err) {
         console.error("MSAL init error:", err);
       } finally {
@@ -111,8 +133,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       const response = await msalInstance.loginPopup(loginRequest);
       if (response.account) {
         applyAccount(response.account);
-        // Clear any old demo email
-        localStorage.removeItem("selectedUserEmail");
+        // Save for next startup auto-login
+        localStorage.setItem("selectedUserEmail", response.account.username);
       }
     } catch (err: any) {
       console.error("Login error:", err);
