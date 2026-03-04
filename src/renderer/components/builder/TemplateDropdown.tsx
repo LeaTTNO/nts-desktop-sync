@@ -163,6 +163,8 @@ export default function TemplateDropdown({
 
   // Combo categories (zanzibar_hotel_2 = "Zanzibar & Stone Town") use 3-level
   const COMBO_CATEGORY_NORMALIZED = normalizeHotelName("Zanzibar & Stone Town");
+
+  function getNestedItems(catName: string, hotel: string): NestedItem[] {
     let templates = getTemplatesByCategoryName(catName)
       .filter((t) => t.visibleInBuilder && !selectedTemplateIds.includes(t.id));
     templates = templates.filter(t => {
