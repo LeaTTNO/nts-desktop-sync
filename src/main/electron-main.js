@@ -1007,25 +1007,6 @@ ipcMain.handle("ppt:generate", async (_, payload) => {
     const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'pptgen-'));
     debugLog(`Step 1 OK: tmpDir=${tmpDir}`);
 
-    // Step 1b: Show save dialog with default filename + language-specific OneDrive folder
-    const homeDir = os.homedir();
-    const noDefaultDir = path.join(homeDir, 'OneDrive - TANZANIA TOURS', 'TANZANIA TOURS - Dokumenter', 'NO TANZANIA TOURS', 'Kunder NORGE');
-    const daDefaultDir = path.join(homeDir, 'OneDrive - TANZANIA TOURS', 'TANZANIA TOURS - Dokumenter', 'DK TANZANIA TOURS', 'Salg', 'Kunder DK');
-    const defaultDir = language === 'da' ? daDefaultDir : noDefaultDir;
-    const defaultDirExists = fs.existsSync(defaultDir);
-    const baseFileName = (baseTemplateName || (language === 'da' ? 'Rejseprogram og Tilbud' : 'Reiseprogram og Tilbud')).replace(/\.pptx?$/i, '');
-    const defaultSavePath = path.join(defaultDirExists ? defaultDir : homeDir, baseFileName + '.pptx');
-    debugLog(`Step 1b: Save dialog – defaultDir=${defaultDir} (exists=${defaultDirExists}), file=${baseFileName}.pptx`);
-    const mainWin = BrowserWindow.getAllWindows()[0];
-    const saveResult = await dialog.showSaveDialog(mainWin, {
-      title: language === 'da' ? 'Gem PowerPoint som...' : 'Lagre PowerPoint som...',
-      defaultPath: defaultSavePath,
-      filters: [{ name: 'PowerPoint-fil', extensions: ['pptx'] }],
-      buttonLabel: language === 'da' ? 'Gem' : 'Lagre',
-    });
-    const savePath = (!saveResult.canceled && saveResult.filePath) ? saveResult.filePath : '';
-    debugLog(`Step 1b OK: savePath=${savePath || '(ingen – dialogen ble avbrutt)'}`);
-
     debugLog('Step 2: Preparing base file...');
     const fileName = language === 'da' ? 'Rejseprogram og Tilbud.pptx' : 'Reiseprogram og Tilbud.pptx';
     const basePath = path.join(tmpDir, fileName);
@@ -1153,8 +1134,7 @@ ipcMain.handle("ppt:generate", async (_, payload) => {
                 basePath,
                 departureDate || "",
                 flightDataPath,  // Send file path instead of JSON string
-                language || "no",
-                savePath         // Final save path (empty = no auto-save)
+                language || "no"
               ],
               (postError, postStdout, postStderr) => {
                 // ALWAYS log all output for debugging
@@ -1493,14 +1473,22 @@ function initAutoUpdate() {
   if (isDev) return;
 
   autoUpdater.logger = console;
-  autoUpdater.checkForUpdatesAndNotify();
+  autoUpdater.autoDownload = true;
+  autoUpdater.autoInstallOnAppQuit = false;
+  autoUpdater.checkForUpdates();
 
   autoUpdater.on("checking-for-update", () => {
     console.log("🔍 Checking for updates...");
   });
 
-  autoUpdater.on("update-available", () => {
-    console.log("⬇️ Update available");
+  autoUpdater.on("update-available", (info) => {
+    console.log("⬇️ Update available:", info.version);
+    if (mainWindow) {
+      mainWindow.webContents.send("update-status", {
+        type: "available",
+        version: info.version
+      });
+    }
   });
 
   autoUpdater.on("update-not-available", () => {
@@ -1509,11 +1497,37 @@ function initAutoUpdate() {
 
   autoUpdater.on("error", (err) => {
     console.error("❌ Auto-update error:", err);
+    if (mainWindow) {
+      mainWindow.webContents.send("update-status", {
+        type: "error",
+        message: err?.message || String(err)
+      });
+    }
   });
 
-  autoUpdater.on("update-downloaded", () => {
-    console.log("🚀 Update downloaded – restarting");
-    autoUpdater.quitAndInstall();
+  autoUpdater.on("download-progress", (progress) => {
+    console.log(`⬇️ Download: ${Math.round(progress.percent)}%`);
+  });
+
+  autoUpdater.on("update-downloaded", (info) => {
+    console.log("🚀 Update downloaded:", info.version);
+    if (mainWindow) {
+      dialog.showMessageBox(mainWindow, {
+        type: "info",
+        title: "Oppdatering klar",
+        message: `Versjon ${info.version} er lastet ned.`,
+        detail: "Vil du starte appen på nytt nå for å installere oppdateringen?",
+        buttons: ["Ja, start på nytt", "Ikke nå"],
+        defaultId: 0,
+        cancelId: 1,
+      }).then(({ response }) => {
+        if (response === 0) {
+          autoUpdater.quitAndInstall(false, true);
+        }
+      });
+    } else {
+      autoUpdater.quitAndInstall(false, true);
+    }
   });
 }
 
