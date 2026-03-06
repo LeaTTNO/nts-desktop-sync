@@ -840,10 +840,17 @@ function categorizeFlights(
   let bestQuality: ProcessedFlight | null = null;
   let bestAndCheapestIsBest = false;
 
+  // BESTE sorteres alltid etter KORTESTE reisetid (ikke pris) – vi vil ha det raskeste flyet
+  const durationSortedFlights = [...validFlights].sort((a, b) => {
+    const aDur = a.combinedDurationMinutes || a.totalDurationMinutes;
+    const bDur = b.combinedDurationMinutes || b.totalDurationMinutes;
+    return aDur - bDur;
+  });
+
   if (bestAndCheapest) {
-    // Finn et fly med KORTERE maks-ben enn B&B, innenfor BESTE-kriteriet
-    // (gjelder uansett om B&B selv er innenfor BESTE-grensen)
-    bestQuality = sortedFlights.find(f =>
+    // Finn det KORTESTE flyet (kombinert reisetid) som er innenfor BESTE-kriteriet
+    // OG kortere enn B&B – uansett om B&B selv er innenfor grensen
+    bestQuality = durationSortedFlights.find(f =>
       f.totalDurationMinutes <= MAX_BEST_QUALITY_HOURS * 60 &&
       f.totalDurationMinutes < baseDuration &&
       !f.hasNightFlight &&
@@ -857,7 +864,7 @@ function categorizeFlights(
       : `ℹ️ BESTE: B&B (${Math.round(baseDuration/60*10)/10}t) er allerede korteste – viser ikke BESTE separat`
     );
   } else {
-    bestQuality = sortedFlights.find(f =>
+    bestQuality = durationSortedFlights.find(f =>
       f.totalDurationMinutes <= MAX_BEST_QUALITY_HOURS * 60 &&
       !f.hasNightFlight &&
       f.travelClass !== 'BUSINESS' &&
