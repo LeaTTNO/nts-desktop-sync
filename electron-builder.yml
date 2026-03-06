@@ -44,3 +44,4 @@ publish:
   provider: github
   owner: LeaTTNO
   repo: nts-desktop-sync
+  releaseType: release
