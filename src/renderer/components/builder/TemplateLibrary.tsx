@@ -194,18 +194,7 @@ export default function TemplateLibrary() {
     loadFromDB();
   }, [loadFromDB]);
 
-  // 🌐 Auto-sync når språk endres (NO ↔ DK) – henter filer fra korrekt OneDrive-mappe
-  const isFirstRender = React.useRef(true);
-  useEffect(() => {
-    if (isFirstRender.current) {
-      isFirstRender.current = false;
-      return; // Ikke synk ved første render – DB lastes allerede ovenfor
-    }
-    // Språk har endret seg – synk fra riktig OneDrive-mappe (NTS NO eller NTS DK)
-    console.log(`🌐 Språk endret til ${userLanguage} – starter auto-sync fra OneDrive`);
-    handleSyncNow();
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [userLanguage]);
+  // Auto-sync ved språkendring er deaktivert – OneDrive synkes kun ved oppstart og manuelt
 
   // Synkroniser innebygd kategori-synlighet fra store ved oppstart
   useEffect(() => {

@@ -27,21 +27,13 @@ export function LanguageProvider({ children }: { children: ReactNode }) {
   }, [account?.username]);
 
   const setLanguage = (lang: SupportedLanguage) => {
-    // Only reset if language is actually changing
     if (lang !== language) {
-      // Reset flight search results
+      // Tøm inntastet data: flysøk, valgte maler, utreisedato osv.
       useFlightStore.getState().resetAll();
-      
-      // Reset template builder (selected slides and flight slides)
       useTemplateStore.getState().clearSelectedTemplates();
       useTemplateStore.getState().removeFlightSlides();
-      
-      // Clear saved flights from localStorage (used by FlightInfoContext)
       localStorage.removeItem('saved-flights');
-      
-      console.log(`🔄 Language changed from ${language} to ${lang} - all data reset`);
     }
-    
     setManualLanguage(lang);
     setLanguageState(lang);
   };

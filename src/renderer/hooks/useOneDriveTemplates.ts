@@ -240,7 +240,7 @@ export const useOneDriveTemplates = (language: 'no' | 'da') => {
     }
   }, [language, isAuthenticated]);
 
-  // Auto-sync scheduler: sync kl 08:00 hver dag
+  // Auto-sync scheduler: full scan kl 08:00 (oppdaterer også delta-link for dagen)
   useEffect(() => {
     if (!isAuthenticated) return;
 
@@ -266,53 +266,7 @@ export const useOneDriveTemplates = (language: 'no' | 'da') => {
       const timeoutId = setTimeout(async () => {
         console.log('🔄 Running scheduled OneDrive sync at 08:00...');
         try {
-          await loadTemplatesForLanguage(language);
-          toast.success('OneDrive synkronisert automatisk kl 08:00');
-        } catch (error) {
-          console.error('Auto-sync failed:', error);
-          toast.error('Automatisk synkronisering feilet');
-        }
-        
-        // Schedule next sync
-        scheduleNextSync();
-      }, timeUntil8AM);
-      
-      return timeoutId;
-    };
-
-    const timeoutId = scheduleNextSync();
-    
-    return () => {
-      clearTimeout(timeoutId);
-    };
-  }, [isAuthenticated, language]);
-
-  // Auto-sync scheduler: sync kl 08:00 hver dag
-  useEffect(() => {
-    if (!isAuthenticated) return;
-
-    // Load last sync time from localStorage
-    const storedLastSync = localStorage.getItem('onedrive-last-sync');
-    if (storedLastSync) {
-      setLastSyncTime(storedLastSync);
-    }
-
-    const scheduleNextSync = () => {
-      const now = new Date();
-      const next8AM = new Date(now);
-      next8AM.setHours(8, 0, 0, 0);
-      
-      // If 08:00 has passed today, schedule for tomorrow
-      if (next8AM <= now) {
-        next8AM.setDate(next8AM.getDate() + 1);
-      }
-      
-      const timeUntil8AM = next8AM.getTime() - now.getTime();
-      console.log(`🔄 OneDrive auto-sync scheduled for ${next8AM.toLocaleString('nb-NO')} (in ${Math.round(timeUntil8AM / 1000 / 60)} minutes)`);
-      
-      const timeoutId = setTimeout(async () => {
-        console.log('🔄 Running scheduled OneDrive sync at 08:00...');
-        try {
+          // Full scan at 08:00 — also refreshes the delta link for manual syncs during the day
           await loadTemplatesForLanguage(language);
           const syncTime = new Date().toISOString();
           localStorage.setItem('onedrive-last-sync', syncTime);
@@ -433,6 +387,18 @@ export const useOneDriveTemplates = (language: 'no' | 'da') => {
       const syncTime = new Date().toISOString();
       localStorage.setItem('onedrive-last-sync', syncTime);
       setLastSyncTime(syncTime);
+
+      // Store delta link for incremental syncs
+      try {
+        const deltaLink = await oneDriveClient.initDeltaLink(pathToUse);
+        if (deltaLink) {
+          localStorage.setItem('onedrive-delta-link', deltaLink);
+          localStorage.setItem('onedrive-delta-folder', pathToUse);
+          console.log('✅ Delta link stored for incremental syncs');
+        }
+      } catch (deltaErr) {
+        console.warn('⚠️ Could not store delta link (non-critical):', deltaErr);
+      }
       
       toast.success(`✅ Lastet ${newTemplates.length} maler for ${lang.toUpperCase()}`);
       console.log('✅ Templates loaded successfully:', newTemplates);
@@ -491,7 +457,99 @@ export const useOneDriveTemplates = (language: 'no' | 'da') => {
 
   const refreshTemplates = async () => {
     if (!isAuthenticated) return;
-    
+
+    // Check if we have a delta link for incremental sync
+    const storedDeltaLink = localStorage.getItem('onedrive-delta-link');
+
+    if (storedDeltaLink) {
+      // --- Incremental delta sync: only fetch changed/new/deleted files ---
+      try {
+        console.log('🔄 Running incremental delta sync...');
+        setIsLoading(true);
+
+        const { changed, deleted, nextDeltaLink } = await oneDriveClient.getDeltaChanges(storedDeltaLink);
+        console.log(`📊 Delta: ${changed.length} endringer, ${deleted.length} slettede`);
+
+        // Filter changed items to only .pptx/.ppt files
+        const changedPptx = changed.filter(item => {
+          if (!item.file) return false;
+          const n = item.name.toLowerCase();
+          return n.endsWith('.pptx') || n.endsWith('.ppt');
+        });
+
+        if (deleted.length === 0 && changedPptx.length === 0) {
+          const syncTime = new Date().toISOString();
+          localStorage.setItem('onedrive-last-sync', syncTime);
+          localStorage.setItem('onedrive-delta-link', nextDeltaLink);
+          setLastSyncTime(syncTime);
+          toast.success('✅ Ingen nye filer siden sist synkronisering');
+          setIsLoading(false);
+          return;
+        }
+
+        // Map changed pptx items to OneDriveTemplate objects
+        const updatedTemplates: OneDriveTemplate[] = changedPptx.map(item => {
+          const folderName = item.parentReference?.name || 'root';
+          // parentReference.path is like "/drive/root:/NTS DK/Zanzibar Hotel 1"
+          const rawPath = item.parentReference?.path || '';
+          const pathWithoutRoot = rawPath.replace(/^\/drive\/root:\/?/, '');
+          const fullPath = pathWithoutRoot ? `${pathWithoutRoot}/${item.name}` : item.name;
+
+          const categoryId = mapFolderToCategory(folderName, fullPath);
+          const category = folderName;
+
+          console.log(`  📄 [delta] ${item.name} (folder: ${folderName}) → categoryId: ${categoryId}`);
+          return {
+            id: `${categoryId}_${item.id}`,
+            name: item.name,
+            category,
+            categoryId,
+            fileId: item.id,
+            folderName,
+            fullPath,
+          };
+        });
+
+        // Merge: remove deleted + removed changed (by fileId), then add updated
+        setTemplates(prev => {
+          const deletedIds = new Set(deleted);
+          const changedFileIds = new Set(changedPptx.map(i => i.id));
+
+          // Keep existing templates that were not deleted or overwritten
+          const kept = prev.filter(t => !deletedIds.has(t.fileId) && !changedFileIds.has(t.fileId));
+          return [...kept, ...updatedTemplates];
+        });
+
+        const syncTime = new Date().toISOString();
+        localStorage.setItem('onedrive-last-sync', syncTime);
+        localStorage.setItem('onedrive-delta-link', nextDeltaLink);
+        setLastSyncTime(syncTime);
+
+        const addedCount = changedPptx.length;
+        const removedCount = deleted.length;
+        const parts: string[] = [];
+        if (addedCount) parts.push(`${addedCount} ny/endret`);
+        if (removedCount) parts.push(`${removedCount} slettet`);
+        toast.success(`✅ Synkronisert: ${parts.join(', ')} fil${addedCount + removedCount !== 1 ? 'er' : ''}`);
+        setIsLoading(false);
+        return;
+
+      } catch (deltaError: any) {
+        if (deltaError?.message === 'DELTA_EXPIRED') {
+          console.warn('⚠️ Delta token utløpt – kjører full synkronisering...');
+          localStorage.removeItem('onedrive-delta-link');
+          localStorage.removeItem('onedrive-delta-folder');
+          // Fall through to full sync below
+        } else {
+          console.error('Delta sync feilet:', deltaError);
+          toast.error('Kunne ikke synkronisere maler (delta)');
+          setIsLoading(false);
+          return;
+        }
+      }
+    }
+
+    // --- Full sync fallback (first time, or after delta expiry) ---
     try {
       // Notify main process about manual sync
       if (window.electron?.invoke) {
@@ -499,8 +557,8 @@ export const useOneDriveTemplates = (language: 'no' | 'da') => {
         await window.electron.invoke('onedrive:sync-now', { language });
       }
       
-      // Refresh templates from OneDrive
-      loadTemplatesForLanguage(language);
+      // Refresh templates from OneDrive (full scan)
+      await loadTemplatesForLanguage(language);
     } catch (error) {
       console.error('Manual sync failed:', error);
       toast.error('Kunne ikke synkronisere maler');

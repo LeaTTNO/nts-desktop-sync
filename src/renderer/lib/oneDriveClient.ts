@@ -412,6 +412,92 @@ class OneDriveClient {
     return await response.blob();
   }
 
+  /**
+   * Fetch initial delta link for a folder path.
+   * Call once after a full sync to get a baseline token for future incremental syncs.
+   */
+  async initDeltaLink(folderPath: string = ''): Promise<string> {
+    const token = await this.getAccessToken();
+
+    let url: string;
+    if (folderPath) {
+      const encodedPath = folderPath.split('/').map(encodeURIComponent).join('/');
+      url = `https://graph.microsoft.com/v1.0/me/drive/root:/${encodedPath}:/delta?$select=id,name,file,folder,deleted,parentReference,lastModifiedDateTime&$top=1`;
+    } else {
+      url = `https://graph.microsoft.com/v1.0/me/drive/root/delta?$select=id,name,file,folder,deleted,parentReference,lastModifiedDateTime&$top=1`;
+    }
+
+    // Page through to reach the final deltaLink (we don't care about items here)
+    let nextLink: string | null = url;
+    let deltaLink = '';
+
+    while (nextLink) {
+      const response = await fetch(nextLink, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (!response.ok) throw new Error(`initDeltaLink failed: ${response.statusText}`);
+      const data = await response.json();
+
+      if (data['@odata.deltaLink']) {
+        deltaLink = data['@odata.deltaLink'];
+        nextLink = null;
+      } else {
+        nextLink = data['@odata.nextLink'] || null;
+      }
+    }
+
+    return deltaLink;
+  }
+
+  /**
+   * Fetch only changed/new/deleted drive items since the last deltaLink token.
+   * Returns the changed items and a new deltaLink to use next time.
+   */
+  async getDeltaChanges(deltaLink: string): Promise<{
+    changed: any[];
+    deleted: string[];
+    nextDeltaLink: string;
+  }> {
+    const token = await this.getAccessToken();
+    const changed: any[] = [];
+    const deleted: string[] = [];
+    let nextLink: string | null = deltaLink;
+    let nextDeltaLink = '';
+
+    while (nextLink) {
+      const response = await fetch(nextLink, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+
+      if (!response.ok) {
+        // 410 Gone = delta token expired; caller should fall back to full sync
+        if (response.status === 410) {
+          throw new Error('DELTA_EXPIRED');
+        }
+        throw new Error(`getDeltaChanges failed: ${response.statusText}`);
+      }
+
+      const data = await response.json();
+
+      for (const item of data.value || []) {
+        if (item.deleted) {
+          deleted.push(item.id);
+        } else {
+          changed.push(item);
+        }
+      }
+
+      if (data['@odata.deltaLink']) {
+        nextDeltaLink = data['@odata.deltaLink'];
+        nextLink = null;
+      } else {
+        nextLink = data['@odata.nextLink'] || null;
+      }
+    }
+
+    return { changed, deleted, nextDeltaLink };
+  }
+
   async searchPowerPointFiles(folderPath: string = ''): Promise<any[]> {
     const files = await this.listFilesInFolder(folderPath);
     return files.filter(file => {
