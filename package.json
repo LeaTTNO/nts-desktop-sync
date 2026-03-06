@@ -1,6 +1,6 @@
 {
   "name": "nts-desktop-sync",
-  "version": "1.1.54",
+  "version": "1.1.55",
   "description": "NTS Desktop Sync - Tanzania Tours Desktop Application",
   "author": "Tanzania Tours",
   "private": true,
@@ -70,3 +70,4 @@
     "zustand": "^5.0.9"
   }
 }
+

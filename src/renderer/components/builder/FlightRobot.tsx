@@ -782,7 +782,7 @@ function categorizeFlights(
   
   if (validFlights.length === 0) {
     console.warn('⚠️ Ingen fly under 23 timer – viser ingenting');
-    return { bestAndCheapest: null, bestQuality: null, cheapestExtended: null };
+    return { bestAndCheapest: null, bestQuality: null, cheapestExtended: null, bestAndCheapestIsBest: false };
   }
 
   // Felles sorteringsregler for alle 3 kategorier:
@@ -808,6 +808,17 @@ function categorizeFlights(
   console.log(`🌙 Flights with night departures/arrivals: ${validFlights.filter(f => f.hasNightFlight).length}`);
   console.log(`⏱️ Flights over ${MAX_BEST_AND_CHEAPEST_HOURS}h (but under 23h): ${validFlights.filter(f => f.totalDurationMinutes > MAX_BEST_AND_CHEAPEST_HOURS * 60).length}`);
 
+  // 🔍 DIAGNOSTIKK: Vis topp 10 fly med alle relevante felt
+  console.log('🔍 TOP 10 SORTED FLIGHTS:');
+  sortedFlights.slice(0, 10).forEach((f, i) => {
+    const dur = Math.round(f.totalDurationMinutes / 60 * 10) / 10;
+    const bbOk = f.totalDurationMinutes <= MAX_BEST_AND_CHEAPEST_HOURS * 60 && !f.hasNightFlight;
+    const besteOk = f.totalDurationMinutes <= MAX_BEST_QUALITY_HOURS * 60 && !f.hasNightFlight && f.travelClass !== 'BUSINESS' && f.travelClass !== 'FIRST';
+    console.log(
+      `  [${i}] ${f.price} kr | ${dur}t | ${f.fareType} | class=${f.travelClass} | night=${f.hasNightFlight} | osloInvalid=${f.hasInvalidOsloLayover} | BB_ok=${bbOk} | BESTE_ok=${besteOk} | ${f.outbound?.airlines?.[0] || '?'}`
+    );
+  });
+
   // CATEGORY 1: BESTE OG BILLIGSTE
   // Første fly i sortedFlights som passerer ≤20t/22t + ingen nattfly
   const bestAndCheapest = (() => {
@@ -818,6 +829,10 @@ function categorizeFlights(
   })();
   const basePrice = bestAndCheapest?.price || 0;
   const baseDuration = bestAndCheapest?.totalDurationMinutes || 0;
+  console.log(bestAndCheapest
+    ? `✅ B&B valgt: ${bestAndCheapest.price} kr, ${Math.round(baseDuration/60*10)/10}t, class=${bestAndCheapest.travelClass}, ${bestAndCheapest.outbound?.airlines?.[0]}`
+    : `❌ Ingen B&B funnet (ingen fly passerer ≤${MAX_BEST_AND_CHEAPEST_HOURS}h + ingen natt)`
+  );
 
   // CATEGORY 2: BESTE
   // Første fly i sortedFlights som passerer ≤17t/19.5t + ingen nattfly + ikke Business/First
@@ -826,14 +841,25 @@ function categorizeFlights(
   let bestAndCheapestIsBest = false;
 
   if (bestAndCheapest) {
-    bestQuality = sortedFlights.find(f =>
-      f.totalDurationMinutes <= MAX_BEST_QUALITY_HOURS * 60 &&
-      !f.hasNightFlight &&
-      f.travelClass !== 'BUSINESS' &&
-      f.travelClass !== 'FIRST' &&
-      f.totalDurationMinutes < baseDuration
-    ) ?? null;
-    if (!bestQuality) bestAndCheapestIsBest = true;
+    // Hvis B&B allerede er innenfor BESTE-kriteriet (≤17t/19.5t), er B&B allerede best
+    if (baseDuration <= MAX_BEST_QUALITY_HOURS * 60) {
+      bestAndCheapestIsBest = true;
+      console.log(`ℹ️ B&B er allerede innenfor BESTE-kriteriet (${Math.round(baseDuration/60*10)/10}t ≤ ${MAX_BEST_QUALITY_HOURS}t) – viser ikke BESTE separat`);
+    } else {
+      // B&B er tregere enn BESTE-kriteriet – finn første fly som er raskere enn B&B og innenfor BESTE-kriterie
+      bestQuality = sortedFlights.find(f =>
+        f.totalDurationMinutes <= MAX_BEST_QUALITY_HOURS * 60 &&
+        !f.hasNightFlight &&
+        f.travelClass !== 'BUSINESS' &&
+        f.travelClass !== 'FIRST' &&
+        f.id !== bestAndCheapest!.id
+      ) ?? null;
+      if (!bestQuality) bestAndCheapestIsBest = true;
+      console.log(bestQuality
+        ? `✅ BESTE valgt: ${bestQuality.price} kr, ${Math.round(bestQuality.totalDurationMinutes/60*10)/10}t, class=${bestQuality.travelClass}`
+        : `ℹ️ BESTE: ingen fly funnet innenfor ≤${MAX_BEST_QUALITY_HOURS}t`
+      );
+    }
   } else {
     bestQuality = sortedFlights.find(f =>
       f.totalDurationMinutes <= MAX_BEST_QUALITY_HOURS * 60 &&
@@ -1143,6 +1169,10 @@ export default function FlightRobot() {
       dateInterval: null,
     });
     setHasPreferredAirlineResults(false);
+    setBestAndCheapestIsBest(false);
+    setSearchProgress({ current: 0, max: 0 });
+    abortController?.abort();
+    setAbortController(null);
     setError(null);
   }, [language]); // Runs when language changes
 
@@ -1234,6 +1264,16 @@ export default function FlightRobot() {
     setIntervalNights(12);
     setIntervalAlternatives([]);
     setShowIntervalAlternatives(false);
+
+    // BESTE-flagg
+    setBestAndCheapestIsBest(false);
+
+    // Søkefremgang
+    setSearchProgress({ current: 0, max: 0 });
+
+    // Avbryt evt. pågående søk
+    abortController?.abort();
+    setAbortController(null);
 
     // Feilmelding
     setError(null);
