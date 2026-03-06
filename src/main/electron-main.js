@@ -403,41 +403,30 @@ function convertFarewiseToAmadeus(farewiseData, currency = "NOK", convertPrices 
       let legDuration = "PT0H0M";
 
       if (route.totalTime && typeof route.totalTime === 'number' && route.totalTime > 0) {
-        // Primary: use route.totalTime (in minutes) — always present, timezone-independent
+        // Primary: use route.totalTime (in minutes) — includes stopovers, timezone-independent
         const totalMinutes = Math.round(route.totalTime);
         const hours = Math.floor(totalMinutes / 60);
         const minutes = totalMinutes % 60;
         legDuration = `PT${hours}H${minutes}M`;
         console.log(`✅ LEG ${legIndex} duration from route.totalTime: ${route.totalTime} min → ${legDuration}`);
+      } else if (segments.length > 0 && segments[0].departure.at && segments[segments.length - 1].arrival.at) {
+        // Fallback: timestamp diff (first departure → last arrival) — correctly includes overnight stopovers
+        // Timestamps from Farewise have explicit UTC offset (+00:00 or Z) so new Date() is accurate
+        const firstDeparture = new Date(segments[0].departure.at);
+        const lastArrival = new Date(segments[segments.length - 1].arrival.at);
+        const totalMs = lastArrival - firstDeparture;
+        const totalMinutes = Math.floor(totalMs / 60000);
+        const hours = Math.floor(totalMinutes / 60);
+        const minutes = totalMinutes % 60;
+        legDuration = `PT${hours}H${minutes}M`;
+        console.log(`✅ LEG ${legIndex} duration from timestamps (first→last): ${segments[0].departure.at} → ${segments[segments.length-1].arrival.at} = ${legDuration}`);
       } else if (route.duration && route.duration.includes(':')) {
-        // Fallback: use route.duration in "HH:MM" format
+        // Last resort: route.duration in "HH:MM" format
         const [h, m] = route.duration.split(':');
         legDuration = `PT${parseInt(h)}H${parseInt(m)}M`;
         console.log(`✅ LEG ${legIndex} duration from route.duration: ${route.duration} → ${legDuration}`);
-      } else if (leg.duration && leg.duration.includes(':')) {
-        // Fallback: use leg.duration in "HH:MM" format
-        const [h, m] = leg.duration.split(':');
-        legDuration = `PT${parseInt(h)}H${parseInt(m)}M`;
-        console.log(`✅ LEG ${legIndex} duration from leg.duration: ${leg.duration} → ${legDuration}`);
-      } else if (segments.length > 0) {
-        // Last resort: sum elapsedFlyingTime from segments (timezone-independent)
-        let totalSec = 0;
-        let missing = false;
-        for (const seg of route.segments) {
-          if (seg.elapsedFlyingTime && seg.elapsedFlyingTime.includes(':')) {
-            const [sh, sm] = seg.elapsedFlyingTime.split(':');
-            totalSec += parseInt(sh) * 60 + parseInt(sm);
-          } else {
-            missing = true;
-            break;
-          }
-        }
-        if (!missing && totalSec > 0) {
-          legDuration = `PT${Math.floor(totalSec / 60)}H${totalSec % 60}M`;
-          console.log(`⚠️ LEG ${legIndex} duration summed from segment elapsedFlyingTime: ${legDuration}`);
-        } else {
-          console.warn(`⚠️ LEG ${legIndex} no duration available, using PT0H0M`);
-        }
+      } else {
+        console.warn(`⚠️ LEG ${legIndex} no duration available, using PT0H0M`);
       }
 
       return {
