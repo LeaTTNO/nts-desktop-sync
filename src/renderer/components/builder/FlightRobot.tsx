@@ -841,25 +841,21 @@ function categorizeFlights(
   let bestAndCheapestIsBest = false;
 
   if (bestAndCheapest) {
-    // Hvis B&B allerede er innenfor BESTE-kriteriet (≤17t/19.5t), er B&B allerede best
-    if (baseDuration <= MAX_BEST_QUALITY_HOURS * 60) {
-      bestAndCheapestIsBest = true;
-      console.log(`ℹ️ B&B er allerede innenfor BESTE-kriteriet (${Math.round(baseDuration/60*10)/10}t ≤ ${MAX_BEST_QUALITY_HOURS}t) – viser ikke BESTE separat`);
-    } else {
-      // B&B er tregere enn BESTE-kriteriet – finn første fly som er raskere enn B&B og innenfor BESTE-kriterie
-      bestQuality = sortedFlights.find(f =>
-        f.totalDurationMinutes <= MAX_BEST_QUALITY_HOURS * 60 &&
-        !f.hasNightFlight &&
-        f.travelClass !== 'BUSINESS' &&
-        f.travelClass !== 'FIRST' &&
-        f.id !== bestAndCheapest!.id
-      ) ?? null;
-      if (!bestQuality) bestAndCheapestIsBest = true;
-      console.log(bestQuality
-        ? `✅ BESTE valgt: ${bestQuality.price} kr, ${Math.round(bestQuality.totalDurationMinutes/60*10)/10}t, class=${bestQuality.travelClass}`
-        : `ℹ️ BESTE: ingen fly funnet innenfor ≤${MAX_BEST_QUALITY_HOURS}t`
-      );
-    }
+    // Finn et fly med KORTERE maks-ben enn B&B, innenfor BESTE-kriteriet
+    // (gjelder uansett om B&B selv er innenfor BESTE-grensen)
+    bestQuality = sortedFlights.find(f =>
+      f.totalDurationMinutes <= MAX_BEST_QUALITY_HOURS * 60 &&
+      f.totalDurationMinutes < baseDuration &&
+      !f.hasNightFlight &&
+      f.travelClass !== 'BUSINESS' &&
+      f.travelClass !== 'FIRST' &&
+      f.id !== bestAndCheapest!.id
+    ) ?? null;
+    if (!bestQuality) bestAndCheapestIsBest = true;
+    console.log(bestQuality
+      ? `✅ BESTE valgt: ${bestQuality.price} kr, ${Math.round(bestQuality.totalDurationMinutes/60*10)/10}t (< B&B ${Math.round(baseDuration/60*10)/10}t), class=${bestQuality.travelClass}`
+      : `ℹ️ BESTE: B&B (${Math.round(baseDuration/60*10)/10}t) er allerede korteste – viser ikke BESTE separat`
+    );
   } else {
     bestQuality = sortedFlights.find(f =>
       f.totalDurationMinutes <= MAX_BEST_QUALITY_HOURS * 60 &&
