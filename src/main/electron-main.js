@@ -2,12 +2,11 @@
 // 📦 IMPORTS
 // ──────────────────────────────────────────────
 
-import { app, BrowserWindow, ipcMain, shell, screen, dialog } from "electron";
+import { app, BrowserWindow, ipcMain, shell, screen, dialog, net, session } from "electron";
 import path from "path";
 import { fileURLToPath } from "url";
 import fs from "fs";
 import os from "os";
-import fetch from "node-fetch";
 import "dotenv/config";
 import { execFile } from "child_process";
 import JSZip from "jszip";
@@ -66,59 +65,96 @@ console.log("ENV CHECK", {
 });
 
 /* --------------------------------------------------
-   � FAREWISE LOGIN
+/* --------------------------------------------------
+   🔐 FAREWISE LOGIN + PERSISTENT SESSION
+   Bruker Electrons eget net-modul med persist:farewise-XX sesjon.
+   Cookies lagres til disk i appData og gjenbrukes mellom søk og
+   mellom app-restarter — akkurat som en innlogget nettleser.
 -------------------------------------------------- */
 const FAREWISE_USERNAME = "tan6170";
 const FAREWISE_PASSWORD = "PongweBH!";
-let farewiseCookies = null;
 
-async function loginToFarewise(language = "no") {
-  const region = FAREWISE_REGIONS[language] || FAREWISE_REGIONS.no;
-  const loginUrl = language === "no" 
-    ? "https://www.farewise.no/api/accountApi/login"
-    : "https://www.farewise.dk/api/accountApi/login";
+// Holder styr på om vi allerede er innlogget per språk (for denne kjøringen)
+const farewiseLoggedIn = { no: false, dk: false };
 
-  console.log(`🔐 Logging in to Farewise (${language.toUpperCase()})...`);
-  console.log(`Login URL: ${loginUrl}`);
-  console.log(`CustomerId: ${region.customerId}, CustomerName: ${region.customerName}`);
+/**
+ * Hjelper: HTTP-forespørsel via Electrons net.request() med persistent sesjon.
+ * Sesjonen lagrer cookies til disk automatisk.
+ */
+function sessionFetch(url, options = {}, language = 'no') {
+  return new Promise((resolve, reject) => {
+    const partition = `persist:farewise-${language}`;
+    const ses = session.fromPartition(partition);
 
-  const res = await fetch(loginUrl, {
-    method: "POST",
-    headers: {
-      "Accept": "application/json, text/plain, */*",
-      "Accept-Language": "da-DK,da;q=0.9,en-US;q=0.8,en;q=0.7",
-      "Content-Type": "application/json;charset=UTF-8",
-      "Referer": language === "no" ? "https://www.farewise.no/nd/login" : "https://www.farewise.dk/nd/login",
-      "Origin": language === "no" ? "https://www.farewise.no" : "https://www.farewise.dk",
-    },
-    credentials: "include",
-    body: JSON.stringify({
-      username: FAREWISE_USERNAME,
-      password: FAREWISE_PASSWORD,
-    }),
+    const req = net.request({
+      url,
+      method: options.method || 'GET',
+      session: ses,
+      useSessionCookies: true, // Bruk og oppdater session cookies automatisk
+    });
+
+    // Sett headers
+    const headers = options.headers || {};
+    for (const [key, value] of Object.entries(headers)) {
+      req.setHeader(key, value);
+    }
+
+    req.on('response', (response) => {
+      const chunks = [];
+      response.on('data', (chunk) => chunks.push(chunk));
+      response.on('end', () => {
+        const body = Buffer.concat(chunks).toString('utf8');
+        resolve({
+          ok: response.statusCode >= 200 && response.statusCode < 300,
+          status: response.statusCode,
+          headers: response.headers,
+          text: () => Promise.resolve(body),
+          json: () => Promise.resolve(JSON.parse(body)),
+        });
+      });
+      response.on('error', reject);
+    });
+
+    req.on('error', reject);
+
+    if (options.body) {
+      req.write(options.body);
+    }
+    req.end();
   });
+}
+
+async function loginToFarewise(language = 'no') {
+  // Allerede innlogget i denne kjøringen — hopp over
+  if (farewiseLoggedIn[language]) {
+    console.log(`🔐 Farewise ${language.toUpperCase()}: bruker eksisterende sesjon (innlogget)`);
+    return;
+  }
+
+  const domain = language === 'da' ? 'dk' : 'no';
+  const loginUrl = `https://www.farewise.${domain}/api/accountApi/login`;
+  console.log(`🔐 Logger inn på Farewise ${language.toUpperCase()} (persistent sesjon)...`);
+
+  const res = await sessionFetch(loginUrl, {
+    method: 'POST',
+    headers: {
+      'Accept': 'application/json, text/plain, */*',
+      'Accept-Language': 'da-DK,da;q=0.9,en-US;q=0.8,en;q=0.7',
+      'Content-Type': 'application/json;charset=UTF-8',
+      'Referer': `https://www.farewise.${domain}/nd/login`,
+      'Origin': `https://www.farewise.${domain}`,
+      'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/144.0.0.0 Safari/537.36',
+    },
+    body: JSON.stringify({ username: FAREWISE_USERNAME, password: FAREWISE_PASSWORD }),
+  }, language);
 
   if (!res.ok) {
-    const errorText = await res.text();
-    console.error(`❌ Login failed: ${res.status}`, errorText.substring(0, 500));
-    throw new Error(`Login failed: ${res.status} - ${errorText.substring(0, 200)}`);
+    const txt = await res.text();
+    throw new Error(`Farewise innlogging feilet: ${res.status} - ${txt.substring(0, 200)}`);
   }
 
-  // Extract cookies from response
-  const setCookie = res.headers.raw()['set-cookie'];
-  if (setCookie) {
-    // Parse cookies: kun ta navn=verdi delen, ikke expires/path/etc
-    const cookiePairs = setCookie.map(cookie => {
-      const mainPart = cookie.split(';')[0]; // Ta kun "name=value" delen
-      return mainPart;
-    });
-    farewiseCookies = cookiePairs.join('; ');
-    console.log("✅ Login successful, cookies received:");
-    console.log("   Cookies:", farewiseCookies.substring(0, 200) + "...");
-  } else {
-    console.warn("⚠️ No cookies received from login!");
-  }
-
+  farewiseLoggedIn[language] = true;
+  console.log(`✅ Farewise ${language.toUpperCase()}: innlogging OK — cookies lagret i persistent sesjon`);
 }
 
 /* --------------------------------------------------
@@ -215,46 +251,33 @@ async function searchFlightsMain(params) {
     requestBody.authorizationGuid = FLIGHTROBOT_AUTH_GUID;
   }
 
-  // Bruk language-spesifikk endpoint
   const domain = language === "da" ? "dk" : "no";
   const apiUrl = `https://www.farewise.${domain}/api/recommendations/search`;
 
   console.log(`Farewise ${language.toUpperCase()} API Request:`, JSON.stringify(requestBody, null, 2));
   console.log(`Using endpoint: ${apiUrl}`);
   console.log(`CustomerId: ${region.customerId}`);
-  console.log(`Cookies being sent:`);
-  if (farewiseCookies) {
-    const cookieArray = farewiseCookies.split('; ');
-    cookieArray.forEach(cookie => {
-      const [name, value] = cookie.split('=');
-      console.log(`   ${name}: ${value ? value.substring(0, 50) + '...' : 'EMPTY'}`);
-    });
-  } else {
-    console.log('   NONE!');
-  }
 
-  const res = await fetch(apiUrl, {
-    method: "POST",
+  const res = await sessionFetch(apiUrl, {
+    method: 'POST',
     headers: {
-      "Content-Type": "application/json;charset=UTF-8",
-      "Accept": "application/json, text/plain, */*",
-      "Accept-Language": "da-DK,da;q=0.9,en-US;q=0.8,en;q=0.7",
-      "Referer": `https://www.farewise.${domain}/nd/flight/search`,
-      "Origin": `https://www.farewise.${domain}`,
-      "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/144.0.0.0 Safari/537.36",
-      "sec-ch-ua": '"Not(A:Brand";v="8", "Chromium";v="144", "Google Chrome";v="144"',
-      "sec-ch-ua-mobile": "?0",
-      "sec-ch-ua-platform": '"Windows"',
-      "sec-fetch-dest": "empty",
-      "sec-fetch-mode": "cors",
-      "sec-fetch-site": "same-origin",
-      "Cookie": farewiseCookies || "",
-      "cache-control": "no-cache",
-      "pragma": "no-cache",
+      'Content-Type': 'application/json;charset=UTF-8',
+      'Accept': 'application/json, text/plain, */*',
+      'Accept-Language': 'da-DK,da;q=0.9,en-US;q=0.8,en;q=0.7',
+      'Referer': `https://www.farewise.${domain}/nd/flight/search`,
+      'Origin': `https://www.farewise.${domain}`,
+      'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/144.0.0.0 Safari/537.36',
+      'sec-ch-ua': '"Not(A:Brand";v="8", "Chromium";v="144", "Google Chrome";v="144"',
+      'sec-ch-ua-mobile': '?0',
+      'sec-ch-ua-platform': '"Windows"',
+      'sec-fetch-dest': 'empty',
+      'sec-fetch-mode': 'cors',
+      'sec-fetch-site': 'same-origin',
+      'cache-control': 'no-cache',
+      'pragma': 'no-cache',
     },
-    credentials: "include",
     body: JSON.stringify(requestBody),
-  });
+  }, language);
 
   if (!res.ok) {
     const errorText = await res.text();
@@ -1630,4 +1653,10 @@ app.whenReady().then(() => {
     app.setAppUserModelId("com.tanzaniatours.nts");
   }
   createWindow();
+});
+
+// KRITISK: Avslutt prosessen når vinduet lukkes på Windows.
+// Uten dette fortsetter bakgrunnsprosessen å kjøre og blokkerer NSIS-installer.
+app.on("window-all-closed", () => {
+  app.quit();
 });

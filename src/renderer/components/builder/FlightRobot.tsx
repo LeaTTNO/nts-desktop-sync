@@ -109,7 +109,7 @@ interface ProcessedFlight {
   totalDurationMinutes: number; // Max single leg duration (for filtering)
   combinedDurationMinutes?: number; // Combined out+in duration (for scoring)
   hasNightFlight: boolean;
-  hasInvalidOsloLayover?: boolean; // Oslo layover < 2 hours (NO only)
+  hasInvalidOsloLayover?: boolean; // Oslo layover too short (utreise: 2t sommer/3t vinter, hjemreise: alltid 3t)
   hasKlmAfMidnightReturn?: boolean; // KLM/AF return departs 00:00-01:06 (allowed but show warning)
   searchDate?: string;
   nightsDiff?: number;
@@ -482,36 +482,55 @@ function hasProblematicNightFlight(
 }
 
 /**
- * Check if flight has Oslo layover with less than 2 hours connection time
- * Only applies to Norwegian flights (NO language)
+ * Check if flight has Oslo layover that is too short.
+ * Only applies to Norwegian flights (NO language).
+ *
+ * Rules:
+ *  - UTREISE (itinerary[0]): ≥2t i sommersesongen (1 apr – 15 okt), ≥3t i vintersesongen (16 okt – 31 mar)
+ *  - HJEMREISE (itinerary[1+]): alltid ≥3t
  */
 function hasInvalidOsloLayover(offer: FlightOffer): boolean {
-  // Check all itineraries (outbound and return)
-  for (const itinerary of offer.itineraries) {
+  for (let iIdx = 0; iIdx < offer.itineraries.length; iIdx++) {
+    const itinerary = offer.itineraries[iIdx];
+    const isInbound = iIdx > 0; // 0 = utreise, 1+ = hjemreise
     const segments = itinerary.segments;
-    
-    // Check each connection point
+
     for (let i = 0; i < segments.length - 1; i++) {
       const currentSeg = segments[i];
       const nextSeg = segments[i + 1];
-      
-      // Check if this is an Oslo connection (arrival and departure both OSL)
+
+      // Er dette en Oslo-mellomlanding?
       if (currentSeg.arrival.iataCode === 'OSL' && nextSeg.departure.iataCode === 'OSL') {
-        // Calculate layover time
         const arrivalTime = new Date(currentSeg.arrival.at);
         const departureTime = new Date(nextSeg.departure.at);
         const layoverMinutes = (departureTime.getTime() - arrivalTime.getTime()) / (1000 * 60);
-        
-        // Minimum 2 hours (120 minutes) required for Oslo
-        if (layoverMinutes < 120) {
-          console.log(`⚠️ Invalid Oslo layover: ${Math.round(layoverMinutes)} min (min 120 min required)`);
-          return true; // BLOCKED: Oslo layover too short
+
+        let minLayoverMinutes: number;
+        if (isInbound) {
+          // Hjemreise: alltid minst 3 timer
+          minLayoverMinutes = 180;
+        } else {
+          // Utreise: sesongbasert
+          // Sommer: 1 april – 15 oktober → 2 timer
+          // Vinter: 16 oktober – 31 mars → 3 timer
+          const depDate = new Date(nextSeg.departure.at);
+          const month = depDate.getUTCMonth() + 1; // 1-12
+          const day = depDate.getUTCDate();
+          const isSummer =
+            (month > 4 || (month === 4 && day >= 1)) &&
+            (month < 10 || (month === 10 && day <= 15));
+          minLayoverMinutes = isSummer ? 120 : 180;
+        }
+
+        if (layoverMinutes < minLayoverMinutes) {
+          console.log(`⚠️ Invalid Oslo layover: ${Math.round(layoverMinutes)} min (min ${minLayoverMinutes} min, ${isInbound ? 'hjemreise' : 'utreise'})`);
+          return true; // BLOKKERT: for kort mellomlanding i Oslo
         }
       }
     }
   }
-  
-  return false; // OK: No Oslo layovers or all Oslo layovers are ≥2 hours
+
+  return false; // OK: ingen Oslo-mellomlanding, eller alle er tilstrekkelig lange
 }
 
 /**
@@ -696,11 +715,38 @@ function calculateFlightScore(flight: ProcessedFlight): number {
 }
 
 /**
+ * Same sort logic as B&B: returns true if `challenger` is better than `current`.
+ * PRIORITET 1: NEGOTIATED foretrekkes hvis ≤ toleranse kr dyrere (300 DA / 400 NO)
+ * PRIORITET 2: Priser innen 300 kr → korteste kombinert reisetid vinner
+ * PRIORITET 3: Ellers → laveste pris vinner
+ */
+function isBetterBB(challenger: ProcessedFlight, current: ProcessedFlight, language: 'no' | 'da'): boolean {
+  const tol = language === 'da' ? 300 : 400;
+  const challNeg = challenger.fareType === 'NEGOTIATED';
+  const currNeg  = current.fareType  === 'NEGOTIATED';
+  // Challenger is NEGOTIATED and within tolerance → challenger wins
+  if (challNeg && !currNeg && challenger.price <= current.price + tol) return true;
+  // Current is NEGOTIATED and within tolerance → current wins (challenger loses)
+  if (!challNeg && currNeg && current.price <= challenger.price + tol) return false;
+  // Prices within 300 kr → shortest combined duration wins
+  if (Math.abs(challenger.price - current.price) <= 300) {
+    const challDur = challenger.combinedDurationMinutes || challenger.totalDurationMinutes;
+    const currDur  = current.combinedDurationMinutes  || current.totalDurationMinutes;
+    return challDur < currDur;
+  }
+  // Otherwise cheapest wins
+  return challenger.price < current.price;
+}
+
+/**
  * Filter and categorize flights according to user's exact specifications:
  * ALWAYS returns 3 main categories:
- * 1. Best and cheapest (≤21h or ≤23h, no night flights) 
- * 2. Best overall by quality (≤19h, ≤20h or ≤21h, no night flights)
- * 3. Cheapest (≤23h, NO night flights - longer time allowed but still no night departures/arrivals)
+ * 1. Beste og Billigste (≤20h OSL/HAM/CPH eller ≤22h, ingen nattfly)
+ * 2. BESTE – korteste reisetid (≤17h OSL/HAM/CPH eller ≤19.5h, ingen nattfly, kun økonomi)
+ * 3. BILLIGSTE (≤23h, ingen nattfly)
+ *
+ * HARD FILTER: Aldri fly over 23 timer
+ * HARD FILTER (NO): Oslo-mellomlanding: utreise ≥2t (1 apr–15 okt) / ≥3t (16 okt–31 mar); hjemreise alltid ≥3t
  */
 function categorizeFlights(
   flights: ProcessedFlight[], 
@@ -717,165 +763,95 @@ function categorizeFlights(
   const MAX_BEST_QUALITY_HOURS = getMaxBestQualityDurationHours(departureAirport);
   console.log(`🔍 CATEGORIZE: ${flights.length} flights - BestAndCheapest≤${MAX_BEST_AND_CHEAPEST_HOURS}h, BestQuality≤${MAX_BEST_QUALITY_HOURS}h, Extended≤23h (${departureAirport})`);
   
-  // HARD FILTER: Never show flights over 25 hours
+  // HARD FILTER: Aldri fly over 23 timer
   let validFlights = flights.filter(f =>
     f.totalDurationMinutes <= MAX_EXTENDED_DURATION_HOURS * 60
   );
 
-  // HARD FILTER (NO only): Oslo layover must be ≥ 2 hours
+  // HARD FILTER (NO only): Oslo-mellomlanding: utreise ≥2t (sommer) / ≥3t (vinter); hjemreise alltid ≥3t
   if (language === 'no') {
     const beforeOsloFilter = validFlights.length;
     validFlights = validFlights.filter(f => f.hasInvalidOsloLayover !== true);
     const removedOslo = beforeOsloFilter - validFlights.length;
     if (removedOslo > 0) {
-      console.log(`🇳🇴 Removed ${removedOslo} flights with Oslo layover < 2 hours`);
+      console.log(`🇳🇴 Removed ${removedOslo} flights with invalid Oslo layover`);
     }
   }
 
   console.log(`✅ Valid flights (≤23h): ${validFlights.length}`);
   
   if (validFlights.length === 0) {
-    console.warn('⚠️ NO flights under 25 hours - showing nothing');
+    console.warn('⚠️ Ingen fly under 23 timer – viser ingenting');
     return { bestAndCheapest: null, bestQuality: null, cheapestExtended: null };
   }
 
-  // Category 1: BESTE OG BILLIGSTE (≤21h or ≤23h depending on departure, no night flights)
-  const bestAndCheapestFlights = validFlights.filter(f =>
-    f.totalDurationMinutes <= MAX_BEST_AND_CHEAPEST_HOURS * 60 && !f.hasNightFlight
-  );
+  // Felles sorteringsregler for alle 3 kategorier:
+  //   PRIORITET 1: NEGOTIATED (pakkefare) foretrekkes hvis den koster ≤ toleranse mer
+  //   PRIORITET 2: Hvis priser innen 300 kr → korteste kombinert reisetid vinner
+  //   PRIORITET 3: Ellers → billigste vinner
+  const PACKAGE_FARE_TOLERANCE = language === 'da' ? 300 : 400;
 
-  // Category 2: BESTE – korteste totale reisetid fra samme pool som Beste og Billigste
-  // SAMME tidsbegrensning (≤20/22t, ingen nattfly) – vises KUN hvis kortere enn Beste og Billigste
-  // ALDRI Business Class eller First Class – kun økonomi
-  const bestQualityFlights = validFlights.filter(f =>
-    f.totalDurationMinutes <= MAX_BEST_AND_CHEAPEST_HOURS * 60 &&
-    !f.hasNightFlight &&
-    f.travelClass !== 'BUSINESS' &&
-    f.travelClass !== 'FIRST'
-  );
+  const sortedFlights = [...validFlights].sort((a, b) => {
+    const isANeg = a.fareType === 'NEGOTIATED';
+    const isBNeg = b.fareType === 'NEGOTIATED';
+    if (isANeg && !isBNeg && a.price <= b.price + PACKAGE_FARE_TOLERANCE) return -1;
+    if (!isANeg && isBNeg && b.price <= a.price + PACKAGE_FARE_TOLERANCE) return 1;
+    if (Math.abs(a.price - b.price) <= 300) {
+      const aDur = a.combinedDurationMinutes || a.totalDurationMinutes;
+      const bDur = b.combinedDurationMinutes || b.totalDurationMinutes;
+      return aDur - bDur;
+    }
+    return a.price - b.price;
+  });
 
-  console.log(`✅ BestAndCheapest flights (≤${MAX_BEST_AND_CHEAPEST_HOURS}h, no night): ${bestAndCheapestFlights.length}`);
-  console.log(`✅ Beste flights (no night, all durations): ${bestQualityFlights.length}`);
+  console.log(`✅ BestAndCheapest pool (≤${MAX_BEST_AND_CHEAPEST_HOURS}h, no night): ${sortedFlights.filter(f => f.totalDurationMinutes <= MAX_BEST_AND_CHEAPEST_HOURS * 60 && !f.hasNightFlight).length}`);
   console.log(`🌙 Flights with night departures/arrivals: ${validFlights.filter(f => f.hasNightFlight).length}`);
   console.log(`⏱️ Flights over ${MAX_BEST_AND_CHEAPEST_HOURS}h (but under 23h): ${validFlights.filter(f => f.totalDurationMinutes > MAX_BEST_AND_CHEAPEST_HOURS * 60).length}`);
 
   // CATEGORY 1: BESTE OG BILLIGSTE
-  // Sort: price is king. NEGOTIATED only preferred if it costs the SAME or LESS.
-  // Tolerance: up to 50 NOK/DKK more for a package fare (not 400 - that caused expensive fares to win)
-  const PACKAGE_FARE_TOLERANCE = 50;
-  
-  const scoredBestAndCheapest = bestAndCheapestFlights
-    .map(f => ({ ...f, score: calculateFlightScore(f) }))
-    .sort((a, b) => {
-      // PRIORITY 1: Prefer NEGOTIATED (package) fares at nearly same price (≤50 kr)
-      const isANegotiated = a.fareType === 'NEGOTIATED';
-      const isBNegotiated = b.fareType === 'NEGOTIATED';
-      
-      if (isANegotiated && !isBNegotiated) {
-        if (a.price <= b.price + PACKAGE_FARE_TOLERANCE) return -1;
-      }
-      if (!isANegotiated && isBNegotiated) {
-        if (b.price <= a.price + PACKAGE_FARE_TOLERANCE) return 1;
-      }
-      
-      // PRIORITY 2: If prices are within 300 kr, prioritize by combined duration
-      if (Math.abs(a.price - b.price) <= 300) {
-        const aDuration = a.combinedDurationMinutes || a.totalDurationMinutes;
-        const bDuration = b.combinedDurationMinutes || b.totalDurationMinutes;
-        return aDuration - bDuration;
-      }
-      // PRIORITY 3: Otherwise sort purely by price
-      return a.price - b.price;
-    });
-
-  // RESULT 1: BESTE OG BILLIGSTE (combines best score with lowest price)
-  // This is the BASE - BESTE should be same price or more expensive!
-  const bestAndCheapest = scoredBestAndCheapest[0] ? { ...scoredBestAndCheapest[0], isRecommended: true } : null;
+  // Første fly i sortedFlights som passerer ≤20t/22t + ingen nattfly
+  const bestAndCheapest = (() => {
+    const f = sortedFlights.find(f =>
+      f.totalDurationMinutes <= MAX_BEST_AND_CHEAPEST_HOURS * 60 && !f.hasNightFlight
+    );
+    return f ? { ...f, isRecommended: true } : null;
+  })();
   const basePrice = bestAndCheapest?.price || 0;
   const baseDuration = bestAndCheapest?.totalDurationMinutes || 0;
 
-  // CATEGORY 2: BESTE – korteste totale reisetid (≤17h/≤19.5h, ingen nattfly)
-  // Vises KUN hvis det finnes et fly med KORTERE reisetid enn Beste og Billigste.
-  // Hvis Beste og Billigste allerede er kortest, vises den ikke – men UI får flagg.
-  const qualitySorted = bestQualityFlights
-    .map(f => ({ ...f }))
-    .sort((a, b) => {
-      // PRIORITY 1: Korteste totale reisetid
-      const aDuration = a.totalDurationMinutes;
-      const bDuration = b.totalDurationMinutes;
-      if (aDuration !== bDuration) return aDuration - bDuration;
-      // PRIORITY 2: Færrest stopp som tiebreaker
-      return (a.outbound.stops + (a.inbound?.stops || 0)) - (b.outbound.stops + (b.inbound?.stops || 0));
-    });
-
+  // CATEGORY 2: BESTE
+  // Første fly i sortedFlights som passerer ≤17t/19.5t + ingen nattfly + ikke Business/First
+  // OG har kortere reisetid enn B&B
   let bestQuality: ProcessedFlight | null = null;
   let bestAndCheapestIsBest = false;
 
-  if (qualitySorted.length > 0 && bestAndCheapest) {
-    const topQuality = qualitySorted[0];
-    // Vis kun hvis strengt kortere reisetid enn Beste og Billigste
-    // OG ikke mer enn 40% dyrere (unngå at dyr business/eksklusiv rute vises)
-    const maxAllowedPrice = basePrice * 1.4;
-    if (
-      topQuality.totalDurationMinutes < baseDuration &&
-      topQuality.price <= maxAllowedPrice
-    ) {
-      bestQuality = topQuality;
-    } else if (topQuality.totalDurationMinutes >= baseDuration) {
-      // Beste og Billigste er allerede den korteste – ingen grunn til å vise Beste separat
-      bestAndCheapestIsBest = true;
-    }
-    // If topQuality is too expensive (> 40% more), skip BESTE entirely
-  } else if (qualitySorted.length > 0) {
-    // Ingen Beste og Billigste å sammenligne med – vis bare den korteste
-    bestQuality = qualitySorted[0];
+  if (bestAndCheapest) {
+    bestQuality = sortedFlights.find(f =>
+      f.totalDurationMinutes <= MAX_BEST_QUALITY_HOURS * 60 &&
+      !f.hasNightFlight &&
+      f.travelClass !== 'BUSINESS' &&
+      f.travelClass !== 'FIRST' &&
+      f.totalDurationMinutes < baseDuration
+    ) ?? null;
+    if (!bestQuality) bestAndCheapestIsBest = true;
+  } else {
+    bestQuality = sortedFlights.find(f =>
+      f.totalDurationMinutes <= MAX_BEST_QUALITY_HOURS * 60 &&
+      !f.hasNightFlight &&
+      f.travelClass !== 'BUSINESS' &&
+      f.travelClass !== 'FIRST'
+    ) ?? null;
   }
 
-  // CATEGORY 3: BILLIGSTE - Cheapest (≤23h, NO night flights)
-  // This is the CHEAPEST within extended time - allows longer duration but NO night flights!
-  // CRITICAL RULE: Can NEVER have shorter duration than "Beste og billigste" or "Beste"
-  const extendedFlights = validFlights.filter(f =>
-    f.totalDurationMinutes <= MAX_EXTENDED_DURATION_HOURS * 60 && !f.hasNightFlight
-  );
-  
-  const EXTENDED_PACKAGE_TOLERANCE = 50; // Only prefer package fare if nearly same price (≤50 kr)
-  const sortedByPrice = [...extendedFlights].sort((a, b) => {
-    // PRIORITY 1: Prefer NEGOTIATED (package) fares at nearly same price
-    const isANegotiated = a.fareType === 'NEGOTIATED';
-    const isBNegotiated = b.fareType === 'NEGOTIATED';
-    
-    if (isANegotiated && !isBNegotiated) {
-      if (a.price <= b.price + EXTENDED_PACKAGE_TOLERANCE) return -1;
-    }
-    if (!isANegotiated && isBNegotiated) {
-      if (b.price <= a.price + EXTENDED_PACKAGE_TOLERANCE) return 1;
-    }
-    
-    // PRIORITY 2: If prices are within 300 kr, prioritize by combined duration
-    if (Math.abs(a.price - b.price) <= 300) {
-      const aDuration = a.combinedDurationMinutes || a.totalDurationMinutes;
-      const bDuration = b.combinedDurationMinutes || b.totalDurationMinutes;
-      return aDuration - bDuration;
-    }
-    // PRIORITY 3: Otherwise sort by price (cheapest wins)
-    return a.price - b.price;
-  });
-  
-  // CRITICAL RULE: "Billigste" can NEVER have shorter duration than "Beste og billigste"
-  // Iterate through price-sorted list until we find a candidate that passes
-  let cheapestExtended: ProcessedFlight | null = null;
-  for (const candidate of sortedByPrice) {
-    if (!bestAndCheapest || candidate.totalDurationMinutes >= baseDuration) {
-      cheapestExtended = candidate;
-      break;
-    }
-    // Skip candidates with shorter duration than B&B
-  }
-
-  // Also: Billigste must be different from B&B (different price or route)
-  if (cheapestExtended && bestAndCheapest && cheapestExtended.id === bestAndCheapest.id) {
-    cheapestExtended = null;
-  }
+  // CATEGORY 3: BILLIGSTE (≤23t, ingen nattfly)
+  // Første fly i sortedFlights som passerer ≤23t + ingen nattfly
+  // Reisetid ≥ B&B (aldri kortere enn B&B), og ikke samme fly som B&B
+  const cheapestExtended = sortedFlights.find(f =>
+    f.totalDurationMinutes <= MAX_EXTENDED_DURATION_HOURS * 60 &&
+    !f.hasNightFlight &&
+    (!bestAndCheapest || f.totalDurationMinutes >= baseDuration) &&
+    f.id !== bestAndCheapest?.id
+  ) ?? null;
 
   return {
     bestAndCheapest,
@@ -1797,10 +1773,9 @@ function saveToPowerPointSingle(flight: ProcessedFlight, title: string) {
 
             allFlexFlights.push(...valid); // Store for preferred airline search
 
-            // Find BEST AND CHEAPEST (lowest score) across all date variations
+            // Find BEST AND CHEAPEST using same sort as B&B
             for (const flight of valid) {
-              const flightScore = calculateFlightScore(flight);
-              if (!bestFlex || flightScore < calculateFlightScore(bestFlex)) {
+              if (!bestFlex || isBetterBB(flight, bestFlex, language)) {
                 bestFlex = { ...flight, searchDate: newDepDate };
               }
             }
@@ -1875,13 +1850,12 @@ function saveToPowerPointSingle(flight: ProcessedFlight, title: string) {
 
             allAddFlights.push(...valid); // Store for preferred airline search
 
-            // Find BEST AND CHEAPEST (lowest score) across ALL night variations
+            // Find BEST AND CHEAPEST using same sort as B&B
             for (const flight of valid) {
               flight.nightsDiff = i; // Tag with number of extra nights
-              const flightScore = calculateFlightScore(flight);
-              if (!bestAdd || flightScore < calculateFlightScore(bestAdd)) {
+              if (!bestAdd || isBetterBB(flight, bestAdd, language)) {
                 bestAdd = flight;
-                console.log(`  🏆 New best add nights flight: +${i} nights, price: ${flight.price}, score: ${flightScore}`);
+                console.log(`  🏆 New best add nights flight: +${i} nights, price: ${flight.price}`);
               }
             }
           } catch (err) {
@@ -1958,13 +1932,12 @@ function saveToPowerPointSingle(flight: ProcessedFlight, title: string) {
 
             allRemoveFlights.push(...valid); // Store for preferred airline search
 
-            // Find BEST AND CHEAPEST (lowest score) across ALL night variations
+            // Find BEST AND CHEAPEST using same sort as B&B
             for (const flight of valid) {
               flight.nightsDiff = -i; // Tag with number of removed nights (negative)
-              const flightScore = calculateFlightScore(flight);
-              if (!bestRemove || flightScore < calculateFlightScore(bestRemove)) {
+              if (!bestRemove || isBetterBB(flight, bestRemove, language)) {
                 bestRemove = flight;
-                console.log(`  🏆 New best remove nights flight: -${i} nights, price: ${flight.price}, score: ${flightScore}`);
+                console.log(`  🏆 New best remove nights flight: -${i} nights, price: ${flight.price}`);
               }
             }
           } catch (err) {
@@ -2063,10 +2036,9 @@ function saveToPowerPointSingle(flight: ProcessedFlight, title: string) {
 
             allIntervalFlights.push(...valid); // Store for preferred airline search
 
-            // Find BEST AND CHEAPEST (lowest score) across all dates in interval
+            // Find BEST AND CHEAPEST using same sort as B&B
             // and collect all results for alternatives
             for (const flight of valid) {
-              const flightScore = calculateFlightScore(flight);
               
               // Store this result for alternatives list
               const airline = flight.outbound.airlineNames?.[0] || flight.outbound.airlines[0] || 'N/A';
@@ -2079,7 +2051,7 @@ function saveToPowerPointSingle(flight: ProcessedFlight, title: string) {
                 flight: { ...flight, searchDate: searchDepDate }
               });
               
-              if (!bestInterval || flightScore < calculateFlightScore(bestInterval)) {
+              if (!bestInterval || isBetterBB(flight, bestInterval, language)) {
                 bestInterval = { ...flight, searchDate: searchDepDate };
               }
             }
