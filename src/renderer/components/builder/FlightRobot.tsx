@@ -102,6 +102,7 @@ interface ProcessedFlight {
   price: number;
   currency: string;
   fareType?: "NEGOTIATED" | "PUBLIC";
+  travelClass?: "ECONOMY" | "BUSINESS" | "FIRST";
   isRecommended: boolean;
   recommendReason?: string;
   rawOffer?: FlightOffer;
@@ -668,6 +669,7 @@ function processFlightOffers(
       price: parseFloat(offer.price.grandTotal) / passengerCount,
       currency: offer.price.currency,
       fareType: offer.fareType,
+      travelClass: offer.travelClass || 'ECONOMY',
       isRecommended: false,
       rawOffer: offer,
       totalDurationMinutes: maxSingleLegDuration, // Max single leg for filtering
@@ -744,8 +746,12 @@ function categorizeFlights(
 
   // Category 2: BESTE – korteste totale reisetid fra samme pool som Beste og Billigste
   // SAMME tidsbegrensning (≤20/22t, ingen nattfly) – vises KUN hvis kortere enn Beste og Billigste
+  // ALDRI Business Class eller First Class – kun økonomi
   const bestQualityFlights = validFlights.filter(f =>
-    f.totalDurationMinutes <= MAX_BEST_AND_CHEAPEST_HOURS * 60 && !f.hasNightFlight
+    f.totalDurationMinutes <= MAX_BEST_AND_CHEAPEST_HOURS * 60 &&
+    !f.hasNightFlight &&
+    f.travelClass !== 'BUSINESS' &&
+    f.travelClass !== 'FIRST'
   );
 
   console.log(`✅ BestAndCheapest flights (≤${MAX_BEST_AND_CHEAPEST_HOURS}h, no night): ${bestAndCheapestFlights.length}`);

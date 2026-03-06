@@ -42,6 +42,7 @@ export interface FlightOffer {
     grandTotal: string;
   };
   fareType?: "PUBLIC" | "NEGOTIATED";
+  travelClass?: "ECONOMY" | "BUSINESS" | "FIRST";
   itineraries: FlightItinerary[];
   validatingAirlineCodes: string[];
   numberOfBookableSeats: number;

@@ -453,6 +453,47 @@ function convertFarewiseToAmadeus(farewiseData, currency = "NOK", convertPrices 
       });
     }
 
+    // Detect cabin class from Farewise response
+    // Business class booking codes in GDS: C, D, I, J, Z
+    // First class booking codes: F, A, P
+    // Everything else is Economy
+    const BUSINESS_CODES = new Set(['C', 'D', 'I', 'J', 'Z']);
+    const FIRST_CODES    = new Set(['F', 'A', 'P']);
+    let travelClass = 'ECONOMY'; // Default when cabinClass: "Y" was requested
+
+    // Check top-level fields first (fastest path)
+    const rawCabin = (
+      rec.cabin || rec.cabinClass || rec.travelClass ||
+      firstOption.cabin || firstOption.cabinClass || firstOption.travelClass ||
+      ""
+    ).toUpperCase();
+
+    if (rawCabin.includes('BUSINESS') || rawCabin === 'C' || rawCabin === 'J') {
+      travelClass = 'BUSINESS';
+    } else if (rawCabin.includes('FIRST') || rawCabin === 'F') {
+      travelClass = 'FIRST';
+    } else {
+      // Check route/segment level booking class
+      const allSegments = firstOption.legs?.flatMap(leg =>
+        leg.routes?.flatMap(r => r.segments || []) || []
+      ) || [];
+      for (const seg of allSegments) {
+        const bc = (seg.bookingClass || seg.cabin || seg.cabinClass || seg.serviceClass || "").toUpperCase();
+        if (BUSINESS_CODES.has(bc) || bc.includes('BUSINESS')) {
+          travelClass = 'BUSINESS';
+          break;
+        }
+        if (FIRST_CODES.has(bc) || bc.includes('FIRST')) {
+          travelClass = 'FIRST';
+          break;
+        }
+      }
+    }
+
+    if (travelClass !== 'ECONOMY') {
+      console.log(`✈️ Non-economy class detected: ${travelClass} for ${rec.id || index}`);
+    }
+
     return {
       id: rec.id || `farewise-${index}`,
       price: {
@@ -461,6 +502,7 @@ function convertFarewiseToAmadeus(farewiseData, currency = "NOK", convertPrices 
         grandTotal: String(finalPrice),
       },
       fareType: fareType,
+      travelClass: travelClass,
       itineraries,
       validatingAirlineCodes: [rec.carrier?.code || ""],
       numberOfBookableSeats: 9,
