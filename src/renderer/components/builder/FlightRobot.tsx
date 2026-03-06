@@ -760,13 +760,14 @@ function categorizeFlights(
   console.log(`⏱️ Flights over ${MAX_BEST_AND_CHEAPEST_HOURS}h (but under 23h): ${validFlights.filter(f => f.totalDurationMinutes > MAX_BEST_AND_CHEAPEST_HOURS * 60).length}`);
 
   // CATEGORY 1: BESTE OG BILLIGSTE
-  // Score flights with special handling for similar prices and fare types
-  const PACKAGE_FARE_TOLERANCE = language === 'da' ? 300 : 400; // Prefer NEGOTIATED if within 300-400 kr
+  // Sort: price is king. NEGOTIATED only preferred if it costs the SAME or LESS.
+  // Tolerance: up to 50 NOK/DKK more for a package fare (not 400 - that caused expensive fares to win)
+  const PACKAGE_FARE_TOLERANCE = 50;
   
   const scoredBestAndCheapest = bestAndCheapestFlights
     .map(f => ({ ...f, score: calculateFlightScore(f) }))
     .sort((a, b) => {
-      // PRIORITY 1: Prefer NEGOTIATED (package) fares when comparable price
+      // PRIORITY 1: Prefer NEGOTIATED (package) fares at nearly same price (≤50 kr)
       const isANegotiated = a.fareType === 'NEGOTIATED';
       const isBNegotiated = b.fareType === 'NEGOTIATED';
       
@@ -783,8 +784,8 @@ function categorizeFlights(
         const bDuration = b.combinedDurationMinutes || b.totalDurationMinutes;
         return aDuration - bDuration;
       }
-      // PRIORITY 3: Otherwise use normal score (duration + stops + price)
-      return a.score - b.score;
+      // PRIORITY 3: Otherwise sort purely by price
+      return a.price - b.price;
     });
 
   // RESULT 1: BESTE OG BILLIGSTE (combines best score with lowest price)
@@ -813,12 +814,18 @@ function categorizeFlights(
   if (qualitySorted.length > 0 && bestAndCheapest) {
     const topQuality = qualitySorted[0];
     // Vis kun hvis strengt kortere reisetid enn Beste og Billigste
-    if (topQuality.totalDurationMinutes < baseDuration) {
+    // OG ikke mer enn 40% dyrere (unngå at dyr business/eksklusiv rute vises)
+    const maxAllowedPrice = basePrice * 1.4;
+    if (
+      topQuality.totalDurationMinutes < baseDuration &&
+      topQuality.price <= maxAllowedPrice
+    ) {
       bestQuality = topQuality;
-    } else {
+    } else if (topQuality.totalDurationMinutes >= baseDuration) {
       // Beste og Billigste er allerede den korteste – ingen grunn til å vise Beste separat
       bestAndCheapestIsBest = true;
     }
+    // If topQuality is too expensive (> 40% more), skip BESTE entirely
   } else if (qualitySorted.length > 0) {
     // Ingen Beste og Billigste å sammenligne med – vis bare den korteste
     bestQuality = qualitySorted[0];
@@ -831,9 +838,9 @@ function categorizeFlights(
     f.totalDurationMinutes <= MAX_EXTENDED_DURATION_HOURS * 60 && !f.hasNightFlight
   );
   
-  const EXTENDED_PACKAGE_TOLERANCE = 300; // 300 kr tolerance for extended
+  const EXTENDED_PACKAGE_TOLERANCE = 50; // Only prefer package fare if nearly same price (≤50 kr)
   const sortedByPrice = [...extendedFlights].sort((a, b) => {
-    // PRIORITY 1: Prefer NEGOTIATED (package) fares when comparable price
+    // PRIORITY 1: Prefer NEGOTIATED (package) fares at nearly same price
     const isANegotiated = a.fareType === 'NEGOTIATED';
     const isBNegotiated = b.fareType === 'NEGOTIATED';
     
@@ -850,18 +857,24 @@ function categorizeFlights(
       const bDuration = b.combinedDurationMinutes || b.totalDurationMinutes;
       return aDuration - bDuration;
     }
-    // PRIORITY 3: Otherwise sort by price
+    // PRIORITY 3: Otherwise sort by price (cheapest wins)
     return a.price - b.price;
   });
   
-  // CRITICAL RULE: "Billigste utvidet" can NEVER have shorter duration than "Beste og billigste"
+  // CRITICAL RULE: "Billigste" can NEVER have shorter duration than "Beste og billigste"
+  // Iterate through price-sorted list until we find a candidate that passes
   let cheapestExtended: ProcessedFlight | null = null;
-  if (sortedByPrice.length > 0) {
-    const candidate = sortedByPrice[0];
-    // Only show if duration is >= baseDuration (from bestAndCheapest)
+  for (const candidate of sortedByPrice) {
     if (!bestAndCheapest || candidate.totalDurationMinutes >= baseDuration) {
       cheapestExtended = candidate;
+      break;
     }
+    // Skip candidates with shorter duration than B&B
+  }
+
+  // Also: Billigste must be different from B&B (different price or route)
+  if (cheapestExtended && bestAndCheapest && cheapestExtended.id === bestAndCheapest.id) {
+    cheapestExtended = null;
   }
 
   return {
