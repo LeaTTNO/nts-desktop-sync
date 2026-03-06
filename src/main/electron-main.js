@@ -402,51 +402,26 @@ function convertFarewiseToAmadeus(farewiseData, currency = "NOK", convertPrices 
       // route.duration and leg.duration are in "HH:MM" format (e.g., "14:00", "12:35")
       let legDuration = "PT0H0M";
 
-      const parseHHMM = (str) => {
-        if (!str || !str.includes(':')) return null;
-        const [h, m] = str.split(':');
-        const mins = parseInt(h) * 60 + parseInt(m);
-        return isNaN(mins) ? null : mins;
-      };
-
-      const routeMins = parseHHMM(route.duration) ?? parseHHMM(route.elapsedTime) ?? parseHHMM(route.totalDuration);
-      const legMins   = parseHHMM(leg.duration) ?? parseHHMM(leg.elapsedTime) ?? parseHHMM(leg.totalDuration);
-
-      if (routeMins !== null) {
-        // Primary: route.duration from Farewise (most accurate, matches website)
-        legDuration = `PT${Math.floor(routeMins / 60)}H${routeMins % 60}M`;
-        console.log(`✅ LEG ${legIndex} duration from route: ${route.duration} → ${legDuration}`);
-      } else if (legMins !== null) {
-        // Secondary: leg.duration
-        legDuration = `PT${Math.floor(legMins / 60)}H${legMins % 60}M`;
-        console.log(`✅ LEG ${legIndex} duration from leg: ${leg.duration} → ${legDuration}`);
-      } else if (route.segments && route.segments.length > 0) {
-        // Fallback: summer segmentets elapsedFlyingTime + mellomlandingspauser innenfor samme by
-        // Unngår tidssone-feil som oppstår ved rå tidsstempel-diff mellom ulike tidssoner
-        let totalMins = 0;
-        for (const seg of route.segments) {
-          const segMins = parseHHMM(seg.elapsedFlyingTime);
-          if (segMins !== null) totalMins += segMins;
-        }
-        // Legg til mellomlandingspause mellom hvert segment (avgang neste - ankomst forrige)
-        // Disse er i SAMME by/tidssone → differansen er korrekt uavhengig av tidssone
-        for (let si = 0; si < route.segments.length - 1; si++) {
-          const arr = new Date(route.segments[si].arrivalDate);
-          const dep = new Date(route.segments[si + 1].departureDate);
-          const layoverMs = dep - arr;
-          if (layoverMs > 0) totalMins += Math.floor(layoverMs / 60000);
-        }
-        legDuration = `PT${Math.floor(totalMins / 60)}H${totalMins % 60}M`;
-        console.log(`⚠️ LEG ${legIndex} duration from segments (timezone-safe fallback): ${legDuration}`);
+      if (route.duration && route.duration.includes(':')) {
+        // Primary: use route.duration directly from Farewise (most accurate, matches website)
+        const [h, m] = route.duration.split(':');
+        legDuration = `PT${parseInt(h)}H${parseInt(m)}M`;
+        console.log(`✅ LEG ${legIndex} duration from route.duration: ${route.duration} → ${legDuration}`);
+      } else if (leg.duration && leg.duration.includes(':')) {
+        // Fallback: use leg.duration
+        const [h, m] = leg.duration.split(':');
+        legDuration = `PT${parseInt(h)}H${parseInt(m)}M`;
+        console.log(`✅ LEG ${legIndex} duration from leg.duration: ${leg.duration} → ${legDuration}`);
       } else if (segments.length > 0) {
-        // Siste utvei: summer ISO-segmentvarigheter som ble beregnet ovenfor
-        let totalMins = 0;
-        for (const seg of segments) {
-          const match = seg.duration.match(/PT(?:(\d+)H)?(?:(\d+)M)?/);
-          if (match) totalMins += (parseInt(match[1] || '0') * 60) + parseInt(match[2] || '0');
-        }
-        legDuration = `PT${Math.floor(totalMins / 60)}H${totalMins % 60}M`;
-        console.log(`⚠️ LEG ${legIndex} duration from ISO segments (last resort): ${legDuration}`);
+        // Last resort: calculate from timestamps (no DST correction - use raw diff)
+        const firstDeparture = new Date(segments[0].departure.at);
+        const lastArrival = new Date(segments[segments.length - 1].arrival.at);
+        const totalMs = lastArrival - firstDeparture;
+        const totalMinutes = Math.floor(totalMs / 60000);
+        const hours = Math.floor(totalMinutes / 60);
+        const minutes = totalMinutes % 60;
+        legDuration = `PT${hours}H${minutes}M`;
+        console.log(`⚠️ LEG ${legIndex} duration calculated from timestamps (fallback): ${legDuration}`);
       }
 
       return {
