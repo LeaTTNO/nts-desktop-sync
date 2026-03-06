@@ -203,8 +203,8 @@ const translations = {
     mainResultsDesc: "Max 20-22t reisetid, ingen nattfly (00:00-05:30, KLM/AF: 01:06-05:30)",
     extendedResults: "Utvidede alternativer",
     extendedResultsDesc: "Maks 23t reisetid, ingen nattfly",
-    cheaperFlexible: "Billigere med andre datoer",
-    cheaperExtended: "Billigere med",
+    cheaperFlexible: "Beste og Billigste med andre datoer",
+    cheaperExtended: "Beste og Billigste med",
     extraNights: "ekstra netter",
     fewerNights: "færre netter",
     withBaggage: "Med bagasje",
@@ -280,8 +280,8 @@ const translations = {
     mainResultsDesc: "Max 20-22t rejsetid, ingen natfly (00:00-05:30, KLM/AF: 01:06-05:30)",
     extendedResults: "Udvidede alternativer",
     extendedResultsDesc: "Maks 23t rejsetid, ingen natfly",
-    cheaperFlexible: "Billigere med andre datoer",
-    cheaperExtended: "Billigere med",
+    cheaperFlexible: "Bedste og Billigste med andre datoer",
+    cheaperExtended: "Bedste og Billigste med",
     extraNights: "ekstra nætter",
     fewerNights: "færre nætter",
     withBaggage: "Med bagage",
@@ -709,6 +709,7 @@ function categorizeFlights(
   bestAndCheapest: ProcessedFlight | null;
   bestQuality: ProcessedFlight | null;
   cheapestExtended: ProcessedFlight | null;
+  bestAndCheapestIsBest: boolean;
 } {
   const MAX_BEST_AND_CHEAPEST_HOURS = getMaxBestAndCheapestDurationHours(departureAirport);
   const MAX_BEST_QUALITY_HOURS = getMaxBestQualityDurationHours(departureAirport);
@@ -741,13 +742,14 @@ function categorizeFlights(
     f.totalDurationMinutes <= MAX_BEST_AND_CHEAPEST_HOURS * 60 && !f.hasNightFlight
   );
 
-  // Category 2: BESTE KVALITET (≤19h, ≤20h or ≤21h depending on departure, no night flights)
+  // Category 2: BESTE – korteste totale reisetid fra samme pool som Beste og Billigste
+  // SAMME tidsbegrensning (≤20/22t, ingen nattfly) – vises KUN hvis kortere enn Beste og Billigste
   const bestQualityFlights = validFlights.filter(f =>
-    f.totalDurationMinutes <= MAX_BEST_QUALITY_HOURS * 60 && !f.hasNightFlight
+    f.totalDurationMinutes <= MAX_BEST_AND_CHEAPEST_HOURS * 60 && !f.hasNightFlight
   );
 
   console.log(`✅ BestAndCheapest flights (≤${MAX_BEST_AND_CHEAPEST_HOURS}h, no night): ${bestAndCheapestFlights.length}`);
-  console.log(`✅ BestQuality flights (≤${MAX_BEST_QUALITY_HOURS}h, no night): ${bestQualityFlights.length}`);
+  console.log(`✅ Beste flights (no night, all durations): ${bestQualityFlights.length}`);
   console.log(`🌙 Flights with night departures/arrivals: ${validFlights.filter(f => f.hasNightFlight).length}`);
   console.log(`⏱️ Flights over ${MAX_BEST_AND_CHEAPEST_HOURS}h (but under 23h): ${validFlights.filter(f => f.totalDurationMinutes > MAX_BEST_AND_CHEAPEST_HOURS * 60).length}`);
 
@@ -785,47 +787,34 @@ function categorizeFlights(
   const basePrice = bestAndCheapest?.price || 0;
   const baseDuration = bestAndCheapest?.totalDurationMinutes || 0;
 
-  // CATEGORY 2: BESTE KVALITET (shortest duration + fewest stops)
-  // CRITICAL RULES:
-  // - Can NEVER be cheaper than "Beste og billigste"
-  // - Can NEVER have longer duration than "Beste og billigste"
-  // - Must be within stricter time limits (19-21h vs 22-23h)
+  // CATEGORY 2: BESTE – korteste totale reisetid (≤17h/≤19.5h, ingen nattfly)
+  // Vises KUN hvis det finnes et fly med KORTERE reisetid enn Beste og Billigste.
+  // Hvis Beste og Billigste allerede er kortest, vises den ikke – men UI får flagg.
   const qualitySorted = bestQualityFlights
-    .map(f => ({
-      ...f,
-      qualityScore: (f.combinedDurationMinutes || f.totalDurationMinutes) + 
-                    (f.outbound.stops + (f.inbound?.stops || 0)) * 120
-    }))
+    .map(f => ({ ...f }))
     .sort((a, b) => {
-      // PRIORITY 1: Prefer NEGOTIATED (package) fares when comparable price
-      const isANegotiated = a.fareType === 'NEGOTIATED';
-      const isBNegotiated = b.fareType === 'NEGOTIATED';
-      
-      if (isANegotiated && !isBNegotiated) {
-        if (a.price <= b.price + PACKAGE_FARE_TOLERANCE) return -1;
-      }
-      if (!isANegotiated && isBNegotiated) {
-        if (b.price <= a.price + PACKAGE_FARE_TOLERANCE) return 1;
-      }
-      
-      // PRIORITY 2: Sort by quality score ONLY (duration + stops, NO price)
-      return a.qualityScore - b.qualityScore;
+      // PRIORITY 1: Korteste totale reisetid
+      const aDuration = a.totalDurationMinutes;
+      const bDuration = b.totalDurationMinutes;
+      if (aDuration !== bDuration) return aDuration - bDuration;
+      // PRIORITY 2: Færrest stopp som tiebreaker
+      return (a.outbound.stops + (a.inbound?.stops || 0)) - (b.outbound.stops + (b.inbound?.stops || 0));
     });
 
   let bestQuality: ProcessedFlight | null = null;
+  let bestAndCheapestIsBest = false;
+
   if (qualitySorted.length > 0 && bestAndCheapest) {
     const topQuality = qualitySorted[0];
-    
-    // CRITICAL RULES:
-    // 1. "Beste" can NEVER be cheaper than "Beste og billigste"
-    // 2. "Beste" can NEVER have longer duration than "Beste og billigste"
-    if (topQuality.price < bestAndCheapest.price || topQuality.totalDurationMinutes > baseDuration) {
-      bestQuality = null; // Don't show if it violates rules
-    } else {
+    // Vis kun hvis strengt kortere reisetid enn Beste og Billigste
+    if (topQuality.totalDurationMinutes < baseDuration) {
       bestQuality = topQuality;
+    } else {
+      // Beste og Billigste er allerede den korteste – ingen grunn til å vise Beste separat
+      bestAndCheapestIsBest = true;
     }
   } else if (qualitySorted.length > 0) {
-    // No bestAndCheapest to compare with, just show the best quality
+    // Ingen Beste og Billigste å sammenligne med – vis bare den korteste
     bestQuality = qualitySorted[0];
   }
 
@@ -873,6 +862,7 @@ function categorizeFlights(
     bestAndCheapest,
     bestQuality,
     cheapestExtended,
+    bestAndCheapestIsBest,
   };
 }
 
@@ -1059,6 +1049,9 @@ export default function FlightRobot() {
     resetAll: resetFlightStore,
   } = useFlightStore();
   const hasSearched = useFlightStore(state => state.hasSearched);
+
+  // Flagg: Beste og Billigste er allerede den korteste reisen på denne datoen
+  const [bestAndCheapestIsBest, setBestAndCheapestIsBest] = useState(false);
 
   // Preferred airline results (separate state since they're shown alongside regular results)
   const [preferredAirlineResults, setPreferredAirlineResults] = useState<{
@@ -1619,6 +1612,7 @@ function saveToPowerPointSingle(flight: ProcessedFlight, title: string) {
     clearFlights();
     setMainResults({ bestAndCheapest: null, cheapest: null });
     setBestQualityResult(null);
+    setBestAndCheapestIsBest(false);
     setCheapestExtendedResult(null);
     setFlexibleResult(null);
     setAddNightsResult(null);
@@ -1649,6 +1643,7 @@ function saveToPowerPointSingle(flight: ProcessedFlight, title: string) {
       // Set all 3 mandatory categories
       setMainResults({ bestAndCheapest: categories.bestAndCheapest, cheapest: null });
       setBestQualityResult(categories.bestQuality);
+      setBestAndCheapestIsBest(categories.bestAndCheapestIsBest);
       setCheapestExtendedResult(categories.cheapestExtended);
       
       let foundCount = 0;
@@ -2082,10 +2077,19 @@ function saveToPowerPointSingle(flight: ProcessedFlight, title: string) {
           setSearchProgress(prev => ({ ...prev, current: prev.current + 1 }));
           
           // Find all alternatives within ±600 kr of the best price
+          // Deduplicate: keep only the cheapest flight per unique date-pair
           const PRICE_MARGIN = 600;
-          const alternatives = allValidResults
-            .filter(r => Math.abs(r.price - bestInterval!.price) <= PRICE_MARGIN)
-            .sort((a, b) => new Date(a.departureDate).getTime() - new Date(b.departureDate).getTime()); // Sort by date ascending
+          const seenDates = new Map<string, typeof allValidResults[number]>();
+          for (const r of allValidResults) {
+            if (Math.abs(r.price - bestInterval!.price) > PRICE_MARGIN) continue;
+            const key = `${r.departureDate}_${r.returnDate}`;
+            const existing = seenDates.get(key);
+            if (!existing || r.price < existing.price) {
+              seenDates.set(key, r);
+            }
+          }
+          const alternatives = Array.from(seenDates.values())
+            .sort((a, b) => new Date(a.departureDate).getTime() - new Date(b.departureDate).getTime());
           
           setIntervalAlternatives(alternatives);
           setShowIntervalAlternatives(false); // Reset to collapsed
@@ -2904,8 +2908,17 @@ function saveToPowerPointSingle(flight: ProcessedFlight, title: string) {
               </CardContent>
             </Card>
           )}
-          {/* CATEGORY 2: Best by Quality (≤19h/≤20h/≤21h, no night) */}
-          {/* ALWAYS SHOW - even if same as bestAndCheapest (confirms it's the best!) */}
+          {/* CATEGORY 2: Beste – korteste reisetid (vises kun hvis kortere enn Beste og Billigste) */}
+          {!bestQualityResult && bestAndCheapestIsBest && hasSearched && (
+            <div className="flex items-center gap-2 px-3 py-2 rounded-md bg-muted/50 text-muted-foreground text-sm">
+              <Trophy className="h-4 w-4 text-amber-500 shrink-0" />
+              <span>
+                {language === 'da'
+                  ? 'Beste og Billigste er allerede den bedste rejse på denne dato – ingen kortere rejsetid fundet inden for Beste-kriterierne (≤17t).'
+                  : 'Beste og Billigste er allerede den beste reisen på denne datoen – ingen kortere reisetid funnet innenfor Beste-kriteriene (≤17t).'}
+              </span>
+            </div>
+          )}
           {bestQualityResult && (
             <div className="space-y-4">
               <div className="flex items-center gap-2">

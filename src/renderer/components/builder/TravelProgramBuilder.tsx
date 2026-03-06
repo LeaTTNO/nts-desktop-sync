@@ -79,6 +79,7 @@ export default function TravelProgramBuilder({ language = 'no' }: TravelProgramB
   const FASTLAND = getCategoryNameById("diverse_mainland");
   const EXTRA = getCategoryNameById("extra_slides");
   const FLIGHT = getCategoryNameById("flyinformasjon");
+  const FLIGHT_DK = getCategoryNameById("flyinformation");
 
   /* =========================
      HELPER - Filtrer templates basert på bruker
@@ -305,8 +306,8 @@ export default function TravelProgramBuilder({ language = 'no' }: TravelProgramB
         .map((id) => templates.find((t) => t.id === id))
         .filter(Boolean)
         .sort((a, b) => {
-          const aFlight = (a!.category === FLIGHT || a!.name.toLowerCase().includes('flyinformasjon')) ? 1 : 0;
-          const bFlight = (b!.category === FLIGHT || b!.name.toLowerCase().includes('flyinformasjon')) ? 1 : 0;
+          const aFlight = (a!.category === FLIGHT || a!.category === FLIGHT_DK || a!.name.toLowerCase().includes('flyinformasjon') || a!.name.toLowerCase().includes('flyinformation')) ? 1 : 0;
+          const bFlight = (b!.category === FLIGHT || b!.category === FLIGHT_DK || b!.name.toLowerCase().includes('flyinformasjon') || b!.name.toLowerCase().includes('flyinformation')) ? 1 : 0;
           return aFlight - bFlight;
         }) as typeof templates;
 
@@ -340,11 +341,12 @@ export default function TravelProgramBuilder({ language = 'no' }: TravelProgramB
         m.name.toLowerCase().includes('flyinformation')
       );
       if (flightData?.flights?.[0]?.segments?.length > 0 && !hasFlightModule) {
-        // Finn Flyinformasjon-malen i biblioteket
+        // Finn riktig Flyinformasjon-mal basert på aktivt språk
+        const flyName = userLanguage === 'da' ? 'flyinformation' : 'flyinformasjon';
+        const flyCat  = userLanguage === 'da' ? FLIGHT_DK : FLIGHT;
         const flightTemplate = templates.find(t =>
-          t.name.toLowerCase().includes('flyinformasjon') ||
-          t.name.toLowerCase().includes('flyinformation') ||
-          t.category === FLIGHT
+          t.name.toLowerCase().includes(flyName) ||
+          t.category === flyCat
         );
         if (flightTemplate) {
           const flightBuffer = flightTemplate.blob instanceof Blob

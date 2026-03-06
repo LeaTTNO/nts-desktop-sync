@@ -375,40 +375,30 @@ function convertFarewiseToAmadeus(farewiseData, currency = "NOK", convertPrices 
         };
       });
 
-      // CALCULATE DURATION FROM TIMESTAMPS - Farewise duration fields have DST bugs
-      // This matches what Farewise website displays (timestamps are always correct)
+      // USE FAREWISE-PROVIDED DURATION DIRECTLY - same source as what Farewise website displays
+      // route.duration and leg.duration are in "HH:MM" format (e.g., "14:00", "12:35")
       let legDuration = "PT0H0M";
-      
-      if (segments.length > 0) {
+
+      if (route.duration && route.duration.includes(':')) {
+        // Primary: use route.duration directly from Farewise (most accurate, matches website)
+        const [h, m] = route.duration.split(':');
+        legDuration = `PT${parseInt(h)}H${parseInt(m)}M`;
+        console.log(`✅ LEG ${legIndex} duration from route.duration: ${route.duration} → ${legDuration}`);
+      } else if (leg.duration && leg.duration.includes(':')) {
+        // Fallback: use leg.duration
+        const [h, m] = leg.duration.split(':');
+        legDuration = `PT${parseInt(h)}H${parseInt(m)}M`;
+        console.log(`✅ LEG ${legIndex} duration from leg.duration: ${leg.duration} → ${legDuration}`);
+      } else if (segments.length > 0) {
+        // Last resort: calculate from timestamps (no DST correction - use raw diff)
         const firstDeparture = new Date(segments[0].departure.at);
         const lastArrival = new Date(segments[segments.length - 1].arrival.at);
         const totalMs = lastArrival - firstDeparture;
-        let totalMinutes = Math.floor(totalMs / 60000);
-        
-        // CRITICAL: Farewise timestamps don't include timezone offsets properly
-        // Subtract 1 hour correction for DST (summer time) if flight is Mar-Oct
-        const departureMonth = firstDeparture.getMonth(); // 0-11
-        const isDSTPeriod = departureMonth >= 2 && departureMonth <= 9; // Mar-Oct
-        if (isDSTPeriod) {
-          totalMinutes -= 60; // Subtract 1 hour for DST correction
-        }
-        
+        const totalMinutes = Math.floor(totalMs / 60000);
         const hours = Math.floor(totalMinutes / 60);
         const minutes = totalMinutes % 60;
         legDuration = `PT${hours}H${minutes}M`;
-        
-        // Debug logging for EK (Emirates)
-        const hasEK = segments.some(s => s.carrierCode === 'EK');
-        if (hasEK) {
-          console.log(`✅ EK DURATION CALCULATED from timestamps for leg ${legIndex}:`, {
-            departure: segments[0].departure.at,
-            arrival: segments[segments.length - 1].arrival.at,
-            calculated: legDuration,
-            dstCorrected: isDSTPeriod,
-            'route.duration (IGNORED)': route.duration,
-            'leg.duration (IGNORED)': leg.duration
-          });
-        }
+        console.log(`⚠️ LEG ${legIndex} duration calculated from timestamps (fallback): ${legDuration}`);
       }
 
       return {
@@ -542,7 +532,7 @@ ipcMain.handle("ppt:open-temp", async (_, { data, fileName }) => {
 // ✈️ Injiser flytabell i eksisterende Flyinformasjon PPTX
 // Fjerner det innebygde Excel OLE-objektet og erstatter med ekte PPTX-tabell
 // ──────────────────────────────────────────────
-async function injectFlightTable(buffer, segments, passengers, outboundSegmentCount) {
+async function injectFlightTable(buffer, segments, passengers, outboundSegmentCount, language = 'no') {
   const zip = await JSZip.loadAsync(buffer);
 
   const slideFiles = Object.keys(zip.files).filter(
@@ -813,8 +803,15 @@ async function injectFlightTable(buffer, segments, passengers, outboundSegmentCo
     // Injiser tabell rett før </p:spTree>
     xml = xml.replace('</p:spTree>', tableFrame + '</p:spTree>');
 
+    // Apply language-specific text and locale
+    if (language === 'da') {
+      xml = xml
+        .replace(/lang="nb-NO"/g, 'lang="da-DK"')
+        .replace(/REISENDE OG FLY/g, 'REJSENDE OG FLY')
+        .replace(/NAVN P\u00C5 REISENDE/g, 'NAVN P\u00C5 REJSENDE');
+    }
     zip.file(slideFile, xml);
-    console.log(`✈️ Injected flight table into ${slideFile} (${segments.length} rows, 3 header rows)`);
+    console.log(`✈️ Injected flight table into ${slideFile} (${segments.length} rows, 3 header rows, lang=${language})`);
     break;
   }
 
@@ -1009,7 +1006,26 @@ ipcMain.handle("ppt:generate", async (_, payload) => {
     debugLog('Step 1: Creating temp directory...');
     const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'pptgen-'));
     debugLog(`Step 1 OK: tmpDir=${tmpDir}`);
-    
+
+    // Step 1b: Show save dialog with default filename + language-specific OneDrive folder
+    const homeDir = os.homedir();
+    const noDefaultDir = path.join(homeDir, 'OneDrive - TANZANIA TOURS', 'TANZANIA TOURS - Dokumenter', 'NO TANZANIA TOURS', 'Kunder NORGE');
+    const daDefaultDir = path.join(homeDir, 'OneDrive - TANZANIA TOURS', 'TANZANIA TOURS - Dokumenter', 'DK TANZANIA TOURS', 'Salg', 'Kunder DK');
+    const defaultDir = language === 'da' ? daDefaultDir : noDefaultDir;
+    const defaultDirExists = fs.existsSync(defaultDir);
+    const baseFileName = (baseTemplateName || (language === 'da' ? 'Rejseprogram og Tilbud' : 'Reiseprogram og Tilbud')).replace(/\.pptx?$/i, '');
+    const defaultSavePath = path.join(defaultDirExists ? defaultDir : homeDir, baseFileName + '.pptx');
+    debugLog(`Step 1b: Save dialog – defaultDir=${defaultDir} (exists=${defaultDirExists}), file=${baseFileName}.pptx`);
+    const mainWin = BrowserWindow.getAllWindows()[0];
+    const saveResult = await dialog.showSaveDialog(mainWin, {
+      title: language === 'da' ? 'Gem PowerPoint som...' : 'Lagre PowerPoint som...',
+      defaultPath: defaultSavePath,
+      filters: [{ name: 'PowerPoint-fil', extensions: ['pptx'] }],
+      buttonLabel: language === 'da' ? 'Gem' : 'Lagre',
+    });
+    const savePath = (!saveResult.canceled && saveResult.filePath) ? saveResult.filePath : '';
+    debugLog(`Step 1b OK: savePath=${savePath || '(ingen – dialogen ble avbrutt)'}`);
+
     debugLog('Step 2: Preparing base file...');
     const fileName = language === 'da' ? 'Rejseprogram og Tilbud.pptx' : 'Reiseprogram og Tilbud.pptx';
     const basePath = path.join(tmpDir, fileName);
@@ -1039,7 +1055,7 @@ ipcMain.handle("ppt:generate", async (_, payload) => {
         let finalBuffer;
         if (srcBuffer.length > 100) {
           // Mal finnes — injiser tabell i eksisterende PPTX (bevarer design)
-          finalBuffer = await injectFlightTable(srcBuffer, segments, flightData.passengers, outboundSegmentCount);
+          finalBuffer = await injectFlightTable(srcBuffer, segments, flightData.passengers, outboundSegmentCount, language);
         } else {
           // Ingen mal — bygg fra scratch
           finalBuffer = await buildFlightPptxFromScratch(segments);
@@ -1137,7 +1153,8 @@ ipcMain.handle("ppt:generate", async (_, payload) => {
                 basePath,
                 departureDate || "",
                 flightDataPath,  // Send file path instead of JSON string
-                language || "no"
+                language || "no",
+                savePath         // Final save path (empty = no auto-save)
               ],
               (postError, postStdout, postStderr) => {
                 // ALWAYS log all output for debugging

@@ -34,15 +34,16 @@ $presentation = $ppApp.Presentations.Open(
 # STEG 1: Finn flyinformasjon-modulen (settes inn SIST, men fortsatt før siste basefil-slide)
 $flightModulePath = $null
 foreach ($modulePath in $ModulePaths) {
-    if ($modulePath -match 'flyinformasjon' -or $modulePath -match 'flight') {
+    if ($modulePath -match 'flyinformasjon' -or $modulePath -match 'flyinformation' -or $modulePath -match 'flight') {
         $flightModulePath = $modulePath
         break
     }
 }
 
-# STEG 2: Sett inn alle ANDRE moduler FØR siste slide i basefilen
-# Dette er Safari, Zanzibar, osv. - de kommer FØRST
-$moduleInsertStart = [Math]::Max(1, $presentation.Slides.Count - 1)
+# STEG 2: Sett inn alle ANDRE moduler FOR siste slide i basefilen
+# Dette er Safari, Zanzibar, osv. - de kommer FORST
+# Bruk slides.Count som startposisjon slik at de skyves INN FORAN siste basefil-slide
+$moduleInsertStart = $presentation.Slides.Count
 $currentInsertPos = $moduleInsertStart
 
 foreach ($modulePath in $ModulePaths) {
@@ -50,7 +51,7 @@ foreach ($modulePath in $ModulePaths) {
     if (-not (Test-Path $modulePath)) { continue }
     
     # Hopp over flyinformasjon (settes inn ETTER alle andre)
-    $isFlight = ($modulePath -match 'flyinformasjon' -or $modulePath -match 'flight')
+    $isFlight = ($modulePath -match 'flyinformasjon' -or $modulePath -match 'flyinformation' -or $modulePath -match 'flight')
     if ($isFlight) { continue }
 
     $modulePres = $ppApp.Presentations.Open(

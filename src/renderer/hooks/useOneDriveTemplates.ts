@@ -43,7 +43,8 @@ const mapFolderToCategory = (folderName: string, fullPath?: string): string => {
   if (lower === 'kilimanjaro') return 'kilimanjaro';
   if (lower === 'arusha aktiviteter' || lower === 'arusha activities') return 'arusha_activities_slides';
   if (lower === 'fastland' || lower === 'mainland' || lower === 'diverse mainland') return 'diverse_mainland';
-  if (lower === 'flyinformasjon' || lower === 'flyinformation' || lower === 'flight information') return 'flyinformasjon';
+  if (lower === 'flyinformasjon' || lower === 'flight information') return 'flyinformasjon';
+  if (lower === 'flyinformation') return 'flyinformation';
   if (lower === 'reiseprogram og tilbud' || lower === 'rejseprogram og tilbud' || lower === 'base program') return 'base_program';
   if (lower === 'ekstra slides' || lower === 'extra slides') return 'extra_slides';
   
