@@ -229,6 +229,8 @@ const translations = {
     preferredAirlineInfo: "Filtrer søket til å kun vise resultater med valgte flyselskap. Du kan velge flere flyselskap. Resultatet vises som egne kategorier sammen med hovedresultatene.",
     selectAirline: "Velg flyselskap",
     noPreferredAirlineResults: "Ingen resultater funnet med valgt flyselskap som passer til kriteriene",
+    allowTwoStopBB: "Tillat 2-stopp i B&B hvis billigere",
+    allowTwoStopBBInfo: "Som standard vises kun 1-stopp fly i 'Beste og billigste' fra OSL/HAM/CPH. Kryss av for å tillate 2-stopp hvis de er rimeligere enn 1-stopp alternativene. 2-stopp kan uansett dukke opp i 'Billigste'.",
   },
   da: {
     title: "FLYROBOT",
@@ -306,6 +308,8 @@ const translations = {
     preferredAirlineInfo: "Filtrer søgningen til kun at vise resultater med valgte flyselskaber. Du kan vælge flere flyselskaber. Resultatet vises som egne kategorier sammen med hovedresultaterne.",
     selectAirline: "Vælg flyselskab",
     noPreferredAirlineResults: "Ingen resultater fundet med valgt flyselskab som passer til kriterierne",
+    allowTwoStopBB: "Tillad 2-stop i B&B hvis billigere",
+    allowTwoStopBBInfo: "Som standard vises kun 1-stop fly i 'Bedste og billigste' fra OSL/HAM/CPH. Sæt hak for at tillade 2-stop hvis de er billigere end 1-stop alternativerne. 2-stop kan alligevel dukke op i 'Billigste'.",
   },
 };
 
@@ -763,7 +767,8 @@ function categorizeFlights(
   flights: ProcessedFlight[], 
   t: typeof translations.no,
   departureAirport: string,
-  language: 'no' | 'da'
+  language: 'no' | 'da',
+  allowTwoStopBB: boolean = false
 ): {
   bestAndCheapest: ProcessedFlight | null;
   bestQuality: ProcessedFlight | null;
@@ -831,29 +836,35 @@ function categorizeFlights(
   });
 
   // CATEGORY 1: BESTE OG BILLIGSTE
-  // Foretrekker 1-stopp fremfor 2-stopp hvis prisdifferansen er ≤2000 NOK / ≤1500 DKK
+  // Fra OSL/HAM/CPH: viser alltid 1-stopp med mindre allowTwoStopBB er aktivert
+  // allowTwoStopBB=false (default): 1-stopp foretrekkes alltid, 2-stopp vises kun i Billigste
+  // allowTwoStopBB=true: 2-stopp tillates i B&B hvis det er billigere enn 1-stopp
+  const MAJOR_HUBS_BB = ['OSL', 'HAM', 'CPH'];
+  const isHubDeparture = MAJOR_HUBS_BB.includes(departureAirport.toUpperCase());
   const bestAndCheapest = (() => {
     const STOP_TOLERANCE = language === 'da' ? 1500 : 2000;
     const qualifyingFlights = sortedFlights.filter(f =>
       f.totalDurationMinutes <= MAX_BEST_AND_CHEAPEST_HOURS * 60 && !f.hasNightFlight
     );
     if (qualifyingFlights.length === 0) return null;
-    // Cheapest qualifying (current behavior)
-    const cheapest = qualifyingFlights[0];
-    const cheapestStops = cheapest.outbound.stops + (cheapest.inbound?.stops ?? 0);
-    // If already ≤1 stop, use it directly
-    if (cheapestStops <= 1) return { ...cheapest, isRecommended: true };
-    // Look for cheapest ≤1-stop alternative within STOP_TOLERANCE
-    const oneStopAlt = qualifyingFlights.find(f => {
-      const stops = f.outbound.stops + (f.inbound?.stops ?? 0);
-      const cheapestMaxLeg = cheapest.totalDurationMinutes;
-      return stops <= 1
-        && f.price <= cheapest.price + STOP_TOLERANCE
-        && f.totalDurationMinutes <= cheapestMaxLeg + 120; // max 2h longer max-leg
-    });
-    return oneStopAlt
-      ? { ...oneStopAlt, isRecommended: true }
-      : { ...cheapest, isRecommended: true };
+
+    // Fra regionflyplasser (ikke OSL/HAM/CPH): bare billigste, ingen stopp-preferanse
+    if (!isHubDeparture) {
+      return { ...qualifyingFlights[0], isRecommended: true };
+    }
+
+    // Fra hub-flyplasser (OSL/HAM/CPH) + allowTwoStopBB=false: alltid 1-stopp i B&B
+    if (!allowTwoStopBB) {
+      const oneStopFlights = qualifyingFlights.filter(f =>
+        f.outbound.stops + (f.inbound?.stops ?? 0) <= 1
+      );
+      if (oneStopFlights.length > 0) return { ...oneStopFlights[0], isRecommended: true };
+      // Ingen 1-stopp tilgjengelig – fall back til billigste
+      return { ...qualifyingFlights[0], isRecommended: true };
+    }
+
+    // Hub + allowTwoStopBB=true: billigste uansett stopp
+    return { ...qualifyingFlights[0], isRecommended: true };
   })();
   const basePrice = bestAndCheapest?.price || 0;
   const baseDuration = bestAndCheapest?.totalDurationMinutes || 0;
@@ -968,6 +979,7 @@ export default function FlightRobot() {
   const [allowNightFlights, setAllowNightFlights] = useState(false);
   const [nightFlightStart, setNightFlightStart] = useState("00:00");
   const [nightFlightEnd, setNightFlightEnd] = useState("05:30");
+  const [allowTwoStopBB, setAllowTwoStopBB] = useState(false);
   
   // Dynamic description based on departure airport (computed after departure state)
   const maxBestAndCheapestHours = getMaxBestAndCheapestDurationHours(departure || 'OSL');
@@ -1273,6 +1285,7 @@ export default function FlightRobot() {
     setAllowNightFlights(false);
     setNightFlightStart("00:00");
     setNightFlightEnd("05:30");
+    setAllowTwoStopBB(false);
 
     // Tilvalg: fleksible datoer
     setFlexibleDates(false);
@@ -1716,7 +1729,7 @@ function saveToPowerPointSingle(flight: ProcessedFlight, title: string) {
       console.log('📡 API RESPONSE:', mainOffers.length, 'offers received');
       const processedFlights = processFlightOffers(mainOffers, undefined, pax, allowNightFlights, nightFlightStart, nightFlightEnd);
       console.log('⚙️ PROCESSED:', processedFlights.length, 'flights after processing');
-      categories = categorizeFlights(processedFlights, t, departure, language);
+      categories = categorizeFlights(processedFlights, t, departure, language, allowTwoStopBB);
 
       // Set all 3 mandatory categories
       setMainResults({ bestAndCheapest: categories.bestAndCheapest, cheapest: null });
@@ -2429,6 +2442,35 @@ function saveToPowerPointSingle(flight: ProcessedFlight, title: string) {
 
           {/* Flexible Options */}
           <div className="mt-2 pt-2 border-t border-border/50 grid grid-cols-1 md:grid-cols-2 gap-4">
+            {/* Allow 2-stop in B&B – kun synlig fra OSL/HAM/CPH */}
+            {['OSL', 'HAM', 'CPH'].includes((departure || '').toUpperCase()) && (
+            <div className="flex items-center gap-3 col-span-full">
+              <Checkbox
+                id="allowTwoStopBB"
+                checked={allowTwoStopBB}
+                onCheckedChange={(checked) => setAllowTwoStopBB(checked === true)}
+              />
+              <div className="flex items-center gap-2">
+                <Label htmlFor="allowTwoStopBB" className="cursor-pointer text-sm">
+                  {t.allowTwoStopBB}
+                </Label>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <button className="text-muted-foreground hover:text-foreground transition-colors">
+                      <Info className="h-4 w-4" />
+                    </button>
+                  </TooltipTrigger>
+                  <TooltipContent className="w-80">
+                    <div className="flex gap-2">
+                      <Info className="h-5 w-5 text-blue-500 flex-shrink-0 mt-0.5" />
+                      <p className="text-sm text-muted-foreground">{t.allowTwoStopBBInfo}</p>
+                    </div>
+                  </TooltipContent>
+                </Tooltip>
+              </div>
+            </div>
+            )}
+
             {/* Flexible Dates (same trip length) */}
             <div className="flex items-center gap-3">
               <Checkbox
