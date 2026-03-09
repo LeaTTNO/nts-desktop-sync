@@ -722,12 +722,18 @@ function calculateFlightScore(flight: ProcessedFlight): number {
  */
 function isBetterBB(challenger: ProcessedFlight, current: ProcessedFlight, language: 'no' | 'da'): boolean {
   const tol = language === 'da' ? 300 : 400;
+  const stopTol = language === 'da' ? 1500 : 2000; // Prefer fewer stops if within this amount
   const challNeg = challenger.fareType === 'NEGOTIATED';
   const currNeg  = current.fareType  === 'NEGOTIATED';
+  const challStops = challenger.outbound.stops + (challenger.inbound?.stops ?? 0);
+  const currStops  = current.outbound.stops  + (current.inbound?.stops  ?? 0);
   // Challenger is NEGOTIATED and within tolerance → challenger wins
   if (challNeg && !currNeg && challenger.price <= current.price + tol) return true;
   // Current is NEGOTIATED and within tolerance → current wins (challenger loses)
   if (!challNeg && currNeg && current.price <= challenger.price + tol) return false;
+  // Prefer fewer stops if within stopTol kr more expensive
+  if (challStops < currStops && challenger.price <= current.price + stopTol) return true;
+  if (currStops < challStops && current.price <= challenger.price + stopTol) return false;
   // Prices within 300 kr → shortest combined duration wins
   if (Math.abs(challenger.price - current.price) <= 300) {
     const challDur = challenger.combinedDurationMinutes || challenger.totalDurationMinutes;
@@ -820,12 +826,26 @@ function categorizeFlights(
   });
 
   // CATEGORY 1: BESTE OG BILLIGSTE
-  // Første fly i sortedFlights som passerer ≤20t/22t + ingen nattfly
+  // Foretrekker 1-stopp fremfor 2-stopp hvis prisdifferansen er ≤2000 NOK / ≤1500 DKK
   const bestAndCheapest = (() => {
-    const f = sortedFlights.find(f =>
+    const STOP_TOLERANCE = language === 'da' ? 1500 : 2000;
+    const qualifyingFlights = sortedFlights.filter(f =>
       f.totalDurationMinutes <= MAX_BEST_AND_CHEAPEST_HOURS * 60 && !f.hasNightFlight
     );
-    return f ? { ...f, isRecommended: true } : null;
+    if (qualifyingFlights.length === 0) return null;
+    // Cheapest qualifying (current behavior)
+    const cheapest = qualifyingFlights[0];
+    const cheapestStops = cheapest.outbound.stops + (cheapest.inbound?.stops ?? 0);
+    // If already ≤1 stop, use it directly
+    if (cheapestStops <= 1) return { ...cheapest, isRecommended: true };
+    // Look for cheapest ≤1-stop alternative within STOP_TOLERANCE
+    const oneStopAlt = qualifyingFlights.find(f => {
+      const stops = f.outbound.stops + (f.inbound?.stops ?? 0);
+      return stops <= 1 && f.price <= cheapest.price + STOP_TOLERANCE;
+    });
+    return oneStopAlt
+      ? { ...oneStopAlt, isRecommended: true }
+      : { ...cheapest, isRecommended: true };
   })();
   const basePrice = bestAndCheapest?.price || 0;
   const baseDuration = bestAndCheapest?.totalDurationMinutes || 0;
@@ -2122,12 +2142,9 @@ function saveToPowerPointSingle(flight: ProcessedFlight, title: string) {
           setDateIntervalResult({ ...bestInterval, recommendReason: t.searchInInterval });
           setSearchProgress(prev => ({ ...prev, current: prev.current + 1 }));
           
-          // Find all alternatives within ±600 kr of the best price
-          // Deduplicate: keep only the cheapest flight per unique date-pair
-          const PRICE_MARGIN = 600;
+          // Vis ALLE datoer sjekket i perioden (deduplisert: billigste per dato-par)
           const seenDates = new Map<string, typeof allValidResults[number]>();
           for (const r of allValidResults) {
-            if (Math.abs(r.price - bestInterval!.price) > PRICE_MARGIN) continue;
             const key = `${r.departureDate}_${r.returnDate}`;
             const existing = seenDates.get(key);
             if (!existing || r.price < existing.price) {
@@ -2138,7 +2155,7 @@ function saveToPowerPointSingle(flight: ProcessedFlight, title: string) {
             .sort((a, b) => new Date(a.departureDate).getTime() - new Date(b.departureDate).getTime());
           
           setIntervalAlternatives(alternatives);
-          setShowIntervalAlternatives(false); // Reset to collapsed
+          setShowIntervalAlternatives(true); // Auto-ekspander datoliste
         } else {
           setIntervalAlternatives([]);
         }
@@ -3314,10 +3331,10 @@ function saveToPowerPointSingle(flight: ProcessedFlight, title: string) {
               >
                 <span className="text-sm">
                   {showIntervalAlternatives 
-                    ? (language === 'da' ? 'Skjul andre datoer' : 'Skjul andre datoer')
+                    ? (language === 'da' ? 'Skjul alle datoer' : 'Skjul alle datoer')
                     : (language === 'da' 
-                      ? `Vis ${intervalAlternatives.length - 1} andre dato${intervalAlternatives.length - 1 === 1 ? '' : 'er'} med lignende pris`
-                      : `Vis ${intervalAlternatives.length - 1} andre dato${intervalAlternatives.length - 1 === 1 ? '' : 'er'} med lignende pris`)
+                      ? `Vis alle ${intervalAlternatives.length - 1} andre datoer i perioden`
+                      : `Vis alle ${intervalAlternatives.length - 1} andre datoer i perioden`)
                   }
                 </span>
                 <ChevronDown className={`h-4 w-4 transition-transform ${showIntervalAlternatives ? 'rotate-180' : ''}`} />
@@ -3328,7 +3345,7 @@ function saveToPowerPointSingle(flight: ProcessedFlight, title: string) {
                   <CardContent className="pt-4 pb-4">
                     <div className="space-y-2">
                       <h4 className="text-sm font-semibold text-muted-foreground mb-3">
-                        {language === 'da' ? 'Alternative datoer (±600 kr)' : 'Alternative datoer (±600 kr)'}
+                        {language === 'da' ? 'Alle datoer i perioden' : 'Alle datoer i perioden'}
                       </h4>
                       {intervalAlternatives.map((alt, idx) => (
                         <div 
