@@ -731,9 +731,14 @@ function isBetterBB(challenger: ProcessedFlight, current: ProcessedFlight, langu
   if (challNeg && !currNeg && challenger.price <= current.price + tol) return true;
   // Current is NEGOTIATED and within tolerance → current wins (challenger loses)
   if (!challNeg && currNeg && current.price <= challenger.price + tol) return false;
-  // Prefer fewer stops if within stopTol kr more expensive
-  if (challStops < currStops && challenger.price <= current.price + stopTol) return true;
-  if (currStops < challStops && current.price <= challenger.price + stopTol) return false;
+  // Prefer fewer stops if within stopTol kr AND max leg not more than 2h longer
+  const TIME_TOL_MIN = 120; // 2 hours
+  if (challStops < currStops && challenger.price <= current.price + stopTol) {
+    if (challenger.totalDurationMinutes <= current.totalDurationMinutes + TIME_TOL_MIN) return true;
+  }
+  if (currStops < challStops && current.price <= challenger.price + stopTol) {
+    if (current.totalDurationMinutes <= challenger.totalDurationMinutes + TIME_TOL_MIN) return false;
+  }
   // Prices within 300 kr → shortest combined duration wins
   if (Math.abs(challenger.price - current.price) <= 300) {
     const challDur = challenger.combinedDurationMinutes || challenger.totalDurationMinutes;
@@ -841,7 +846,10 @@ function categorizeFlights(
     // Look for cheapest ≤1-stop alternative within STOP_TOLERANCE
     const oneStopAlt = qualifyingFlights.find(f => {
       const stops = f.outbound.stops + (f.inbound?.stops ?? 0);
-      return stops <= 1 && f.price <= cheapest.price + STOP_TOLERANCE;
+      const cheapestMaxLeg = cheapest.totalDurationMinutes;
+      return stops <= 1
+        && f.price <= cheapest.price + STOP_TOLERANCE
+        && f.totalDurationMinutes <= cheapestMaxLeg + 120; // max 2h longer max-leg
     });
     return oneStopAlt
       ? { ...oneStopAlt, isRecommended: true }
@@ -905,12 +913,12 @@ function categorizeFlights(
   }
 
   // CATEGORY 3: BILLIGSTE (≤23t, ingen nattfly)
-  // Første fly i sortedFlights som passerer ≤23t + ingen nattfly
-  // Reisetid ≥ B&B (aldri kortere enn B&B), og ikke samme fly som B&B
+  // Billigste fly som er RIMELIGERE enn B&B og ikke er samme fly
+  // (fjernet krav om lengre reisetid – 1-stopp B&B kan ha kortere max-ben enn 2-stopp alternativer)
   const cheapestExtended = sortedFlights.find(f =>
     f.totalDurationMinutes <= MAX_EXTENDED_DURATION_HOURS * 60 &&
     !f.hasNightFlight &&
-    (!bestAndCheapest || f.totalDurationMinutes >= baseDuration) &&
+    f.price < basePrice &&
     f.id !== bestAndCheapest?.id
   ) ?? null;
 
@@ -1707,8 +1715,15 @@ function saveToPowerPointSingle(flight: ProcessedFlight, title: string) {
       const mainOffers = await searchFlightsApi(departure, destination, returnFrom, returnTo, departureDateStr, returnDateStr, pax, currency);
       console.log('📡 API RESPONSE:', mainOffers.length, 'offers received');
       const processedFlights = processFlightOffers(mainOffers, undefined, pax, allowNightFlights, nightFlightStart, nightFlightEnd);
-      console.log('⚙️ PROCESSED:', processedFlights.length, 'flights after processing');
-      categories = categorizeFlights(processedFlights, t, departure, language);
+      // Filter: only keep flights where return departure date matches requested date
+      // (Farewise combinationView may return off-date return combinations)
+      const dateFilteredFlights = returnDateStr
+        ? processedFlights.filter(f =>
+            !f.inbound || f.inbound.departureTime.substring(0, 10) === returnDateStr
+          )
+        : processedFlights;
+      console.log('⚙️ PROCESSED:', processedFlights.length, 'flights after processing,', dateFilteredFlights.length, 'after date filter');
+      categories = categorizeFlights(dateFilteredFlights, t, departure, language);
 
       // Set all 3 mandatory categories
       setMainResults({ bestAndCheapest: categories.bestAndCheapest, cheapest: null });

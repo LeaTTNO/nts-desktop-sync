@@ -1243,8 +1243,54 @@ ipcMain.handle("ppt:generate", async (_, payload) => {
     });
     
     debugLog('Step 6: All PowerShell scripts completed successfully');
+
+    // Step 7: Show save dialog starting in correct customer folder
+    if (result.ok && mainWindow) {
+      const username = os.userInfo().username;
+      const defaultDir = language === 'da'
+        ? path.join('C:', 'Users', username, 'OneDrive - TANZANIA TOURS', 'TANZANIA TOURS - Dokumenter', 'DK TANZANIA TOURS', 'Salg', 'Kunder DK', '2026 DK')
+        : path.join('C:', 'Users', username, 'OneDrive - TANZANIA TOURS', 'TANZANIA TOURS - Dokumenter', 'NO TANZANIA TOURS', 'Kunder NORGE', '2026 NO');
+
+      const saveResult = await dialog.showSaveDialog(mainWindow, {
+        title: language === 'da' ? 'Gem præsentation som...' : 'Lagre presentasjon som...',
+        defaultPath: path.join(defaultDir, fileName),
+        filters: [{ name: 'PowerPoint', extensions: ['pptx'] }],
+      });
+
+      if (!saveResult.canceled && saveResult.filePath) {
+        const destPath = saveResult.filePath.endsWith('.pptx') ? saveResult.filePath : saveResult.filePath + '.pptx';
+        // PowerShell: finn åpen presentasjon og SaveAs til valgt sti
+        const saveScript = [
+          `$ppApp = [System.Runtime.InteropServices.Marshal]::GetActiveObject('PowerPoint.Application')`,
+          `foreach ($pres in $ppApp.Presentations) {`,
+          `  if ($pres.FullName -ieq '${basePath.replace(/'/g, "''")}') {`,
+          `    $pres.SaveAs('${destPath.replace(/'/g, "''")}')`,
+          `    break`,
+          `  }`,
+          `}`,
+        ].join('\n');
+        const saveScriptPath = path.join(tmpDir, 'save-as.ps1');
+        fs.writeFileSync(saveScriptPath, saveScript, 'utf8');
+
+        await new Promise((res) => {
+          execFile('powershell.exe', ['-ExecutionPolicy', 'Bypass', '-File', saveScriptPath],
+            (err, stdout, stderr) => {
+              if (err) console.warn('SaveAs warning:', stderr || err.message);
+              else console.log('Saved to:', destPath);
+              res(); // Ikke feile hele operasjonen hvis SaveAs har problemer
+            }
+          );
+        });
+
+        debugLog(`Step 7 OK: Saved to ${destPath}`);
+        return { ok: true, savedPath: destPath };
+      }
+      // Bruker trykket Avbryt – filen er fortsatt åpen i PowerPoint fra temp
+      debugLog('Step 7: Save dialog cancelled by user');
+    }
+
     debugLog(`Final result: ${JSON.stringify(result)}`);
-    console.log('🎁 Final result:', result);
+    console.log('Final result:', result);
     return result;
   } catch (error) {
     debugLog(`FATAL ERROR: ${error.message}`);
