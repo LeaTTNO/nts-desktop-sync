@@ -660,8 +660,15 @@ function processFlightOffers(
       });
     }
 
-    const outDuration = getTotalMinutes(outbound.duration);
-    const inDuration = inbound ? getTotalMinutes(inbound.duration) : 0;
+    // Beregn varighet fra faktiske tidsstempler (mer pålitelig enn API-feltet itinerary.duration)
+    // API-feltet kan inneholde feil (f.eks. PT21H40M for en 14h reise)
+    const calcDuration = (dep: string, arr: string, fallbackDuration: string): number => {
+      const ms = new Date(arr).getTime() - new Date(dep).getTime();
+      const mins = Math.round(ms / 60000);
+      return mins > 0 ? mins : getTotalMinutes(fallbackDuration);
+    };
+    const outDuration = calcDuration(outbound.departureTime, outbound.arrivalTime, outbound.duration);
+    const inDuration = inbound ? calcDuration(inbound.departureTime, inbound.arrivalTime, inbound.duration) : 0;
 
     if (hasEK) {
       console.log('🔍 EK PARSED DURATION:', {
@@ -853,13 +860,13 @@ function categorizeFlights(
       return { ...qualifyingFlights[0], isRecommended: true };
     }
 
-    // Fra hub-flyplasser (OSL/HAM/CPH) + allowTwoStopBB=false: alltid 1-stopp i B&B
+    // Fra hub-flyplasser (OSL/HAM/CPH) + allowTwoStopBB=false: alltid maks 1-stopp PER BEN i B&B
     if (!allowTwoStopBB) {
       const oneStopFlights = qualifyingFlights.filter(f =>
-        f.outbound.stops + (f.inbound?.stops ?? 0) <= 1
+        f.outbound.stops <= 1 && (f.inbound?.stops ?? 0) <= 1
       );
       if (oneStopFlights.length > 0) return { ...oneStopFlights[0], isRecommended: true };
-      // Ingen 1-stopp tilgjengelig – fall back til billigste
+      // Ingen maks-1-stopp-per-ben tilgjengelig – fall back til billigste
       return { ...qualifyingFlights[0], isRecommended: true };
     }
 
