@@ -40,10 +40,10 @@ foreach ($modulePath in $ModulePaths) {
     }
 }
 
-# STEG 2: Sett inn alle ANDRE moduler FOR siste slide i basefilen
+# STEG 2: Sett inn alle ANDRE moduler FØR de 2 siste slidene i basefilen
 # Dette er Safari, Zanzibar, osv. - de kommer FORST
-# Bruk slides.Count som startposisjon slik at de skyves INN FORAN siste basefil-slide
-$moduleInsertStart = $presentation.Slides.Count
+# Paste(N) setter inn ETTER posisjon N, saa bruk Slides.Count - 2 for aa havne foer de 2 siste
+$moduleInsertStart = $presentation.Slides.Count - 2
 $currentInsertPos = $moduleInsertStart
 
 foreach ($modulePath in $ModulePaths) {
@@ -82,10 +82,11 @@ if ($flightModulePath -and (Test-Path $flightModulePath)) {
         $false
     )
     
-    # KORREKT METODE: Sett inn på nest siste posisjon direkte
+    # KORREKT METODE: Sett inn foer de 2 siste slidene
+    # Paste(N) setter inn ETTER posisjon N, saa N-2 gir posisjon foer 2 siste
     $totalSlides = $presentation.Slides.Count
-    $insertPos = [Math]::Max(1, $totalSlides)  # Insert BEFORE siste slide
-    Write-Host "Setter inn flyinformasjon på posisjon: $insertPos (av $totalSlides slides totalt)"
+    $insertPos = [Math]::Max(1, $totalSlides - 2)
+    Write-Host "Setter inn flyinformasjon paa posisjon: $insertPos (av $totalSlides slides totalt)"
     
     # Sett inn flyinformasjon slides på nest siste posisjon
     $slideOffset = 0

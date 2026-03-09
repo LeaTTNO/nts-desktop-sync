@@ -840,28 +840,40 @@ function categorizeFlights(
   let bestQuality: ProcessedFlight | null = null;
   let bestAndCheapestIsBest = false;
 
-  // BESTE sorteres alltid etter KORTESTE reisetid (ikke pris) – vi vil ha det raskeste flyet
+  // BESTE sorteres etter: 1) Færrest stopp, 2) Korteste reisetid
   const durationSortedFlights = [...validFlights].sort((a, b) => {
+    const aStops = a.outbound.stops + (a.inbound?.stops ?? 0);
+    const bStops = b.outbound.stops + (b.inbound?.stops ?? 0);
+    if (aStops !== bStops) return aStops - bStops;
     const aDur = a.combinedDurationMinutes || a.totalDurationMinutes;
     const bDur = b.combinedDurationMinutes || b.totalDurationMinutes;
     return aDur - bDur;
   });
 
   if (bestAndCheapest) {
-    // Finn det KORTESTE flyet (kombinert reisetid) som er innenfor BESTE-kriteriet
-    // OG kortere enn B&B – uansett om B&B selv er innenfor grensen
-    bestQuality = durationSortedFlights.find(f =>
-      f.totalDurationMinutes <= MAX_BEST_QUALITY_HOURS * 60 &&
-      f.totalDurationMinutes < baseDuration &&
-      !f.hasNightFlight &&
-      f.travelClass !== 'BUSINESS' &&
-      f.travelClass !== 'FIRST' &&
-      f.id !== bestAndCheapest!.id
-    ) ?? null;
+    // BESTE skal vises hvis flyet er genuint bedre enn B&B:
+    // - Færre stopp enn B&B (selv om reisetiden er litt lengre), ELLER
+    // - Samme stopp men kortere reisetid
+    const baseBBStops = bestAndCheapest.outbound.stops + (bestAndCheapest.inbound?.stops ?? 0);
+    bestQuality = durationSortedFlights.find(f => {
+      if (f.id === bestAndCheapest!.id) return false;
+      if (f.totalDurationMinutes > MAX_BEST_QUALITY_HOURS * 60) return false;
+      if (f.hasNightFlight) return false;
+      if (f.travelClass === 'BUSINESS' || f.travelClass === 'FIRST') return false;
+      const fStops = f.outbound.stops + (f.inbound?.stops ?? 0);
+      // Bedre: færre stopp enn B&B → alltid kvalifisert (uavhengig av reisetid)
+      if (fStops < baseBBStops) return true;
+      // Samme stopp: kortere MAX-benet (= mer balansert reise) enn B&B
+      if (fStops === baseBBStops && f.totalDurationMinutes < baseDuration) return true;
+      // Samme stopp + samme max-ben: kortere kombinert reisetid
+      if (fStops === baseBBStops && f.totalDurationMinutes === baseDuration &&
+          (f.combinedDurationMinutes ?? f.totalDurationMinutes) < (bestAndCheapest!.combinedDurationMinutes ?? baseDuration)) return true;
+      return false;
+    }) ?? null;
     if (!bestQuality) bestAndCheapestIsBest = true;
     console.log(bestQuality
-      ? `✅ BESTE valgt: ${bestQuality.price} kr, ${Math.round(bestQuality.totalDurationMinutes/60*10)/10}t (< B&B ${Math.round(baseDuration/60*10)/10}t), class=${bestQuality.travelClass}`
-      : `ℹ️ BESTE: B&B (${Math.round(baseDuration/60*10)/10}t) er allerede korteste – viser ikke BESTE separat`
+      ? `✅ BESTE valgt: ${bestQuality.price} kr, ${Math.round(bestQuality.totalDurationMinutes/60*10)/10}t, stopp=${bestQuality.outbound.stops + (bestQuality.inbound?.stops ?? 0)} (B&B stopp=${baseBBStops}), class=${bestQuality.travelClass}`
+      : `ℹ️ BESTE: B&B er allerede beste (stopp=${baseBBStops}, ${Math.round(baseDuration/60*10)/10}t) – viser ikke BESTE separat`
     );
   } else {
     bestQuality = durationSortedFlights.find(f =>
@@ -1401,8 +1413,8 @@ export default function FlightRobot() {
         if (current.totalDurationMinutes > best.totalDurationMinutes) return best;
         
         // Same duration: Prefer fewer stops
-        const currentStops = current.segments.length - 1;
-        const bestStops = best.segments.length - 1;
+        const currentStops = current.outbound.stops + (current.inbound?.stops ?? 0);
+        const bestStops = best.outbound.stops + (best.inbound?.stops ?? 0);
         if (currentStops < bestStops) return current;
         if (currentStops > bestStops) return best;
         

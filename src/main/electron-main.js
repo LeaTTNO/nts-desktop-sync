@@ -1078,7 +1078,12 @@ ipcMain.handle("ppt:generate", async (_, payload) => {
     debugLog(`Step 1 OK: tmpDir=${tmpDir}`);
 
     debugLog('Step 2: Preparing base file...');
-    const fileName = language === 'da' ? 'Rejseprogram og Tilbud.pptx' : 'Reiseprogram og Tilbud.pptx';
+    const defaultFileName = language === 'da' ? 'Rejseprogram og Tilbud.pptx' : 'Reiseprogram og Tilbud.pptx';
+    // Bruk basefil-navn fra UI hvis tilgjengelig (f.eks. "Reiseprogram og Tilbud - Safari & Zanzibar")
+    const safeBaseName = baseTemplateName
+      ? baseTemplateName.replace(/[<>:"/\\|?*]/g, '-').replace(/\.pptx$/i, '') + '.pptx'
+      : defaultFileName;
+    const fileName = safeBaseName;
     const basePath = path.join(tmpDir, fileName);
     debugLog(`Step 2 OK: basePath=${basePath}`);
     

@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { oneDriveClient } from '@/lib/oneDriveClient';
 import { toast } from 'sonner';
 
@@ -224,6 +224,7 @@ export const useOneDriveTemplates = (language: 'no' | 'da') => {
   const [categories, setCategories] = useState<string[]>([]);
   const [folderPath, setFolderPath] = useState<string>('');
   const [lastSyncTime, setLastSyncTime] = useState<string | null>(null);
+  const isFirstAuth = useRef(true);
 
   useEffect(() => {
     initializeOneDrive();
@@ -236,7 +237,36 @@ export const useOneDriveTemplates = (language: 'no' | 'da') => {
 
   // Auto-load templates when language changes or user authenticates
   useEffect(() => {
-    if (isAuthenticated) {
+    if (!isAuthenticated) return;
+
+    if (isFirstAuth.current) {
+      // Første gangs autentisering (oppstart) – prøv cache + delta istedet for full scan
+      isFirstAuth.current = false;
+      const cachedRaw = localStorage.getItem('onedrive-cached-templates');
+      const deltaLink = localStorage.getItem('onedrive-delta-link');
+
+      if (cachedRaw && deltaLink) {
+        try {
+          const cached = JSON.parse(cachedRaw) as OneDriveTemplate[];
+          if (cached.length > 0) {
+            console.log(`📋 Oppstart: laster ${cached.length} maler fra cache, kjører delta-sync i bakgrunnen...`);
+            setTemplates(cached);
+            const storedSync = localStorage.getItem('onedrive-last-sync');
+            if (storedSync) setLastSyncTime(storedSync);
+            setIsLoading(false);
+            // Delta-sync i bakgrunnen for å hente eventuelle endringer
+            refreshTemplates();
+            return;
+          }
+        } catch (e) {
+          console.warn('⚠️ Kunne ikke lese cache – kjører full scan');
+        }
+      }
+
+      // Ingen cache eller delta-link → full scan
+      loadTemplatesForLanguage(language);
+    } else {
+      // Language-bytte → alltid full scan
       loadTemplatesForLanguage(language);
     }
   }, [language, isAuthenticated]);
@@ -383,6 +413,8 @@ export const useOneDriveTemplates = (language: 'no' | 'da') => {
       });
 
       setTemplates(newTemplates);
+      // Lagre template-listen i cache for rask oppstart neste gang
+      localStorage.setItem('onedrive-cached-templates', JSON.stringify(newTemplates));
       
       // Update last sync time
       const syncTime = new Date().toISOString();
@@ -518,7 +550,10 @@ export const useOneDriveTemplates = (language: 'no' | 'da') => {
 
           // Keep existing templates that were not deleted or overwritten
           const kept = prev.filter(t => !deletedIds.has(t.fileId) && !changedFileIds.has(t.fileId));
-          return [...kept, ...updatedTemplates];
+          const merged = [...kept, ...updatedTemplates];
+          // Oppdater cache med merged liste
+          localStorage.setItem('onedrive-cached-templates', JSON.stringify(merged));
+          return merged;
         });
 
         const syncTime = new Date().toISOString();
