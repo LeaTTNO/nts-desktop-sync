@@ -1715,15 +1715,8 @@ function saveToPowerPointSingle(flight: ProcessedFlight, title: string) {
       const mainOffers = await searchFlightsApi(departure, destination, returnFrom, returnTo, departureDateStr, returnDateStr, pax, currency);
       console.log('📡 API RESPONSE:', mainOffers.length, 'offers received');
       const processedFlights = processFlightOffers(mainOffers, undefined, pax, allowNightFlights, nightFlightStart, nightFlightEnd);
-      // Filter: only keep flights where return departure date matches requested date
-      // (Farewise combinationView may return off-date return combinations)
-      const dateFilteredFlights = returnDateStr
-        ? processedFlights.filter(f =>
-            !f.inbound || f.inbound.departureTime.substring(0, 10) === returnDateStr
-          )
-        : processedFlights;
-      console.log('⚙️ PROCESSED:', processedFlights.length, 'flights after processing,', dateFilteredFlights.length, 'after date filter');
-      categories = categorizeFlights(dateFilteredFlights, t, departure, language);
+      console.log('⚙️ PROCESSED:', processedFlights.length, 'flights after processing');
+      categories = categorizeFlights(processedFlights, t, departure, language);
 
       // Set all 3 mandatory categories
       setMainResults({ bestAndCheapest: categories.bestAndCheapest, cheapest: null });
