@@ -625,55 +625,48 @@ ipcMain.handle("farewise:revalidate", async (_, { datasource, segments, adults, 
 });
 
 // ✈️ Farewise: Create reservation (get PNR)
-// Endpoint: POST www.farewise.{domain}/api/recommendations/book  (web proxy, same controller as search/revalidate)
-// Content-Type: application/json-patch+json
-// Auth: session cookies (via sessionFetch) + authorizationGuid in body
+// Endpoint: POST www.farewise.{domain}/api/recommendations/book
+// Body format matches search/revalidate pattern: customerId, customerName, dataSource, passengers
+// Segments sent as-is from Farewise search response (nested format, not flat)
 ipcMain.handle("farewise:createReservation", async (_, { datasource, recommendationId, routes, adults, children = 0, language = "no" }) => {
   try {
-    // Build travellers array (type 0=adult, 1=child, 2=infant)
-    const travellers = [
-      ...Array.from({ length: Number(adults) }, () => ({ type: 0 })),
-      ...Array.from({ length: Number(children) }, () => ({ type: 1 })),
-    ];
+    const region = FAREWISE_REGIONS[language] || FAREWISE_REGIONS.no;
+    const domain = language === "da" ? "dk" : "no";
 
-    // Build routes array — segments in flat API format
+    // Children ages array (matching revalidate format)
+    const childrenList = Array.from({ length: Number(children) }, () => ({ age: 10 }));
+
+    // Build routes array — send segments as-is from Farewise search (nested objects)
     const bookingRoutes = (routes || []).map(route => ({
       recommendationId,
       dataSource: datasource,
-      segments: (route.segments || []).map((seg, idx) => ({
-        number: seg.number ?? idx,
-        departureDate: seg.departureDate || "",
-        arrivalDate: seg.arrivalDate || "",
-        departureAirport: seg.departure?.code || seg.departureAirport || "",
-        departureTerminal: seg.departure?.terminal || seg.departureTerminal || null,
-        arrivalAirport: seg.arrival?.code || seg.arrivalAirport || "",
-        arrivalTerminal: seg.arrival?.terminal || seg.arrivalTerminal || null,
-        marketingCarrier: seg.marketingCarrier?.code || (typeof seg.marketingCarrier === "string" ? seg.marketingCarrier : null),
-        operatingCarrier: seg.operatingCarrier?.code || (typeof seg.operatingCarrier === "string" ? seg.operatingCarrier : null),
-        flightNumber: String(seg.flightNumber || ""),
-        equipmentType: seg.equipmentType || null,
-        bookingClass: seg.bookingClass || null,
-        fareBasis: seg.fareBasis || null,
-        cabinClass: seg.cabinClass || null,
-        elapsedFlyingTime: seg.elapsedFlyingTime || null,
-        numberOfTechnicalStops: seg.numberOfTechnicalStops ?? 0,
-      })),
-      totalTime: route.totalTime != null ? String(route.totalTime) : null,
-      majorityCarrier: route.majorityCarrier?.code || (typeof route.majorityCarrier === "string" ? route.majorityCarrier : null),
-      validatingCarrier: route.validatingCarrier?.code || (typeof route.validatingCarrier === "string" ? route.validatingCarrier : null),
+      segments: route.segments || [],  // Raw Farewise segments — no conversion
+      totalTime: route.totalTime != null ? route.totalTime : null,
+      majorityCarrier: route.majorityCarrier || null,
+      validatingCarrier: route.validatingCarrier || null,
       transaction: route.transaction || null,
     }));
 
     const requestBody = {
-      authorizationGuid: FLIGHTROBOT_AUTH_GUID || undefined,
-      language: language === "da" ? "da" : "no",
+      customerId: region.customerId,
+      customerName: region.customerName,
+      dataSource: datasource,
+      recommendationId,
       routes: bookingRoutes,
-      travellers,
+      passengers: {
+        adults: Number(adults),
+        children: childrenList,
+      },
       confirmed: false,
       loadServices: false,
+      language: language === "da" ? "da" : "no",
     };
 
-    const domain = language === "da" ? "dk" : "no";
+    // Add authorizationGuid only for regions that require it (NO)
+    if (region.authRequired && FLIGHTROBOT_AUTH_GUID) {
+      requestBody.authorizationGuid = FLIGHTROBOT_AUTH_GUID;
+    }
+
     const url = `https://www.farewise.${domain}/api/recommendations/book`;
     const bodyStr = JSON.stringify(requestBody);
     console.log(`Farewise createReservation (${language.toUpperCase()}) → ${url}`);
@@ -684,9 +677,8 @@ ipcMain.handle("farewise:createReservation", async (_, { datasource, recommendat
     const res = await sessionFetch(url, {
       method: "POST",
       headers: {
-        "Content-Type": "application/json-patch+json",
+        "Content-Type": "application/json;charset=UTF-8",
         "Accept": "application/json, text/plain, */*",
-        "Accept-Language": "da-DK,da;q=0.9,en-US;q=0.8,en;q=0.7",
         "Referer": `https://www.farewise.${domain}/nd/flight/search`,
         "Origin": `https://www.farewise.${domain}`,
         "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/144.0.0.0 Safari/537.36",
