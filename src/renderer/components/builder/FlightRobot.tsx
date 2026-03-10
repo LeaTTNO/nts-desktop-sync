@@ -679,15 +679,19 @@ function processFlightOffers(
       });
     }
 
-    // Beregn varighet fra faktiske tidsstempler (mer pålitelig enn API-feltet itinerary.duration)
-    // API-feltet kan inneholde feil (f.eks. PT21H40M for en 14h reise)
-    const calcDuration = (dep: string, arr: string, fallbackDuration: string): number => {
+    // Beregn varighet fra API-feltets PT-streng (f.eks. PT21H40M) — dette er alltid korrekt.
+    // Timestamp-differansen er IKKE pålitelig: Amadeus tagger alle tider som +00:00 uavhengig
+    // av faktisk tidssone, så arr-dep gir feil svar for ruter som krysser tidssoner.
+    const calcDuration = (ptDuration: string, dep: string, arr: string): number => {
+      const fromPT = getTotalMinutes(ptDuration);
+      if (fromPT > 0) return fromPT;
+      // Fallback: timestamp-differanse (kun hvis PT-streng mangler)
       const ms = new Date(arr).getTime() - new Date(dep).getTime();
       const mins = Math.round(ms / 60000);
-      return mins > 0 ? mins : getTotalMinutes(fallbackDuration);
+      return mins > 0 ? mins : 0;
     };
-    const outDuration = calcDuration(outbound.departureTime, outbound.arrivalTime, outbound.duration);
-    const inDuration = inbound ? calcDuration(inbound.departureTime, inbound.arrivalTime, inbound.duration) : 0;
+    const outDuration = calcDuration(outbound.duration, outbound.departureTime, outbound.arrivalTime);
+    const inDuration = inbound ? calcDuration(inbound.duration, inbound.departureTime, inbound.arrivalTime) : 0;
 
     if (hasEK) {
       console.log('🔍 EK PARSED DURATION:', {
