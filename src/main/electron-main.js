@@ -625,14 +625,18 @@ ipcMain.handle("farewise:revalidate", async (_, { datasource, segments, adults, 
 });
 
 // ✈️ Farewise: Create reservation (get PNR)
-// Bruker Node.js native https — Electron net.request med session-partisjon blokkerer
-// cross-origin kall til api.farewise.dk (ERR_BLOCKED_BY_CLIENT).
-// Auth skjer via authorizationGuid i request body, ikke via session-cookies.
-// Body-struktur følger Farewise booking API-schema.
+// Swagger endpoint: POST /v30/flight/recommendations/book ("Book recommendation")
+// Web proxy: /api/recommendations/book (same pattern as search/revalidate)
+// Uses sessionFetch with login cookies — same auth as search + revalidate.
 ipcMain.handle("farewise:createReservation", async (_, { datasource, recommendationId, routes, adults, children = 0, language = "no" }) => {
   try {
     const region = FAREWISE_REGIONS[language] || FAREWISE_REGIONS.no;
-    const apiUrl = `https://api.farewise.dk/v30/flight/bookings`;
+    const domain = language === "da" ? "dk" : "no";
+
+    // Ensure logged in (session cookies required for booking)
+    await loginToFarewise(language);
+
+    const apiUrl = `https://www.farewise.${domain}/api/recommendations/book`;
 
     // Build travellers array (one entry per passenger)
     const travellers = [
@@ -664,47 +668,27 @@ ipcMain.handle("farewise:createReservation", async (_, { datasource, recommendat
     const bodyStr = JSON.stringify(requestBody);
     console.log(`Farewise createReservation (${language.toUpperCase()}):`, bodyStr.substring(0, 2000));
 
-    // Node.js native https — bypasser Electron session-restriksjonene
-    const https = await import("https");
-    const result = await new Promise((resolve, reject) => {
-      const url = new URL(apiUrl);
-      const options = {
-        hostname: url.hostname,
-        port: 443,
-        path: url.pathname,
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json;charset=UTF-8",
-          "Accept": "application/json, text/plain, */*",
-          "Content-Length": Buffer.byteLength(bodyStr),
-        },
-      };
-      const req = https.request(options, (res) => {
-        const chunks = [];
-        res.on("data", (chunk) => chunks.push(chunk));
-        res.on("end", () => {
-          const body = Buffer.concat(chunks).toString("utf8");
-          resolve({
-            ok: res.statusCode >= 200 && res.statusCode < 300,
-            status: res.statusCode,
-            body,
-          });
-        });
-        res.on("error", reject);
-      });
-      req.on("error", reject);
-      req.write(bodyStr);
-      req.end();
-    });
+    const res = await sessionFetch(apiUrl, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json;charset=UTF-8",
+        "Accept": "application/json, text/plain, */*",
+        "Referer": `https://www.farewise.${domain}/nd/flight/search`,
+        "Origin": `https://www.farewise.${domain}`,
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/144.0.0.0 Safari/537.36",
+      },
+      body: bodyStr,
+    }, language);
 
-    if (!result.ok) {
-      console.error(`Farewise createReservation error: ${result.status}`, result.body.substring(0, 1000));
-      return { ok: false, error: `Reservation failed: ${result.status}` };
+    if (!res.ok) {
+      const errorText = await res.text();
+      console.error(`Farewise createReservation error: ${res.status}`, errorText.substring(0, 1000));
+      return { ok: false, error: `Reservation failed: ${res.status}` };
     }
 
-    const data = JSON.parse(result.body);
+    const data = await res.json();
     console.log("Farewise createReservation result:", JSON.stringify(data, null, 2).substring(0, 1000));
-    const pnr = data?.pnr || data?.reservationId || data?.id || "";
+    const pnr = data?.pnr || data?.number || data?.reservationId || data?.id || "";
     const resolvedDatasource = data?.dataSource || data?.datasource || datasource;
     return { ok: true, pnr, datasource: resolvedDatasource, data };
   } catch (err) {
