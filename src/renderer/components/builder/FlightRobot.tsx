@@ -1648,12 +1648,13 @@ function saveToPowerPointSingle(flight: ProcessedFlight, title: string) {
           ? "Reservasjonen er opprettet – Farewise åpnes i nettleseren."
           : "Reservationen er oprettet – Farewise åbnes i browseren."
       );
-    } catch (err) {
+    } catch (err: any) {
       console.error("Farewise booking error:", err);
+      const errMsg = err?.message || String(err);
       toast.error(
         language === "no"
-          ? "Farewise-booking kunne ikke opprettes. Prøv igjen."
-          : "Farewise-booking kunne ikke oprettes. Prøv igen."
+          ? `Farewise-booking feilet: ${errMsg.substring(0, 200)}`
+          : `Farewise-booking fejlede: ${errMsg.substring(0, 200)}`
       );
     }
   }

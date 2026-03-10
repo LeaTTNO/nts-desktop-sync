@@ -625,81 +625,102 @@ ipcMain.handle("farewise:revalidate", async (_, { datasource, segments, adults, 
 });
 
 // ✈️ Farewise: Create reservation (get PNR)
-// Swagger endpoint: POST /v30/flight/recommendations/book ("Book recommendation")
-// Web proxy: /api/recommendations/book (same pattern as search/revalidate)
-// Uses sessionFetch with login cookies — same auth as search + revalidate.
-// Segments are sent in the original Farewise search response format (nested objects),
-// just like revalidate does — the web proxy handles any format conversion.
+// Uses direct Farewise API: POST api.farewise.dk/v30/flight/recommendations/book
+// via Node.js native https (bypasses Electron session restrictions).
+// Auth via authorizationGuid in request body.
+// Body follows Swagger BookRecommendationCommand schema.
 ipcMain.handle("farewise:createReservation", async (_, { datasource, recommendationId, routes, adults, children = 0, language = "no" }) => {
   try {
     const region = FAREWISE_REGIONS[language] || FAREWISE_REGIONS.no;
-    const domain = language === "da" ? "dk" : "no";
 
-    // Ensure logged in (session cookies required for booking)
-    await loginToFarewise(language);
-
-    const apiUrl = `https://www.farewise.${domain}/api/recommendations/book`;
-
-    // Build travellers array (one entry per passenger)
+    // Build travellers array (one entry per passenger, type 0=adult, 1=child)
     const travellers = [
       ...Array.from({ length: Number(adults) }, () => ({ type: 0 })),
       ...Array.from({ length: Number(children) }, () => ({ type: 1 })),
     ];
 
-    // Build routes array — each route gets recommendationId + dataSource.
-    // Segments are passed as-is from the Farewise search response (same format
-    // the web frontend uses — nested objects like departure: {code, terminal}).
+    // Build routes array following Swagger RecommendationRoute schema.
+    // Convert segments from Farewise search format (nested objects) to flat API format.
     const bookingRoutes = (routes || []).map(route => ({
       recommendationId,
       dataSource: datasource,
-      segments: route.segments || [],
-      totalTime: route.totalTime != null ? route.totalTime : "",
-      majorityCarrier: route.majorityCarrier || "",
-      validatingCarrier: route.validatingCarrier || "",
-      transaction: route.transaction || "",
+      segments: (route.segments || []).map((seg, idx) => ({
+        number: seg.number ?? idx,
+        departureDate: seg.departureDate || "",
+        arrivalDate: seg.arrivalDate || "",
+        departureAirport: seg.departure?.code || seg.departureAirport || "",
+        departureTerminal: seg.departure?.terminal || seg.departureTerminal || null,
+        arrivalAirport: seg.arrival?.code || seg.arrivalAirport || "",
+        arrivalTerminal: seg.arrival?.terminal || seg.arrivalTerminal || null,
+        marketingCarrier: seg.marketingCarrier?.code || (typeof seg.marketingCarrier === "string" ? seg.marketingCarrier : "") || "",
+        operatingCarrier: seg.operatingCarrier?.code || (typeof seg.operatingCarrier === "string" ? seg.operatingCarrier : "") || null,
+        flightNumber: String(seg.flightNumber || ""),
+        equipmentType: seg.equipmentType || null,
+        bookingClass: seg.bookingClass || null,
+        fareBasis: seg.fareBasis || null,
+        cabinClass: seg.cabinClass || null,
+        elapsedFlyingTime: seg.elapsedFlyingTime || null,
+        numberOfTechnicalStops: seg.numberOfTechnicalStops ?? 0,
+      })),
+      totalTime: route.totalTime != null ? String(route.totalTime) : null,
+      majorityCarrier: route.majorityCarrier?.code || (typeof route.majorityCarrier === "string" ? route.majorityCarrier : "") || null,
+      validatingCarrier: route.validatingCarrier?.code || (typeof route.validatingCarrier === "string" ? route.validatingCarrier : "") || null,
+      transaction: route.transaction || null,
     }));
 
     const requestBody = {
+      authorizationGuid: FLIGHTROBOT_AUTH_GUID || undefined,
       language: language === "da" ? "da" : "no",
       routes: bookingRoutes,
       travellers,
       confirmed: false,
       loadServices: false,
     };
-    if (region.authRequired && FLIGHTROBOT_AUTH_GUID) {
-      requestBody.authorizationGuid = FLIGHTROBOT_AUTH_GUID;
-    }
 
     const bodyStr = JSON.stringify(requestBody);
-    console.log(`Farewise createReservation (${language.toUpperCase()}):`, bodyStr.substring(0, 3000));
+    console.log(`Farewise createReservation (${language.toUpperCase()}) → api.farewise.dk/v30/flight/recommendations/book`);
+    console.log(`Request body:`, bodyStr.substring(0, 4000));
 
-    const res = await sessionFetch(apiUrl, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json;charset=UTF-8",
-        "Accept": "application/json, text/plain, */*",
-        "Accept-Language": "da-DK,da;q=0.9,en-US;q=0.8,en;q=0.7",
-        "Referer": `https://www.farewise.${domain}/nd/flight/search`,
-        "Origin": `https://www.farewise.${domain}`,
-        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/144.0.0.0 Safari/537.36",
-        "sec-ch-ua": '"Not(A:Brand";v="8", "Chromium";v="144", "Google Chrome";v="144"',
-        "sec-ch-ua-mobile": "?0",
-        "sec-ch-ua-platform": '"Windows"',
-        "sec-fetch-dest": "empty",
-        "sec-fetch-mode": "cors",
-        "sec-fetch-site": "same-origin",
-      },
-      body: bodyStr,
-    }, language);
+    // Node.js native https — direct API call to api.farewise.dk
+    const https = await import("https");
+    const result = await new Promise((resolve, reject) => {
+      const options = {
+        hostname: "api.farewise.dk",
+        port: 443,
+        path: "/v30/flight/recommendations/book",
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json;charset=UTF-8",
+          "Accept": "application/json, text/plain, */*",
+          "Content-Length": Buffer.byteLength(bodyStr),
+        },
+      };
+      const req = https.request(options, (res) => {
+        const chunks = [];
+        res.on("data", (chunk) => chunks.push(chunk));
+        res.on("end", () => {
+          const body = Buffer.concat(chunks).toString("utf8");
+          resolve({
+            ok: res.statusCode >= 200 && res.statusCode < 300,
+            status: res.statusCode,
+            body,
+          });
+        });
+        res.on("error", reject);
+      });
+      req.on("error", reject);
+      req.write(bodyStr);
+      req.end();
+    });
 
-    if (!res.ok) {
-      const errorText = await res.text();
-      console.error(`Farewise createReservation error: ${res.status}`, errorText);
-      return { ok: false, error: `Reservation failed: ${res.status} — ${errorText.substring(0, 500)}` };
+    console.log(`Farewise createReservation response: ${result.status}`, result.body.substring(0, 2000));
+
+    if (!result.ok) {
+      console.error(`Farewise createReservation error: ${result.status}`, result.body);
+      return { ok: false, error: `Reservation failed: ${result.status} — ${result.body.substring(0, 500)}` };
     }
 
-    const data = await res.json();
-    console.log("Farewise createReservation result:", JSON.stringify(data, null, 2).substring(0, 2000));
+    const data = JSON.parse(result.body);
     const pnr = data?.pnr || data?.number || data?.reservationId || data?.id || "";
     const resolvedDatasource = data?.dataSource || data?.datasource || datasource;
     return { ok: true, pnr, datasource: resolvedDatasource, data };
