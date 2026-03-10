@@ -625,22 +625,19 @@ ipcMain.handle("farewise:revalidate", async (_, { datasource, segments, adults, 
 });
 
 // ✈️ Farewise: Create reservation (get PNR)
-// Uses direct Farewise API: POST api.farewise.dk/v30/flight/recommendations/book
-// via Node.js native https (bypasses Electron session restrictions).
-// Auth via authorizationGuid in request body.
-// Body follows Swagger BookRecommendationCommand schema.
+// Endpoint: POST api.farewise.dk/v30/flight/reservations
+// Content-Type: application/json-patch+json (Farewise standard)
+// Auth: authorizationGuid in request body
+// Flow: recommendations/search → flight/reservations → open reservation page
 ipcMain.handle("farewise:createReservation", async (_, { datasource, recommendationId, routes, adults, children = 0, language = "no" }) => {
   try {
-    const region = FAREWISE_REGIONS[language] || FAREWISE_REGIONS.no;
-
-    // Build travellers array (one entry per passenger, type 0=adult, 1=child)
+    // Build travellers array (type 0=adult, 1=child, 2=infant)
     const travellers = [
       ...Array.from({ length: Number(adults) }, () => ({ type: 0 })),
       ...Array.from({ length: Number(children) }, () => ({ type: 1 })),
     ];
 
-    // Build routes array following Swagger RecommendationRoute schema.
-    // Convert segments from Farewise search format (nested objects) to flat API format.
+    // Build routes array — segments in flat API format
     const bookingRoutes = (routes || []).map(route => ({
       recommendationId,
       dataSource: datasource,
@@ -652,8 +649,8 @@ ipcMain.handle("farewise:createReservation", async (_, { datasource, recommendat
         departureTerminal: seg.departure?.terminal || seg.departureTerminal || null,
         arrivalAirport: seg.arrival?.code || seg.arrivalAirport || "",
         arrivalTerminal: seg.arrival?.terminal || seg.arrivalTerminal || null,
-        marketingCarrier: seg.marketingCarrier?.code || (typeof seg.marketingCarrier === "string" ? seg.marketingCarrier : "") || "",
-        operatingCarrier: seg.operatingCarrier?.code || (typeof seg.operatingCarrier === "string" ? seg.operatingCarrier : "") || null,
+        marketingCarrier: seg.marketingCarrier?.code || (typeof seg.marketingCarrier === "string" ? seg.marketingCarrier : null),
+        operatingCarrier: seg.operatingCarrier?.code || (typeof seg.operatingCarrier === "string" ? seg.operatingCarrier : null),
         flightNumber: String(seg.flightNumber || ""),
         equipmentType: seg.equipmentType || null,
         bookingClass: seg.bookingClass || null,
@@ -663,8 +660,8 @@ ipcMain.handle("farewise:createReservation", async (_, { datasource, recommendat
         numberOfTechnicalStops: seg.numberOfTechnicalStops ?? 0,
       })),
       totalTime: route.totalTime != null ? String(route.totalTime) : null,
-      majorityCarrier: route.majorityCarrier?.code || (typeof route.majorityCarrier === "string" ? route.majorityCarrier : "") || null,
-      validatingCarrier: route.validatingCarrier?.code || (typeof route.validatingCarrier === "string" ? route.validatingCarrier : "") || null,
+      majorityCarrier: route.majorityCarrier?.code || (typeof route.majorityCarrier === "string" ? route.majorityCarrier : null),
+      validatingCarrier: route.validatingCarrier?.code || (typeof route.validatingCarrier === "string" ? route.validatingCarrier : null),
       transaction: route.transaction || null,
     }));
 
@@ -678,8 +675,8 @@ ipcMain.handle("farewise:createReservation", async (_, { datasource, recommendat
     };
 
     const bodyStr = JSON.stringify(requestBody);
-    console.log(`Farewise createReservation (${language.toUpperCase()}) → api.farewise.dk/v30/flight/recommendations/book`);
-    console.log(`Request body:`, bodyStr.substring(0, 4000));
+    console.log(`Farewise createReservation (${language.toUpperCase()}) → api.farewise.dk/v30/flight/reservations`);
+    console.log(`Request body (first 4000 chars):`, bodyStr.substring(0, 4000));
 
     // Node.js native https — direct API call to api.farewise.dk
     const https = await import("https");
@@ -687,10 +684,10 @@ ipcMain.handle("farewise:createReservation", async (_, { datasource, recommendat
       const options = {
         hostname: "api.farewise.dk",
         port: 443,
-        path: "/v30/flight/recommendations/book",
+        path: "/v30/flight/reservations",
         method: "POST",
         headers: {
-          "Content-Type": "application/json;charset=UTF-8",
+          "Content-Type": "application/json-patch+json",
           "Accept": "application/json, text/plain, */*",
           "Content-Length": Buffer.byteLength(bodyStr),
         },
@@ -713,10 +710,10 @@ ipcMain.handle("farewise:createReservation", async (_, { datasource, recommendat
       req.end();
     });
 
-    console.log(`Farewise createReservation response: ${result.status}`, result.body.substring(0, 2000));
+    console.log(`Farewise reservation response: ${result.status}`, result.body.substring(0, 2000));
 
     if (!result.ok) {
-      console.error(`Farewise createReservation error: ${result.status}`, result.body);
+      console.error(`Farewise reservation error: ${result.status}`, result.body);
       return { ok: false, error: `Reservation failed: ${result.status} — ${result.body.substring(0, 500)}` };
     }
 
