@@ -645,13 +645,32 @@ ipcMain.handle("farewise:createReservation", async (_, { datasource, recommendat
     ];
 
     // Build routes array — each route gets recommendationId + dataSource
+    // Segments must be converted from Farewise search response format (nested objects)
+    // to booking API RecommendationSegment format (flat strings).
     const bookingRoutes = (routes || []).map(route => ({
       recommendationId,
       dataSource: datasource,
-      segments: route.segments || [],
-      totalTime: route.totalTime || "",
-      majorityCarrier: route.majorityCarrier || "",
-      validatingCarrier: route.validatingCarrier || "",
+      segments: (route.segments || []).map(seg => ({
+        number: seg.number ?? 0,
+        departureDate: seg.departureDate || "",
+        arrivalDate: seg.arrivalDate || "",
+        departureAirport: seg.departure?.code || seg.departureAirport || "",
+        departureTerminal: seg.departure?.terminal || seg.departureTerminal || "",
+        arrivalAirport: seg.arrival?.code || seg.arrivalAirport || "",
+        arrivalTerminal: seg.arrival?.terminal || seg.arrivalTerminal || "",
+        marketingCarrier: seg.marketingCarrier?.code || seg.marketingCarrier || "",
+        operatingCarrier: seg.operatingCarrier?.code || seg.operatingCarrier || "",
+        flightNumber: String(seg.flightNumber || ""),
+        equipmentType: seg.equipmentType || "",
+        bookingClass: seg.bookingClass || "",
+        fareBasis: seg.fareBasis || "",
+        cabinClass: seg.cabinClass || "",
+        elapsedFlyingTime: seg.elapsedFlyingTime || "",
+        numberOfTechnicalStops: seg.numberOfTechnicalStops ?? 0,
+      })),
+      totalTime: typeof route.totalTime === "number" ? String(route.totalTime) : (route.totalTime || ""),
+      majorityCarrier: route.majorityCarrier?.code || route.majorityCarrier || "",
+      validatingCarrier: route.validatingCarrier?.code || route.validatingCarrier || "",
       transaction: route.transaction || "",
     }));
 
