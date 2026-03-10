@@ -625,8 +625,7 @@ ipcMain.handle("farewise:revalidate", async (_, { datasource, segments, adults, 
 });
 
 // ✈️ Farewise: Create reservation (get PNR)
-// Endpoint: POST www.farewise.{domain}/api/flight/recommendations/book  (web proxy)
-// Maps to: api.farewise.dk/v30/flight/recommendations/book (which exists — returned 500 not 404)
+// Endpoint: POST www.farewise.{domain}/api/recommendations/book  (web proxy, same controller as search/revalidate)
 // Content-Type: application/json-patch+json
 // Auth: session cookies (via sessionFetch) + authorizationGuid in body
 ipcMain.handle("farewise:createReservation", async (_, { datasource, recommendationId, routes, adults, children = 0, language = "no" }) => {
@@ -675,7 +674,7 @@ ipcMain.handle("farewise:createReservation", async (_, { datasource, recommendat
     };
 
     const domain = language === "da" ? "dk" : "no";
-    const url = `https://www.farewise.${domain}/api/flight/recommendations/book`;
+    const url = `https://www.farewise.${domain}/api/recommendations/book`;
     const bodyStr = JSON.stringify(requestBody);
     console.log(`Farewise createReservation (${language.toUpperCase()}) → ${url}`);
     console.log(`Request body (first 4000 chars):`, bodyStr.substring(0, 4000));
