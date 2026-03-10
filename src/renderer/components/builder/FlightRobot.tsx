@@ -1384,7 +1384,7 @@ export default function FlightRobot() {
   ): ProcessedFlight | null {
     // Use appropriate max duration based on sortBy
     const MAX_DURATION_HOURS = sortBy === 'quality' 
-      ? getMaxBestQualityDurationHours(departureAirport)  // 17-20h for BESTE
+      ? getMaxBestQualityDurationHours(departureAirport)  // 17-19.5h for BESTE
       : getMaxBestAndCheapestDurationHours(departureAirport);  // 20-22h for BESTE OG BILLIGSTE
     
     // Filter by airline first
@@ -1422,21 +1422,13 @@ export default function FlightRobot() {
       );
       console.log(`    Strict flights (≤${MAX_DURATION_HOURS}h): ${strictFiltered.length}/${filtered.length}`);
       
-      // For QUALITY (BESTE), NEVER fall back to extended - return null if no strict flights
-      if (sortBy === 'quality') {
-        if (strictFiltered.length === 0) {
-          console.log(`    No quality flights found (need ≤${MAX_DURATION_HOURS}h)`);
-          return null;
-        }
-        filtered = strictFiltered;
-      } else {
-        // For PRICE (BESTE OG BILLIGSTE), use strict if available, otherwise use all valid flights (≤23h, no night)
-        if (strictFiltered.length > 0) {
-          filtered = strictFiltered;
-        } else {
-          console.log(`    No strict flights found, using extended criteria (≤${MAX_EXTENDED_DURATION_HOURS}h, no night flights)`);
-        }
+      // For QUALITY (BESTE) and PRICE (BESTE OG BILLIGSTE): NEVER fall back to extended
+      // Both must respect their strict duration limit – return null if no flights qualify
+      if (strictFiltered.length === 0) {
+        console.log(`    No flights found within ≤${MAX_DURATION_HOURS}h – returning null`);
+        return null;
       }
+      filtered = strictFiltered;
     }
     // For extended category (BILLIGSTE UTVIDET): already filtered to ≤23h and no night flights
     
@@ -1692,6 +1684,7 @@ function saveToPowerPointSingle(flight: ProcessedFlight, title: string) {
 
     // Create new abort controller for this search
     const newAbortController = new AbortController();
+    const signal = newAbortController.signal;
     setAbortController(newAbortController);
 
     // Calculate max expected results based on enabled options
@@ -1749,6 +1742,7 @@ function saveToPowerPointSingle(flight: ProcessedFlight, title: string) {
       console.log('⚙️ PROCESSED:', processedFlights.length, 'flights after processing');
       categories = categorizeFlights(processedFlights, t, departure, language, allowTwoStopBB);
 
+      if (signal.aborted) return;
       // Set all 3 mandatory categories
       setMainResults({ bestAndCheapest: categories.bestAndCheapest, cheapest: null });
       setBestQualityResult(categories.bestQuality);
@@ -1897,10 +1891,12 @@ function saveToPowerPointSingle(flight: ProcessedFlight, title: string) {
           } catch (err) {
             console.log(`Flex search for ${newDepDate} failed:`, err);
           }
+          if (signal.aborted) break;
         }
 
         // ALWAYS show the best flexible option (by score) - even if more expensive!
         // User wants to see the result if the checkbox is enabled
+        if (signal.aborted) return;
         if (bestFlex) {
           setFlexibleResult({ ...bestFlex, recommendReason: t.cheaperFlexible });
           setSearchProgress(prev => ({ ...prev, current: prev.current + 1 }));
@@ -1976,10 +1972,12 @@ function saveToPowerPointSingle(flight: ProcessedFlight, title: string) {
           } catch (err) {
             console.log(`❌ Add nights search for ${newRetDate} failed:`, err);
           }
+          if (signal.aborted) break;
         }
 
         // ALWAYS show the best option (by score) - even if more expensive!
         // User wants to see the result if the checkbox is enabled
+        if (signal.aborted) return;
         if (bestAdd) {
           console.log('✅ Setting addNightsResult:', { nightsDiff: bestAdd.nightsDiff, price: bestAdd.price });
           setAddNightsResult({ ...bestAdd, recommendReason: t.cheaperExtended });
@@ -2058,10 +2056,12 @@ function saveToPowerPointSingle(flight: ProcessedFlight, title: string) {
           } catch (err) {
             console.log(`❌ Remove nights search for ${newRetDate} failed:`, err);
           }
+          if (signal.aborted) break;
         }
 
         // ALWAYS show the best option (by score) - even if more expensive!
         // User wants to see the result if the checkbox is enabled
+        if (signal.aborted) return;
         if (bestRemove) {
           console.log('✅ Setting removeNightsResult:', { nightsDiff: bestRemove.nightsDiff, price: bestRemove.price });
           setRemoveNightsResult({ ...bestRemove, recommendReason: t.cheaperExtended });
@@ -2173,10 +2173,12 @@ function saveToPowerPointSingle(flight: ProcessedFlight, title: string) {
           } catch (err) {
             console.log(`Interval search for ${searchDepDate} failed:`, err);
           }
+          if (signal.aborted) break;
         }
 
         // ALWAYS show the best interval option (by score) - even if more expensive!
         // User wants to see the result if the checkbox is enabled
+        if (signal.aborted) return;
         if (bestInterval) {
           intervalFound = true;
           setDateIntervalResult({ ...bestInterval, recommendReason: t.searchInInterval });
@@ -3046,8 +3048,8 @@ function saveToPowerPointSingle(flight: ProcessedFlight, title: string) {
               <Trophy className="h-4 w-4 text-amber-500 shrink-0" />
               <span>
                 {language === 'da'
-                  ? 'Beste og Billigste er allerede den bedste rejse på denne dato – ingen kortere rejsetid fundet inden for Beste-kriterierne (≤17t).'
-                  : 'Beste og Billigste er allerede den beste reisen på denne datoen – ingen kortere reisetid funnet innenfor Beste-kriteriene (≤17t).'}
+                  ? `Beste og Billigste er allerede den bedste rejse på denne dato – ingen kortere rejsetid fundet inden for Beste-kriterierne (≤${maxBestQualityHours}t).`
+                  : `Beste og Billigste er allerede den beste reisen på denne datoen – ingen kortere reisetid funnet innenfor Beste-kriteriene (≤${maxBestQualityHours}t).`}
               </span>
             </div>
           )}
