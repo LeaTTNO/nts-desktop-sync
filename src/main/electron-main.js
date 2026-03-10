@@ -630,9 +630,8 @@ ipcMain.handle("farewise:createReservation", async (_, { datasource, recommendat
     await loginToFarewise(language);
     const domain = language === "da" ? "dk" : "no";
     const region = FAREWISE_REGIONS[language] || FAREWISE_REGIONS.no;
-    // Bruk same-origin proxy (www.farewise.xx/api/) — api.farewise.dk blokkeres av ERR_BLOCKED_BY_CLIENT
-    // Mapping: api.farewise.dk/v30/flight/reservations → www.farewise.xx/api/reservations
-    const apiUrl = `https://www.farewise.${domain}/api/reservations`;
+    // Bruk same-origin proxy — matcher mønsteret /api/recommendations/*
+    const apiUrl = `https://www.farewise.${domain}/api/recommendations/reservations`;
 
     const childrenList = Array.from({ length: children }, (_, i) => ({ age: 10 }));
 
