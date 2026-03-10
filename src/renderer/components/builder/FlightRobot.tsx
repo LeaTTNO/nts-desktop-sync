@@ -1113,6 +1113,7 @@ export default function FlightRobot() {
     flight: ProcessedFlight;
   }>>([]);
   const [showIntervalAlternatives, setShowIntervalAlternatives] = useState(false);
+  const [expandedIntervalIdx, setExpandedIntervalIdx] = useState<number | null>(null);
 
   // Results - nå fra Zustand store med auto-persist
   const { savedFlights, addFlight, clearFlights } = useFlightInfo();
@@ -1222,6 +1223,7 @@ export default function FlightRobot() {
     setIntervalNights(12);
     setIntervalAlternatives([]);
     setShowIntervalAlternatives(false);
+    setExpandedIntervalIdx(null);
     
     // Reset all flight results
     resetFlightStore();
@@ -1333,6 +1335,7 @@ export default function FlightRobot() {
     setIntervalNights(12);
     setIntervalAlternatives([]);
     setShowIntervalAlternatives(false);
+    setExpandedIntervalIdx(null);
 
     // BESTE-flagg
     setBestAndCheapestIsBest(false);
@@ -3421,19 +3424,40 @@ function saveToPowerPointSingle(flight: ProcessedFlight, title: string) {
                         {language === 'da' ? 'Alle datoer i perioden' : 'Alle datoer i perioden'}
                       </h4>
                       {intervalAlternatives.map((alt, idx) => (
-                        <div 
-                          key={idx}
-                          className="flex items-center justify-between py-2 px-3 rounded-md bg-background/50 hover:bg-background/80 transition-colors"
-                        >
-                          <span className="text-sm font-medium">
-                            {format(new Date(alt.departureDate), 'dd')} – {format(new Date(alt.returnDate), 'dd MMMM', { locale: language === 'da' ? daFns : nbFns })}
-                          </span>
-                          <span className="text-sm text-muted-foreground">
-                            {alt.airline}
-                          </span>
-                          <span className="text-sm font-semibold">
-                            {Math.round(alt.price).toLocaleString(language === 'da' ? 'da-DK' : 'nb-NO')} {alt.currency}
-                          </span>
+                        <div key={idx} className="rounded-md border border-border/30 overflow-hidden">
+                          <div
+                            className="flex items-center justify-between py-2 px-3 bg-background/50 hover:bg-background/80 transition-colors cursor-pointer"
+                            onClick={() => setExpandedIntervalIdx(expandedIntervalIdx === idx ? null : idx)}
+                          >
+                            <span className="text-sm font-medium">
+                              {format(new Date(alt.departureDate), 'dd')} – {format(new Date(alt.returnDate), 'dd MMMM', { locale: language === 'da' ? daFns : nbFns })}
+                            </span>
+                            <span className="text-sm text-muted-foreground">
+                              {alt.airline}
+                            </span>
+                            <div className="flex items-center gap-2">
+                              <span className="text-sm font-semibold">
+                                {Math.round(alt.price).toLocaleString(language === 'da' ? 'da-DK' : 'nb-NO')} {alt.currency}
+                              </span>
+                              <ChevronDown className={`h-4 w-4 text-muted-foreground transition-transform ${expandedIntervalIdx === idx ? 'rotate-180' : ''}`} />
+                            </div>
+                          </div>
+                          {expandedIntervalIdx === idx && (
+                            <div className="border-t border-border/30 p-3 bg-muted/10">
+                              <FlightResultCard
+                                flight={alt.flight}
+                                language={language}
+                                translations={t}
+                                formatTime={formatTime}
+                                formatDate={formatDate}
+                                formatDuration={formatDuration}
+                                onSave={saveToPowerPointSingle}
+                                title={`${format(new Date(alt.departureDate), 'dd')}–${format(new Date(alt.returnDate), 'dd MMMM', { locale: language === 'da' ? daFns : nbFns })}`}
+                                childrenCount={parseInt(children)}
+                                hasNightFlight={alt.flight.hasNightFlight}
+                              />
+                            </div>
+                          )}
                         </div>
                       ))}
                     </div>
