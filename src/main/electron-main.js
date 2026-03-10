@@ -534,6 +534,7 @@ function convertFarewiseToAmadeus(farewiseData, currency = "NOK", convertPrices 
       itineraries,
       validatingAirlineCodes: [rec.carrier?.code || ""],
       numberOfBookableSeats: 9,
+      rawRecommendation: rec, // Preserve original Farewise data for booking flow
     };
   }).filter(Boolean); // Remove nulls
 
@@ -566,6 +567,128 @@ ipcMain.handle("flights:search", async (_, payload) => {
     const result = await searchFlightsMain(payload);
     return { ok: true, result };
   } catch (err) {
+    return { ok: false, error: String(err) };
+  }
+});
+
+// ✈️ Farewise: Revalidate flight offer
+ipcMain.handle("farewise:revalidate", async (_, { datasource, segments, adults, children = 0, language = "no" }) => {
+  try {
+    await loginToFarewise(language);
+    const domain = language === "da" ? "dk" : "no";
+    const region = FAREWISE_REGIONS[language] || FAREWISE_REGIONS.no;
+    const apiUrl = `https://www.farewise.${domain}/api/recommendations/revalidate`;
+
+    const childrenList = Array.from({ length: children }, (_, i) => ({ age: 10 }));
+
+    const requestBody = {
+      customerId: region.customerId,
+      customerName: region.customerName,
+      dataSource: datasource,
+      segments,
+      passengers: {
+        adults: Number(adults),
+        children: childrenList,
+      },
+    };
+    if (region.authRequired && FLIGHTROBOT_AUTH_GUID) {
+      requestBody.authorizationGuid = FLIGHTROBOT_AUTH_GUID;
+    }
+
+    console.log(`Farewise revalidate (${language.toUpperCase()}):`, JSON.stringify(requestBody, null, 2));
+
+    const res = await sessionFetch(apiUrl, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json;charset=UTF-8",
+        "Accept": "application/json, text/plain, */*",
+        "Referer": `https://www.farewise.${domain}/nd/flight/search`,
+        "Origin": `https://www.farewise.${domain}`,
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/144.0.0.0 Safari/537.36",
+      },
+      body: JSON.stringify(requestBody),
+    }, language);
+
+    if (!res.ok) {
+      const errorText = await res.text();
+      console.error(`Farewise revalidate error: ${res.status}`, errorText);
+      return { ok: false, error: `Revalidation failed: ${res.status}` };
+    }
+
+    const result = await res.json();
+    console.log("Farewise revalidate result:", JSON.stringify(result, null, 2).substring(0, 1000));
+    return { ok: true, data: result };
+  } catch (err) {
+    console.error("Farewise revalidate error:", err);
+    return { ok: false, error: String(err) };
+  }
+});
+
+// ✈️ Farewise: Create reservation (get PNR)
+ipcMain.handle("farewise:createReservation", async (_, { datasource, recommendationId, segments, adults, children = 0, language = "no" }) => {
+  try {
+    await loginToFarewise(language);
+    const domain = language === "da" ? "dk" : "no";
+    const region = FAREWISE_REGIONS[language] || FAREWISE_REGIONS.no;
+    const apiUrl = `https://www.farewise.${domain}/api/reservations/create`;
+
+    const childrenList = Array.from({ length: children }, (_, i) => ({ age: 10 }));
+
+    const requestBody = {
+      customerId: region.customerId,
+      customerName: region.customerName,
+      dataSource: datasource,
+      recommendationId,
+      segments,
+      passengers: {
+        adults: Number(adults),
+        children: childrenList,
+      },
+    };
+    if (region.authRequired && FLIGHTROBOT_AUTH_GUID) {
+      requestBody.authorizationGuid = FLIGHTROBOT_AUTH_GUID;
+    }
+
+    console.log(`Farewise createReservation (${language.toUpperCase()}):`, JSON.stringify(requestBody, null, 2));
+
+    const res = await sessionFetch(apiUrl, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json;charset=UTF-8",
+        "Accept": "application/json, text/plain, */*",
+        "Referer": `https://www.farewise.${domain}/nd/flight/search`,
+        "Origin": `https://www.farewise.${domain}`,
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/144.0.0.0 Safari/537.36",
+      },
+      body: JSON.stringify(requestBody),
+    }, language);
+
+    if (!res.ok) {
+      const errorText = await res.text();
+      console.error(`Farewise createReservation error: ${res.status}`, errorText);
+      return { ok: false, error: `Reservation failed: ${res.status}` };
+    }
+
+    const result = await res.json();
+    console.log("Farewise createReservation result:", JSON.stringify(result, null, 2).substring(0, 1000));
+    const pnr = result?.pnr || result?.reservationId || result?.id || "";
+    return { ok: true, pnr, datasource, data: result };
+  } catch (err) {
+    console.error("Farewise createReservation error:", err);
+    return { ok: false, error: String(err) };
+  }
+});
+
+// ✈️ Farewise: Open booking URL in browser
+ipcMain.handle("farewise:openBooking", async (_, { pnr, datasource, language = "no" }) => {
+  try {
+    const domain = language === "da" ? "dk" : "no";
+    const url = `https://www.farewise.${domain}/nd/flight/reservation/${encodeURIComponent(pnr)}/${encodeURIComponent(datasource)}`;
+    console.log(`Opening Farewise booking URL: ${url}`);
+    await shell.openExternal(url);
+    return { ok: true };
+  } catch (err) {
+    console.error("Farewise openBooking error:", err);
     return { ok: false, error: String(err) };
   }
 });

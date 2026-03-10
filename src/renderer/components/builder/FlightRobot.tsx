@@ -70,6 +70,13 @@ import {
   airlineNames,
 } from "@/lib/flightRobotClient";
 import { useFlightInfo } from "@/contexts/FlightInfoContext";
+import {
+  extractDataSource,
+  extractSegments,
+  revalidateFlight,
+  createReservation,
+  openFarewiseBooking,
+} from "@/services/FarewiseBookingService";
 
 // =============================================================================
 // TYPES
@@ -775,7 +782,8 @@ function categorizeFlights(
   t: typeof translations.no,
   departureAirport: string,
   language: 'no' | 'da',
-  allowTwoStopBB: boolean = false
+  allowTwoStopBB: boolean = false,
+  customMaxBBHours: number | null = null
 ): {
   bestAndCheapest: ProcessedFlight | null;
   bestQuality: ProcessedFlight | null;
@@ -783,9 +791,9 @@ function categorizeFlights(
   bestAndCheapestIsBest: boolean;
   bestAndCheapestIsAlsoCheapest: boolean;
 } {
-  const MAX_BEST_AND_CHEAPEST_HOURS = getMaxBestAndCheapestDurationHours(departureAirport);
+  const MAX_BEST_AND_CHEAPEST_HOURS = customMaxBBHours ?? getMaxBestAndCheapestDurationHours(departureAirport);
   const MAX_BEST_QUALITY_HOURS = getMaxBestQualityDurationHours(departureAirport);
-  console.log(`🔍 CATEGORIZE: ${flights.length} flights - BestAndCheapest≤${MAX_BEST_AND_CHEAPEST_HOURS}h, BestQuality≤${MAX_BEST_QUALITY_HOURS}h, Extended≤23h (${departureAirport})`);
+  console.log(`🔍 CATEGORIZE: ${flights.length} flights - BestAndCheapest≤${MAX_BEST_AND_CHEAPEST_HOURS}h${customMaxBBHours ? ' (CUSTOM)' : ''}, BestQuality≤${MAX_BEST_QUALITY_HOURS}h, Extended≤23h (${departureAirport})`);
   
   // HARD FILTER: Aldri fly over 23 timer
   let validFlights = flights.filter(f =>
@@ -990,11 +998,20 @@ export default function FlightRobot() {
   const [nightFlightStart, setNightFlightStart] = useState("00:00");
   const [nightFlightEnd, setNightFlightEnd] = useState("05:30");
   const [allowTwoStopBB, setAllowTwoStopBB] = useState(false);
-  
+  const [useCustomMaxBBHours, setUseCustomMaxBBHours] = useState(false);
+  const [customMaxBBHours, setCustomMaxBBHours] = useState<number>(20);
+
   // Dynamic description based on departure airport (computed after departure state)
-  const maxBestAndCheapestHours = getMaxBestAndCheapestDurationHours(departure || 'OSL');
+  const maxBestAndCheapestHours = useCustomMaxBBHours ? customMaxBBHours : getMaxBestAndCheapestDurationHours(departure || 'OSL');
   const maxBestQualityHours = getMaxBestQualityDurationHours(departure || 'OSL');
-  
+
+  // Sync customMaxBBHours default when departure changes and custom is not active
+  React.useEffect(() => {
+    if (!useCustomMaxBBHours) {
+      setCustomMaxBBHours(getMaxBestAndCheapestDurationHours(departure || 'OSL'));
+    }
+  }, [departure, useCustomMaxBBHours]);
+
   // Separate descriptions for each category
   const bestAndCheapestDesc = language === 'da'
     ? `Maks ${maxBestAndCheapestHours}t, ingen natfly (${nightFlightStart}-${nightFlightEnd}, KLM/AF: 01:06-05:30)`
@@ -1301,6 +1318,8 @@ export default function FlightRobot() {
     setNightFlightStart("00:00");
     setNightFlightEnd("05:30");
     setAllowTwoStopBB(false);
+    setUseCustomMaxBBHours(false);
+    setCustomMaxBBHours(getMaxBestAndCheapestDurationHours(departure || 'OSL'));
 
     // Tilvalg: fleksible datoer
     setFlexibleDates(false);
@@ -1570,6 +1589,63 @@ function saveToPowerPointSingle(flight: ProcessedFlight, title: string) {
     }
   }
 
+  async function handleFarewiseBooking(flight: ProcessedFlight, adults: number, children: number) {
+    try {
+      const rawRec = flight.rawOffer?.rawRecommendation;
+      if (!rawRec) {
+        toast.error(
+          language === "no"
+            ? "Booking ikke tilgjengelig – ingen Farewise-data på dette tilbudet."
+            : "Booking ikke tilgængeligt – ingen Farewise-data på dette tilbud."
+        );
+        return;
+      }
+
+      const datasource = extractDataSource(rawRec);
+      const segments = extractSegments(rawRec);
+      const recommendationId: string = rawRec.id || "";
+
+      if (!datasource || segments.length === 0) {
+        toast.error(
+          language === "no"
+            ? "Booking feilet – mangler segment-data."
+            : "Booking fejlede – mangler segment-data."
+        );
+        return;
+      }
+
+      // Step 1: Revalidate
+      toast.info(language === "no" ? "Validerer flytilbud..." : "Validerer flytilbud...");
+      await revalidateFlight(datasource, segments, adults, children, language);
+
+      // Step 2: Create reservation
+      toast.info(language === "no" ? "Oppretter reservasjon..." : "Opretter reservation...");
+      const { pnr, datasource: ds } = await createReservation(
+        datasource,
+        recommendationId,
+        segments,
+        adults,
+        children,
+        language
+      );
+
+      // Step 3: Open booking URL
+      await openFarewiseBooking(pnr, ds, language);
+      toast.success(
+        language === "no"
+          ? "Reservasjonen er opprettet – Farewise åpnes i nettleseren."
+          : "Reservationen er oprettet – Farewise åbnes i browseren."
+      );
+    } catch (err) {
+      console.error("Farewise booking error:", err);
+      toast.error(
+        language === "no"
+          ? "Farewise-booking kunne ikke opprettes. Prøv igjen."
+          : "Farewise-booking kunne ikke oprettes. Prøv igen."
+      );
+    }
+  }
+
   // Old: Export all main results
   function saveToPowerPoint() {
     if (!mainResults.bestAndCheapest && !bestQualityResult && !cheapestExtendedResult) {
@@ -1740,7 +1816,7 @@ function saveToPowerPointSingle(flight: ProcessedFlight, title: string) {
       console.log('📡 API RESPONSE:', mainOffers.length, 'offers received');
       const processedFlights = processFlightOffers(mainOffers, undefined, pax, allowNightFlights, nightFlightStart, nightFlightEnd);
       console.log('⚙️ PROCESSED:', processedFlights.length, 'flights after processing');
-      categories = categorizeFlights(processedFlights, t, departure, language, allowTwoStopBB);
+      categories = categorizeFlights(processedFlights, t, departure, language, allowTwoStopBB, useCustomMaxBBHours ? customMaxBBHours : null);
 
       if (signal.aborted) return;
       // Set all 3 mandatory categories
@@ -2103,7 +2179,7 @@ function saveToPowerPointSingle(flight: ProcessedFlight, title: string) {
       // FOLLOWS "BESTE OG BILLIGSTE" CRITERIA
       if (useDateInterval && earliestDeparture && latestDeparture) {
         console.log('📅 INTERVAL SEARCH START:', { departure, destination, returnFrom, returnTo, earliestDeparture: format(new Date(earliestDeparture), 'yyyy-MM-dd'), latestDeparture: format(new Date(latestDeparture), 'yyyy-MM-dd'), intervalNights, pax, currency });
-        const MAX_BEST_AND_CHEAPEST_HOURS = getMaxBestAndCheapestDurationHours(departure);
+        const MAX_BEST_AND_CHEAPEST_HOURS = useCustomMaxBBHours ? customMaxBBHours : getMaxBestAndCheapestDurationHours(departure);
         const tripNights = intervalNights; // Use user-selected number of nights
         let bestInterval: ProcessedFlight | null = null;
         const allIntervalFlights: ProcessedFlight[] = []; // Collect all flights for preferred airline search
@@ -2181,7 +2257,7 @@ function saveToPowerPointSingle(flight: ProcessedFlight, title: string) {
         if (signal.aborted) return;
         if (bestInterval) {
           intervalFound = true;
-          setDateIntervalResult({ ...bestInterval, recommendReason: t.searchInInterval });
+          setDateIntervalResult({ ...bestInterval, recommendReason: t.bestAndCheapest });
           setSearchProgress(prev => ({ ...prev, current: prev.current + 1 }));
           
           // Vis ALLE datoer sjekket i perioden (deduplisert: billigste per dato-par)
@@ -2217,11 +2293,11 @@ function saveToPowerPointSingle(flight: ProcessedFlight, title: string) {
                 setPreferredAirlineResults(prev => ({
                   ...prev,
                   dateInterval: preferredInterval.price < (prev.dateInterval?.price || Infinity)
-                    ? { ...preferredInterval, recommendReason: `${airlineName} - ${t.searchInInterval}` }
+                    ? { ...preferredInterval, recommendReason: `${airlineName} - ${t.bestAndCheapest}` }
                     : prev.dateInterval
                 }));
                 setHasPreferredAirlineResults(true);
-                addFlight(toFlightInfo(preferredInterval, `${airlineName} - ${t.searchInInterval}`));
+                addFlight(toFlightInfo(preferredInterval, `${airlineName} - ${t.bestAndCheapest}`));
                 setSearchProgress(prev => ({ ...prev, current: prev.current + 1 }));
               }
             }
@@ -2462,223 +2538,166 @@ function saveToPowerPointSingle(flight: ProcessedFlight, title: string) {
           </div>
 
           {/* Flexible Options */}
-          <div className="mt-2 pt-2 border-t border-border/50 grid grid-cols-1 md:grid-cols-2 gap-4">
-            {/* Allow 2-stop in B&B – kun synlig fra OSL/HAM/CPH */}
-            {['OSL', 'HAM', 'CPH'].includes((departure || '').toUpperCase()) && (
-            <div className="flex items-center gap-3 col-span-full">
-              <Checkbox
-                id="allowTwoStopBB"
-                checked={allowTwoStopBB}
-                onCheckedChange={(checked) => setAllowTwoStopBB(checked === true)}
-              />
-              <div className="flex items-center gap-2">
-                <Label htmlFor="allowTwoStopBB" className="cursor-pointer text-sm">
-                  {t.allowTwoStopBB}
-                </Label>
-                <Tooltip>
-                  <TooltipTrigger asChild>
-                    <button className="text-muted-foreground hover:text-foreground transition-colors">
-                      <Info className="h-4 w-4" />
-                    </button>
-                  </TooltipTrigger>
-                  <TooltipContent className="w-80">
-                    <div className="flex gap-2">
-                      <Info className="h-5 w-5 text-blue-500 flex-shrink-0 mt-0.5" />
-                      <p className="text-sm text-muted-foreground">{t.allowTwoStopBBInfo}</p>
-                    </div>
-                  </TooltipContent>
-                </Tooltip>
-              </div>
-            </div>
-            )}
+          <div className="mt-2 pt-2 border-t border-border/50 space-y-3">
 
-            {/* Flexible Dates (same trip length) */}
-            <div className="flex items-center gap-3">
-              <Checkbox
-                id="flexibleDates"
-                checked={flexibleDates}
-                onCheckedChange={(checked) => setFlexibleDates(checked === true)}
-              />
-              <div className="flex items-center gap-2">
-                <Label htmlFor="flexibleDates" className="flex items-center gap-2 cursor-pointer">
-                  {t.flexibleDates}
-                  <Select 
-                    value={String(flexibleNights)} 
-                    onValueChange={(v) => setFlexibleNights(parseInt(v))}
-                    disabled={!flexibleDates}
-                  >
-                    <SelectTrigger className="w-16 h-8 bg-muted/30">
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent position="popper" className="bg-background z-50 max-h-[200px] overflow-y-auto">
-                      {[1, 2, 3, 4, 5, 7].map((n) => (
-                        <SelectItem key={n} value={String(n)}>{n}</SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                  {t.nights}
-                </Label>
-                <Tooltip>
-                  <TooltipTrigger asChild>
-                    <button className="text-muted-foreground hover:text-foreground transition-colors">
-                      <Info className="h-4 w-4" />
-                    </button>
-                  </TooltipTrigger>
-                  <TooltipContent className="w-80">
-                    <div className="flex gap-2">
-                      <Info className="h-5 w-5 text-blue-500 flex-shrink-0 mt-0.5" />
-                      <p className="text-sm text-muted-foreground">
-                        {t.flexibleDatesInfo}
-                      </p>
-                    </div>
-                  </TooltipContent>
-                </Tooltip>
-              </div>
-            </div>
+            {/* 2 rader × 3 kolonner */}
+            <div className="grid grid-cols-3 gap-x-6 gap-y-3">
 
-            {/* Add Extra Nights */}
-            <div className="flex items-center gap-3">
-              <Checkbox
-                id="addNights"
-                checked={addNights}
-                onCheckedChange={(checked) => setAddNights(checked === true)}
-              />
+              {/* Rad 1 – Kol 1: Fleksible datoer */}
               <div className="flex items-center gap-2">
-                <Label htmlFor="addNights" className="flex items-center gap-2 cursor-pointer">
-                  {t.addNights}
-                  <Select 
-                    value={String(addNightsCount)} 
-                    onValueChange={(v) => setAddNightsCount(parseInt(v))}
-                    disabled={!addNights}
-                  >
-                    <SelectTrigger className="w-16 h-8 bg-muted/30">
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent position="popper" className="bg-background z-50 max-h-[200px] overflow-y-auto">
-                      {[1, 2, 3, 4, 5, 7].map((n) => (
-                        <SelectItem key={n} value={String(n)}>{n}</SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                  {t.nightsExtra}
-                </Label>
-                <Tooltip>
-                  <TooltipTrigger asChild>
-                    <button className="text-muted-foreground hover:text-foreground transition-colors">
-                      <Info className="h-4 w-4" />
-                    </button>
-                  </TooltipTrigger>
-                  <TooltipContent className="w-80">
-                    <div className="flex gap-2">
-                      <Info className="h-5 w-5 text-blue-500 flex-shrink-0 mt-0.5" />
-                      <p className="text-sm text-muted-foreground">
-                        {t.addNightsInfo}
-                      </p>
-                    </div>
-                  </TooltipContent>
-                </Tooltip>
+                <Checkbox
+                  id="flexibleDates"
+                  checked={flexibleDates}
+                  onCheckedChange={(checked) => setFlexibleDates(checked === true)}
+                />
+                <div className="flex items-center gap-2">
+                  <Label htmlFor="flexibleDates" className="flex items-center gap-2 cursor-pointer">
+                    {t.flexibleDates}
+                    <Select
+                      value={String(flexibleNights)}
+                      onValueChange={(v) => setFlexibleNights(parseInt(v))}
+                      disabled={!flexibleDates}
+                    >
+                      <SelectTrigger className="w-16 h-8 bg-muted/30">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent position="popper" className="bg-background z-50 max-h-[200px] overflow-y-auto">
+                        {[1, 2, 3, 4, 5, 7].map((n) => (
+                          <SelectItem key={n} value={String(n)}>{n}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                    {t.nights}
+                  </Label>
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <button className="text-muted-foreground hover:text-foreground transition-colors">
+                        <Info className="h-4 w-4" />
+                      </button>
+                    </TooltipTrigger>
+                    <TooltipContent className="w-80">
+                      <div className="flex gap-2">
+                        <Info className="h-5 w-5 text-blue-500 flex-shrink-0 mt-0.5" />
+                        <p className="text-sm text-muted-foreground">{t.flexibleDatesInfo}</p>
+                      </div>
+                    </TooltipContent>
+                  </Tooltip>
+                </div>
               </div>
-            </div>
 
-            {/* Remove Nights */}
-            <div className="flex items-center gap-3">
-              <Checkbox
-                id="removeNights"
-                checked={removeNights}
-                onCheckedChange={(checked) => setRemoveNights(checked === true)}
-              />
+              {/* Rad 1 – Kol 2: Fjern netter */}
               <div className="flex items-center gap-2">
-                <Label htmlFor="removeNights" className="flex items-center gap-2 cursor-pointer">
-                  {t.removeNights}
-                  <Select 
-                    value={String(removeNightsCount)} 
-                    onValueChange={(v) => setRemoveNightsCount(parseInt(v))}
-                    disabled={!removeNights}
-                  >
-                    <SelectTrigger className="w-16 h-8 bg-muted/30">
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent position="popper" className="bg-background z-50 max-h-[200px] overflow-y-auto">
-                      {[1, 2, 3, 4, 5, 7].map((n) => (
-                        <SelectItem key={n} value={String(n)}>{n}</SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                  {t.nightsLess}
-                </Label>
-                <Tooltip>
-                  <TooltipTrigger asChild>
-                    <button className="text-muted-foreground hover:text-foreground transition-colors">
-                      <Info className="h-4 w-4" />
-                    </button>
-                  </TooltipTrigger>
-                  <TooltipContent className="w-80">
-                    <div className="flex gap-2">
-                      <Info className="h-5 w-5 text-blue-500 flex-shrink-0 mt-0.5" />
-                      <p className="text-sm text-muted-foreground">
-                        {t.removeNightsInfo}
-                      </p>
-                    </div>
-                  </TooltipContent>
-                </Tooltip>
+                <Checkbox
+                  id="removeNights"
+                  checked={removeNights}
+                  onCheckedChange={(checked) => setRemoveNights(checked === true)}
+                />
+                <div className="flex items-center gap-2">
+                  <Label htmlFor="removeNights" className="flex items-center gap-2 cursor-pointer">
+                    {t.removeNights}
+                    <Select
+                      value={String(removeNightsCount)}
+                      onValueChange={(v) => setRemoveNightsCount(parseInt(v))}
+                      disabled={!removeNights}
+                    >
+                      <SelectTrigger className="w-16 h-8 bg-muted/30">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent position="popper" className="bg-background z-50 max-h-[200px] overflow-y-auto">
+                        {[1, 2, 3, 4, 5, 7].map((n) => (
+                          <SelectItem key={n} value={String(n)}>{n}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                    {t.nightsLess}
+                  </Label>
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <button className="text-muted-foreground hover:text-foreground transition-colors">
+                        <Info className="h-4 w-4" />
+                      </button>
+                    </TooltipTrigger>
+                    <TooltipContent className="w-80">
+                      <div className="flex gap-2">
+                        <Info className="h-5 w-5 text-blue-500 flex-shrink-0 mt-0.5" />
+                        <p className="text-sm text-muted-foreground">{t.removeNightsInfo}</p>
+                      </div>
+                    </TooltipContent>
+                  </Tooltip>
+                </div>
               </div>
-            </div>
 
-            {/* Preferred Airline - Multi-Select with Checkboxes */}
-            <div className="col-span-1 md:col-span-2 w-full">
-              <div className="flex items-center gap-2 mb-3">
+              {/* Rad 1 – Kol 3: Legg til netter */}
+              <div className="flex items-center gap-2">
+                <Checkbox
+                  id="addNights"
+                  checked={addNights}
+                  onCheckedChange={(checked) => setAddNights(checked === true)}
+                />
+                <div className="flex items-center gap-2">
+                  <Label htmlFor="addNights" className="flex items-center gap-2 cursor-pointer">
+                    {t.addNights}
+                    <Select
+                      value={String(addNightsCount)}
+                      onValueChange={(v) => setAddNightsCount(parseInt(v))}
+                      disabled={!addNights}
+                    >
+                      <SelectTrigger className="w-16 h-8 bg-muted/30">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent position="popper" className="bg-background z-50 max-h-[200px] overflow-y-auto">
+                        {[1, 2, 3, 4, 5, 7].map((n) => (
+                          <SelectItem key={n} value={String(n)}>{n}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                    {t.nightsExtra}
+                  </Label>
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <button className="text-muted-foreground hover:text-foreground transition-colors">
+                        <Info className="h-4 w-4" />
+                      </button>
+                    </TooltipTrigger>
+                    <TooltipContent className="w-80">
+                      <div className="flex gap-2">
+                        <Info className="h-5 w-5 text-blue-500 flex-shrink-0 mt-0.5" />
+                        <p className="text-sm text-muted-foreground">{t.addNightsInfo}</p>
+                      </div>
+                    </TooltipContent>
+                  </Tooltip>
+                </div>
+              </div>
+
+              {/* Rad 2 – Kol 1: Velg flyselskap */}
+              <div className="flex items-center gap-2">
                 <Checkbox
                   id="preferredAirline"
                   checked={usePreferredAirline}
                   onCheckedChange={(checked) => setUsePreferredAirline(checked === true)}
                 />
-                <Label htmlFor="preferredAirline" className="cursor-pointer font-semibold">
-                  {t.preferredAirline}
-                </Label>
-                <Tooltip>
-                  <TooltipTrigger asChild>
-                    <button className="text-muted-foreground hover:text-foreground transition-colors">
-                      <Info className="h-4 w-4" />
-                    </button>
-                  </TooltipTrigger>
-                  <TooltipContent className="w-80">
-                    <div className="flex gap-2">
-                      <Info className="h-5 w-5 text-blue-500 flex-shrink-0 mt-0.5" />
-                      <p className="text-sm text-muted-foreground">
-                        {t.preferredAirlineInfo}
-                      </p>
-                    </div>
-                  </TooltipContent>
-                </Tooltip>
-              </div>
-              
-              {usePreferredAirline && (
-                <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-2 pl-6 pb-2 border border-border/30 rounded-md p-3 bg-muted/10">
-                  {Object.entries(airlineNames).map(([code, name]) => (
-                    <div key={code} className="flex items-center gap-2">
-                      <Checkbox
-                        id={`airline-${code}`}
-                        checked={selectedAirlines.includes(code)}
-                        onCheckedChange={(checked) => {
-                          if (checked) {
-                            setSelectedAirlines(prev => [...prev, code]);
-                          } else {
-                            setSelectedAirlines(prev => prev.filter(c => c !== code));
-                          }
-                        }}
-                      />
-                      <Label htmlFor={`airline-${code}`} className="cursor-pointer text-sm">
-                        {name} ({code})
-                      </Label>
-                    </div>
-                  ))}
+                <div className="flex items-center gap-2">
+                  <Label htmlFor="preferredAirline" className="cursor-pointer font-semibold">
+                    {t.preferredAirline}
+                  </Label>
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <button className="text-muted-foreground hover:text-foreground transition-colors">
+                        <Info className="h-4 w-4" />
+                      </button>
+                    </TooltipTrigger>
+                    <TooltipContent className="w-80">
+                      <div className="flex gap-2">
+                        <Info className="h-5 w-5 text-blue-500 flex-shrink-0 mt-0.5" />
+                        <p className="text-sm text-muted-foreground">{t.preferredAirlineInfo}</p>
+                      </div>
+                    </TooltipContent>
+                  </Tooltip>
                 </div>
-              )}
-            </div>
+              </div>
 
-            {/* Night Flight Settings */}
-            <div className="col-span-1 md:col-span-2 w-full pt-2 border-t border-border/30">
-              <div className="flex flex-wrap items-center gap-3">
+              {/* Rad 2 – Kol 2: Tillat nattfly i tidsrom */}
+              <div className="flex items-center gap-2">
                 <Checkbox
                   id="allowNightFlights"
                   checked={allowNightFlights}
@@ -2687,31 +2706,122 @@ function saveToPowerPointSingle(flight: ProcessedFlight, title: string) {
                 <Label htmlFor="allowNightFlights" className="cursor-pointer">
                   {language === 'da' ? 'Tillad natfly i tidsrum' : 'Tillat nattfly i tidsrom'}
                 </Label>
-                {allowNightFlights && (
-                  <div className="flex items-center gap-2 ml-2">
-                    <Label className="text-sm text-muted-foreground whitespace-nowrap">
-                      {language === 'da' ? 'Tilladt tidsrum:' : 'Tillatt tidsrom:'}
-                    </Label>
-                    <Input
-                      type="time"
-                      value={nightFlightStart}
-                      onChange={(e) => setNightFlightStart(e.target.value)}
-                      className="w-24 h-8 bg-muted/30 text-sm"
-                    />
-                    <span className="text-muted-foreground">–</span>
-                    <Input
-                      type="time"
-                      value={nightFlightEnd}
-                      onChange={(e) => setNightFlightEnd(e.target.value)}
-                      className="w-24 h-8 bg-muted/30 text-sm"
-                    />
-                  </div>
-                )}
               </div>
+
+              {/* Rad 2 – Kol 3: Tillat 2-stopp (kun OSL/HAM/CPH) */}
+              {['OSL', 'HAM', 'CPH'].includes((departure || '').toUpperCase()) ? (
+                <div className="flex items-center gap-2">
+                  <Checkbox
+                    id="allowTwoStopBB"
+                    checked={allowTwoStopBB}
+                    onCheckedChange={(checked) => setAllowTwoStopBB(checked === true)}
+                  />
+                  <div className="flex items-center gap-2">
+                    <Label htmlFor="allowTwoStopBB" className="cursor-pointer text-sm">
+                      {t.allowTwoStopBB}
+                    </Label>
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <button className="text-muted-foreground hover:text-foreground transition-colors">
+                          <Info className="h-4 w-4" />
+                        </button>
+                      </TooltipTrigger>
+                      <TooltipContent className="w-80">
+                        <div className="flex gap-2">
+                          <Info className="h-5 w-5 text-blue-500 flex-shrink-0 mt-0.5" />
+                          <p className="text-sm text-muted-foreground">{t.allowTwoStopBBInfo}</p>
+                        </div>
+                      </TooltipContent>
+                    </Tooltip>
+                  </div>
+                </div>
+              ) : <div />}
+
             </div>
 
+            {/* Maks reisetid B&B – full bredde under gridet */}
+            <div className="flex items-center gap-3 pt-1">
+              <Checkbox
+                id="useCustomMaxBBHours"
+                checked={useCustomMaxBBHours}
+                onCheckedChange={(checked) => {
+                  setUseCustomMaxBBHours(checked === true);
+                  if (!checked) setCustomMaxBBHours(getMaxBestAndCheapestDurationHours(departure || 'OSL'));
+                }}
+              />
+              <Label htmlFor="useCustomMaxBBHours" className="cursor-pointer text-sm whitespace-nowrap">
+                {language === 'da' ? 'Maks reisetid B&B:' : 'Maks reisetid B&B:'}
+              </Label>
+              <div className="flex items-center gap-1">
+                <button
+                  onClick={() => setCustomMaxBBHours(h => Math.max(5, h - 1))}
+                  disabled={!useCustomMaxBBHours}
+                  className="w-7 h-7 rounded border border-border bg-muted/30 flex items-center justify-center text-base font-bold hover:bg-muted disabled:opacity-40 disabled:cursor-not-allowed select-none"
+                >−</button>
+                <span className={`w-14 text-center text-sm font-semibold ${!useCustomMaxBBHours ? 'text-muted-foreground' : 'text-foreground'}`}>
+                  {useCustomMaxBBHours ? customMaxBBHours : getMaxBestAndCheapestDurationHours(departure || 'OSL')}t
+                </span>
+                <button
+                  onClick={() => setCustomMaxBBHours(h => Math.min(40, h + 1))}
+                  disabled={!useCustomMaxBBHours}
+                  className="w-7 h-7 rounded border border-border bg-muted/30 flex items-center justify-center text-base font-bold hover:bg-muted disabled:opacity-40 disabled:cursor-not-allowed select-none"
+                >+</button>
+              </div>
+              {useCustomMaxBBHours && (
+                <span className="text-xs text-muted-foreground">
+                  ({language === 'da' ? `standard: ${getMaxBestAndCheapestDurationHours(departure || 'OSL')}t` : `standard: ${getMaxBestAndCheapestDurationHours(departure || 'OSL')}t`})
+                </span>
+              )}
+            </div>
+
+            {/* Nattfly tidsrom – vises under gridet når aktivert */}
+            {allowNightFlights && (
+              <div className="flex flex-wrap items-center gap-2 pl-1">
+                <Label className="text-sm text-muted-foreground whitespace-nowrap">
+                  {language === 'da' ? 'Tilladt tidsrum:' : 'Tillatt tidsrom:'}
+                </Label>
+                <Input
+                  type="time"
+                  value={nightFlightStart}
+                  onChange={(e) => setNightFlightStart(e.target.value)}
+                  className="w-24 h-8 bg-muted/30 text-sm"
+                />
+                <span className="text-muted-foreground">–</span>
+                <Input
+                  type="time"
+                  value={nightFlightEnd}
+                  onChange={(e) => setNightFlightEnd(e.target.value)}
+                  className="w-24 h-8 bg-muted/30 text-sm"
+                />
+              </div>
+            )}
+
+            {/* Flyselskap sub-panel – vises under gridet når aktivert */}
+            {usePreferredAirline && (
+              <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-2 pl-6 pb-2 border border-border/30 rounded-md p-3 bg-muted/10">
+                {Object.entries(airlineNames).map(([code, name]) => (
+                  <div key={code} className="flex items-center gap-2">
+                    <Checkbox
+                      id={`airline-${code}`}
+                      checked={selectedAirlines.includes(code)}
+                      onCheckedChange={(checked) => {
+                        if (checked) {
+                          setSelectedAirlines(prev => [...prev, code]);
+                        } else {
+                          setSelectedAirlines(prev => prev.filter(c => c !== code));
+                        }
+                      }}
+                    />
+                    <Label htmlFor={`airline-${code}`} className="cursor-pointer text-sm">
+                      {name} ({code})
+                    </Label>
+                  </div>
+                ))}
+              </div>
+            )}
+
             {/* Date Interval Option */}
-            <div className="col-span-1 md:col-span-2 w-full pt-2 border-t border-border/30">
+            <div className="pt-2 border-t border-border/30">
               <div className="flex flex-wrap items-center gap-4">
                 <div className="flex items-center gap-2">
                   <Checkbox
@@ -2994,6 +3104,7 @@ function saveToPowerPointSingle(flight: ProcessedFlight, title: string) {
                   title={t.bestAndCheapest}
                   childrenCount={parseInt(children)}
                   hasNightFlight={mainResults.bestAndCheapest.hasNightFlight}
+                  onBookFarewise={handleFarewiseBooking}
                 />
               </div>
             </div>
@@ -3021,6 +3132,7 @@ function saveToPowerPointSingle(flight: ProcessedFlight, title: string) {
                   title={preferredAirlineResults.bestAndCheapest.recommendReason || t.bestAndCheapest}
                   childrenCount={parseInt(children)}
                   hasNightFlight={preferredAirlineResults.bestAndCheapest.hasNightFlight}
+                  onBookFarewise={handleFarewiseBooking}
                 />
               </div>
             </div>
@@ -3073,6 +3185,7 @@ function saveToPowerPointSingle(flight: ProcessedFlight, title: string) {
                 title={t.beste}
                 childrenCount={parseInt(children)}
                 hasNightFlight={bestQualityResult.hasNightFlight}
+                onBookFarewise={handleFarewiseBooking}
               />
             </div>
           )}
@@ -3098,6 +3211,7 @@ function saveToPowerPointSingle(flight: ProcessedFlight, title: string) {
                 title={preferredAirlineResults.bestQuality.recommendReason || t.beste}
                 childrenCount={parseInt(children)}
                 hasNightFlight={preferredAirlineResults.bestQuality.hasNightFlight}
+                onBookFarewise={handleFarewiseBooking}
               />
             </div>
           )}
@@ -3147,6 +3261,7 @@ function saveToPowerPointSingle(flight: ProcessedFlight, title: string) {
                 title={t.cheapest}
                 childrenCount={parseInt(children)}
                 hasNightFlight={cheapestExtendedResult.hasNightFlight}
+                onBookFarewise={handleFarewiseBooking}
               />
             </div>
           )}
@@ -3172,6 +3287,7 @@ function saveToPowerPointSingle(flight: ProcessedFlight, title: string) {
                 title={preferredAirlineResults.cheapestExtended.recommendReason || t.cheapest}
                 childrenCount={parseInt(children)}
                 hasNightFlight={preferredAirlineResults.cheapestExtended.hasNightFlight}
+                onBookFarewise={handleFarewiseBooking}
               />
             </div>
           )}
@@ -3220,6 +3336,7 @@ function saveToPowerPointSingle(flight: ProcessedFlight, title: string) {
             title={t.cheaperFlexible}
             childrenCount={parseInt(children)}
             hasNightFlight={flexibleResult.hasNightFlight}
+            onBookFarewise={handleFarewiseBooking}
           />
         </div>
       )}
@@ -3249,6 +3366,7 @@ function saveToPowerPointSingle(flight: ProcessedFlight, title: string) {
             title={preferredAirlineResults.flexible.recommendReason || t.cheaperFlexible}
             childrenCount={parseInt(children)}
             hasNightFlight={preferredAirlineResults.flexible.hasNightFlight}
+            onBookFarewise={handleFarewiseBooking}
           />
         </div>
       )}
@@ -3278,6 +3396,7 @@ function saveToPowerPointSingle(flight: ProcessedFlight, title: string) {
             title={`${t.cheaperExtended} ${Math.abs(addNightsResult.nightsDiff || 0)} ${t.extraNights}`}
             childrenCount={parseInt(children)}
             hasNightFlight={addNightsResult.hasNightFlight}
+            onBookFarewise={handleFarewiseBooking}
           />
         </div>
       )}
@@ -3307,6 +3426,7 @@ function saveToPowerPointSingle(flight: ProcessedFlight, title: string) {
             title={`${t.cheaperExtended} ${Math.abs(removeNightsResult.nightsDiff || 0)} ${t.fewerNights}`}
             childrenCount={parseInt(children)}
             hasNightFlight={removeNightsResult.hasNightFlight}
+            onBookFarewise={handleFarewiseBooking}
           />
         </div>
       )}
@@ -3336,6 +3456,7 @@ function saveToPowerPointSingle(flight: ProcessedFlight, title: string) {
             title={preferredAirlineResults.addNights.recommendReason || t.cheaperExtended}
             childrenCount={parseInt(children)}
             hasNightFlight={preferredAirlineResults.addNights.hasNightFlight}
+            onBookFarewise={handleFarewiseBooking}
           />
         </div>
       )}
@@ -3365,6 +3486,7 @@ function saveToPowerPointSingle(flight: ProcessedFlight, title: string) {
             title={preferredAirlineResults.removeNights.recommendReason || t.cheaperExtended}
             childrenCount={parseInt(children)}
             hasNightFlight={preferredAirlineResults.removeNights.hasNightFlight}
+            onBookFarewise={handleFarewiseBooking}
           />
         </div>
       )}
@@ -3375,7 +3497,7 @@ function saveToPowerPointSingle(flight: ProcessedFlight, title: string) {
           <div className="flex items-center gap-2">
             <CalendarIcon className="h-5 w-5 text-primary" />
             <div>
-              <h3 className="font-semibold text-foreground">{t.searchInInterval}</h3>
+              <h3 className="font-semibold text-foreground">{t.bestAndCheapest}</h3>
               {dateIntervalResult.searchDate && (
                 <p className="text-xs text-muted-foreground">
                   {language === 'da' ? 'Afrejse' : 'Avreise'}: {format(new Date(dateIntervalResult.searchDate), "dd.MM.yyyy")}
@@ -3394,9 +3516,10 @@ function saveToPowerPointSingle(flight: ProcessedFlight, title: string) {
             formatDate={formatDate}
             formatDuration={formatDuration}
             onSave={saveToPowerPointSingle}
-            title={t.searchInInterval}
+            title={t.bestAndCheapest}
             childrenCount={parseInt(children)}
             hasNightFlight={dateIntervalResult.hasNightFlight}
+            onBookFarewise={handleFarewiseBooking}
           />
           
           {/* Alternative dates button and list */}
@@ -3457,6 +3580,7 @@ function saveToPowerPointSingle(flight: ProcessedFlight, title: string) {
                                 title={`${format(new Date(alt.departureDate), 'dd')}–${format(new Date(alt.returnDate), 'dd MMMM', { locale: language === 'da' ? daFns : nbFns })}`}
                                 childrenCount={parseInt(children)}
                                 hasNightFlight={alt.flight.hasNightFlight}
+                                onBookFarewise={handleFarewiseBooking}
                               />
                             </div>
                           )}
@@ -3495,9 +3619,10 @@ function saveToPowerPointSingle(flight: ProcessedFlight, title: string) {
             formatDate={formatDate}
             formatDuration={formatDuration}
             onSave={saveToPowerPointSingle}
-            title={preferredAirlineResults.dateInterval.recommendReason || t.searchInInterval}
+            title={preferredAirlineResults.dateInterval.recommendReason || t.bestAndCheapest}
             childrenCount={parseInt(children)}
             hasNightFlight={preferredAirlineResults.dateInterval.hasNightFlight}
+            onBookFarewise={handleFarewiseBooking}
           />
         </div>
       )}

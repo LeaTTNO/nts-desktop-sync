@@ -46,6 +46,7 @@ export interface FlightOffer {
   itineraries: FlightItinerary[];
   validatingAirlineCodes: string[];
   numberOfBookableSeats: number;
+  rawRecommendation?: any; // Original Farewise recommendation for booking flow
 }
 
 /**

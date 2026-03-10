@@ -5,6 +5,7 @@ import { Badge } from "@/components/ui/badge";
 import { Copy, Check, Users, ChevronDown, FileDown } from "lucide-react";
 import { toast } from "sonner";
 import { FlightOffer, airportNames } from "@/lib/amadeusClient";
+import FarewiseBookingModal from "@/components/FarewiseBookingModal";
 
 interface FlightLeg {
   departure: string;
@@ -57,6 +58,7 @@ interface FlightResultCardProps {
   formatDuration: (iso: string) => string;
   onSave?: (flight: ProcessedFlight, title: string) => void;
   onSendToPowerPoint?: (flight: ProcessedFlight) => void;
+  onBookFarewise?: (flight: ProcessedFlight, adults: number, children: number) => void;
   title?: string;
   childrenCount?: number;
   hasNightFlight?: boolean;
@@ -70,6 +72,7 @@ export default function FlightResultCard({
   formatDate,
   formatDuration,
   onSave,
+  onBookFarewise,
   title = "",
   childrenCount = 0,
   hasNightFlight = false,
@@ -77,6 +80,8 @@ export default function FlightResultCard({
   const [copied, setCopied] = useState(false);
   const [showOutboundDetails, setShowOutboundDetails] = useState(false);
   const [showInboundDetails, setShowInboundDetails] = useState(false);
+  const [showBookingModal, setShowBookingModal] = useState(false);
+  const [isBookingLoading, setIsBookingLoading] = useState(false);
 
   const seatsText = language === "da" ? "ledige" : "ledige";
   const layoverText = language === "da" ? "ventetid" : "ventetid";
@@ -510,10 +515,39 @@ export default function FlightResultCard({
                   PPTX
                 </Button>
               )}
+
+              {onBookFarewise && (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="w-full h-7 text-xs px-2 border-blue-400 text-blue-600 hover:bg-blue-50 dark:border-blue-500 dark:text-blue-400 dark:hover:bg-blue-950/30"
+                  onClick={() => setShowBookingModal(true)}
+                >
+                  ✈ Book i Farewise
+                </Button>
+              )}
             </div>
           </div>
         </div>
       </CardContent>
+
+      {onBookFarewise && (
+        <FarewiseBookingModal
+          isOpen={showBookingModal}
+          isLoading={isBookingLoading}
+          language={language}
+          onConfirm={async (adults, children) => {
+            setIsBookingLoading(true);
+            try {
+              await onBookFarewise(flight, adults, children);
+            } finally {
+              setIsBookingLoading(false);
+              setShowBookingModal(false);
+            }
+          }}
+          onClose={() => setShowBookingModal(false)}
+        />
+      )}
     </Card>
   );
 }
