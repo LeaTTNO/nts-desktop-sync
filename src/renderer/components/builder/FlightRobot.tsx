@@ -2209,10 +2209,10 @@ function saveToPowerPointSingle(flight: ProcessedFlight, title: string) {
         for (let i = 0; i <= daysDiff; i++) {
           const searchDepDate = format(new Date(startDate.getTime() + i * 24 * 60 * 60 * 1000), 'yyyy-MM-dd');
           const searchRetDate = addDays(searchDepDate, tripNights);
-          const returnDateObj = new Date(searchRetDate);
 
           // CRITICAL: Check that BOTH departure AND return dates are within the selected period
-          if (returnDateObj > endDate) {
+          // Compare as strings (YYYY-MM-DD) to avoid timezone-shifted Date comparisons
+          if (searchRetDate > format(endDate, 'yyyy-MM-dd')) {
             console.log(`Skipping ${searchDepDate}: return date ${searchRetDate} is after ${format(endDate, 'yyyy-MM-dd')}`);
             continue; // Skip if return date is outside the period
           }
