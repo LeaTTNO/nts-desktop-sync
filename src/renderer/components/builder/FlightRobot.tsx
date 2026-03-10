@@ -73,7 +73,6 @@ import { useFlightInfo } from "@/contexts/FlightInfoContext";
 import {
   extractDataSource,
   extractSegments,
-  revalidateFlight,
   createReservation,
   openFarewiseBooking,
 } from "@/services/FarewiseBookingService";
@@ -369,6 +368,19 @@ function formatTime(isoDateTime: string): string {
 }
 
 function formatDateShort(isoDateTime: string, language: string): string {
+  // Extract date directly from ISO string to show the airport's local date.
+  // Using new Date() would convert to OS timezone (e.g. UTC+2 Norway) and push
+  // late-night UTC times past midnight, showing the wrong date.
+  // The YYYY-MM-DD in the ISO string is always the correct local airport date.
+  const dateMatch = isoDateTime.match(/^(\d{4})-(\d{2})-(\d{2})/);
+  if (dateMatch) {
+    const [, year, month, day] = dateMatch;
+    const date = new Date(parseInt(year), parseInt(month) - 1, parseInt(day));
+    return date.toLocaleDateString(language === "da" ? "da-DK" : "nb-NO", {
+      day: "numeric",
+      month: "short",
+    });
+  }
   return new Date(isoDateTime).toLocaleDateString(language === "da" ? "da-DK" : "nb-NO", {
     day: "numeric",
     month: "short",
@@ -1614,11 +1626,7 @@ function saveToPowerPointSingle(flight: ProcessedFlight, title: string) {
         return;
       }
 
-      // Step 1: Revalidate
-      toast.info(language === "no" ? "Validerer flytilbud..." : "Validerer flytilbud...");
-      await revalidateFlight(datasource, segments, adults, children, language);
-
-      // Step 2: Create reservation
+      // Create reservation directly (no revalidation step)
       toast.info(language === "no" ? "Oppretter reservasjon..." : "Opretter reservation...");
       const { pnr, datasource: ds } = await createReservation(
         datasource,

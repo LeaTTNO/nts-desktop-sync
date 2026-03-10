@@ -159,10 +159,18 @@ export default function FlightResultCard({
     const roundedPrice = Math.ceil(flight.price / 50) * 50;
     
     const formatShortDate = (isoDateTime: string): string => {
+      const dateMatch = isoDateTime.match(/^(\d{4})-(\d{2})-(\d{2})/);
+      if (dateMatch) {
+        const [, , month, day] = dateMatch;
+        const date = new Date(parseInt(dateMatch[1]), parseInt(month) - 1, parseInt(day));
+        const dayStr = String(date.getDate()).padStart(2, '0');
+        const monthShort = date.toLocaleDateString(language === 'da' ? 'da-DK' : 'nb-NO', { month: 'short' });
+        return `${dayStr}.${monthShort}`;
+      }
       const date = new Date(isoDateTime);
-      const day = String(date.getDate()).padStart(2, '0');
+      const dayStr = String(date.getDate()).padStart(2, '0');
       const monthShort = date.toLocaleDateString(language === 'da' ? 'da-DK' : 'nb-NO', { month: 'short' });
-      return `${day}.${monthShort}`;
+      return `${dayStr}.${monthShort}`;
     };
     
     const getSegments = (itineraryIndex: number) => {

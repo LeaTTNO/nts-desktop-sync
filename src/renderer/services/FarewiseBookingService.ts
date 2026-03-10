@@ -40,27 +40,6 @@ export function extractSegments(rawRecommendation: any): any[] {
 }
 
 /**
- * Re-validate a flight offer with an updated passenger count.
- */
-export async function revalidateFlight(
-  datasource: string,
-  segments: any[],
-  adults: number,
-  children: number,
-  language: string
-): Promise<any> {
-  const result = await window.electron.invoke("farewise:revalidate", {
-    datasource,
-    segments,
-    adults,
-    children,
-    language,
-  });
-  if (!result?.ok) throw new Error(result?.error || "Revalidation failed");
-  return result.data;
-}
-
-/**
  * Create a Farewise reservation and return the PNR.
  */
 export async function createReservation(

@@ -630,7 +630,7 @@ ipcMain.handle("farewise:createReservation", async (_, { datasource, recommendat
     await loginToFarewise(language);
     const domain = language === "da" ? "dk" : "no";
     const region = FAREWISE_REGIONS[language] || FAREWISE_REGIONS.no;
-    const apiUrl = `https://www.farewise.${domain}/api/reservations/create`;
+    const apiUrl = `https://api.farewise.dk/v30/flight/reservations`;
 
     const childrenList = Array.from({ length: children }, (_, i) => ({ age: 10 }));
 
@@ -672,7 +672,8 @@ ipcMain.handle("farewise:createReservation", async (_, { datasource, recommendat
     const result = await res.json();
     console.log("Farewise createReservation result:", JSON.stringify(result, null, 2).substring(0, 1000));
     const pnr = result?.pnr || result?.reservationId || result?.id || "";
-    return { ok: true, pnr, datasource, data: result };
+    const resolvedDatasource = result?.dataSource || result?.datasource || datasource;
+    return { ok: true, pnr, datasource: resolvedDatasource, data: result };
   } catch (err) {
     console.error("Farewise createReservation error:", err);
     return { ok: false, error: String(err) };
