@@ -3478,7 +3478,7 @@ function saveToPowerPointSingle(flight: ProcessedFlight, title: string) {
 
 
 
-      {hasSearched && !mainResults.bestAndCheapest && !bestQualityResult && !cheapestExtendedResult && !isSearching && !error && (
+      {hasSearched && !mainResults.bestAndCheapest && !bestQualityResult && !cheapestExtendedResult && !dateIntervalResult && !isSearching && !error && (
         <Card className="border-border/50 bg-muted/20">
           <CardContent className="pt-6">
             <div className="space-y-3">
