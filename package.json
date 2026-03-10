@@ -1,6 +1,6 @@
 {
   "name": "nts-desktop-sync",
-  "version": "1.1.67",
+  "version": "1.1.68",
   "description": "NTS Desktop Sync - Tanzania Tours Desktop Application",
   "author": "Tanzania Tours",
   "private": true,
@@ -13,7 +13,8 @@
     "build:renderer": "vite build --config ./vite.config.ts",
     "build:main": "node scripts/build-main.mjs",
     "build": "node scripts/clean-dist.mjs && npm run build:renderer && npm run build:main && electron-builder",
-    "verify": "powershell -ExecutionPolicy Bypass -File scripts/verify-build.ps1"
+    "verify": "powershell -ExecutionPolicy Bypass -File scripts/verify-build.ps1",
+    "release": "node scripts/release.mjs"
   },
   "devDependencies": {
     "@types/react": "^19.2.7",
