@@ -625,13 +625,13 @@ ipcMain.handle("farewise:revalidate", async (_, { datasource, segments, adults, 
 });
 
 // ✈️ Farewise: Create reservation (get PNR)
+// Bruker Node.js native https — Electron net.request med session-partisjon blokkerer
+// cross-origin kall til api.farewise.dk (ERR_BLOCKED_BY_CLIENT).
+// Auth skjer via authorizationGuid i request body, ikke via session-cookies.
 ipcMain.handle("farewise:createReservation", async (_, { datasource, recommendationId, segments, adults, children = 0, language = "no" }) => {
   try {
-    await loginToFarewise(language);
-    const domain = language === "da" ? "dk" : "no";
     const region = FAREWISE_REGIONS[language] || FAREWISE_REGIONS.no;
-    // Bruk same-origin proxy — matcher mønsteret /api/recommendations/*
-    const apiUrl = `https://www.farewise.${domain}/api/recommendations/reservations`;
+    const apiUrl = `https://api.farewise.dk/v30/flight/reservations`;
 
     const childrenList = Array.from({ length: children }, (_, i) => ({ age: 10 }));
 
@@ -650,31 +650,52 @@ ipcMain.handle("farewise:createReservation", async (_, { datasource, recommendat
       requestBody.authorizationGuid = FLIGHTROBOT_AUTH_GUID;
     }
 
-    console.log(`Farewise createReservation (${language.toUpperCase()}):`, JSON.stringify(requestBody, null, 2));
+    const bodyStr = JSON.stringify(requestBody);
+    console.log(`Farewise createReservation (${language.toUpperCase()}):`, bodyStr.substring(0, 1000));
 
-    const res = await sessionFetch(apiUrl, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json;charset=UTF-8",
-        "Accept": "application/json, text/plain, */*",
-        "Referer": `https://www.farewise.${domain}/nd/flight/search`,
-        "Origin": `https://www.farewise.${domain}`,
-        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/144.0.0.0 Safari/537.36",
-      },
-      body: JSON.stringify(requestBody),
-    }, language);
+    // Node.js native https — bypasser Electron session-restriksjonene
+    const https = await import("https");
+    const result = await new Promise((resolve, reject) => {
+      const url = new URL(apiUrl);
+      const options = {
+        hostname: url.hostname,
+        port: 443,
+        path: url.pathname,
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json;charset=UTF-8",
+          "Accept": "application/json, text/plain, */*",
+          "Content-Length": Buffer.byteLength(bodyStr),
+        },
+      };
+      const req = https.request(options, (res) => {
+        const chunks = [];
+        res.on("data", (chunk) => chunks.push(chunk));
+        res.on("end", () => {
+          const body = Buffer.concat(chunks).toString("utf8");
+          resolve({
+            ok: res.statusCode >= 200 && res.statusCode < 300,
+            status: res.statusCode,
+            body,
+          });
+        });
+        res.on("error", reject);
+      });
+      req.on("error", reject);
+      req.write(bodyStr);
+      req.end();
+    });
 
-    if (!res.ok) {
-      const errorText = await res.text();
-      console.error(`Farewise createReservation error: ${res.status}`, errorText);
-      return { ok: false, error: `Reservation failed: ${res.status}` };
+    if (!result.ok) {
+      console.error(`Farewise createReservation error: ${result.status}`, result.body.substring(0, 500));
+      return { ok: false, error: `Reservation failed: ${result.status}` };
     }
 
-    const result = await res.json();
-    console.log("Farewise createReservation result:", JSON.stringify(result, null, 2).substring(0, 1000));
-    const pnr = result?.pnr || result?.reservationId || result?.id || "";
-    const resolvedDatasource = result?.dataSource || result?.datasource || datasource;
-    return { ok: true, pnr, datasource: resolvedDatasource, data: result };
+    const data = JSON.parse(result.body);
+    console.log("Farewise createReservation result:", JSON.stringify(data, null, 2).substring(0, 1000));
+    const pnr = data?.pnr || data?.reservationId || data?.id || "";
+    const resolvedDatasource = data?.dataSource || data?.datasource || datasource;
+    return { ok: true, pnr, datasource: resolvedDatasource, data };
   } catch (err) {
     console.error("Farewise createReservation error:", err);
     return { ok: false, error: String(err) };
