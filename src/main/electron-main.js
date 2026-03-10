@@ -625,9 +625,9 @@ ipcMain.handle("farewise:revalidate", async (_, { datasource, segments, adults, 
 });
 
 // ✈️ Farewise: Create reservation (get PNR)
-// Endpoint: POST api.farewise.dk/v30/flight/reservations
-// Content-Type: application/json-patch+json (Farewise standard)
-// Auth: authorizationGuid in request body
+// Endpoint: POST www.farewise.{domain}/api/flight/reservations  (web proxy, same as search/revalidate)
+// Content-Type: application/json-patch+json
+// Auth: session cookies (via sessionFetch) + authorizationGuid in body
 // Flow: recommendations/search → flight/reservations → open reservation page
 ipcMain.handle("farewise:createReservation", async (_, { datasource, recommendationId, routes, adults, children = 0, language = "no" }) => {
   try {
@@ -674,50 +674,36 @@ ipcMain.handle("farewise:createReservation", async (_, { datasource, recommendat
       loadServices: false,
     };
 
+    const domain = language === "da" ? "dk" : "no";
+    const url = `https://www.farewise.${domain}/api/flight/reservations`;
     const bodyStr = JSON.stringify(requestBody);
-    console.log(`Farewise createReservation (${language.toUpperCase()}) → api.farewise.dk/v30/flight/reservations`);
+    console.log(`Farewise createReservation (${language.toUpperCase()}) → ${url}`);
     console.log(`Request body (first 4000 chars):`, bodyStr.substring(0, 4000));
 
-    // Node.js native https — direct API call to api.farewise.dk
-    const https = await import("https");
-    const result = await new Promise((resolve, reject) => {
-      const options = {
-        hostname: "api.farewise.dk",
-        port: 443,
-        path: "/v30/flight/reservations",
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json-patch+json",
-          "Accept": "application/json, text/plain, */*",
-          "Content-Length": Buffer.byteLength(bodyStr),
-        },
-      };
-      const req = https.request(options, (res) => {
-        const chunks = [];
-        res.on("data", (chunk) => chunks.push(chunk));
-        res.on("end", () => {
-          const body = Buffer.concat(chunks).toString("utf8");
-          resolve({
-            ok: res.statusCode >= 200 && res.statusCode < 300,
-            status: res.statusCode,
-            body,
-          });
-        });
-        res.on("error", reject);
-      });
-      req.on("error", reject);
-      req.write(bodyStr);
-      req.end();
-    });
+    // Use sessionFetch (Electron net.request with login cookies) — same as search/revalidate
+    await loginToFarewise(language);
+    const res = await sessionFetch(url, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json-patch+json",
+        "Accept": "application/json, text/plain, */*",
+        "Accept-Language": "da-DK,da;q=0.9,en-US;q=0.8,en;q=0.7",
+        "Referer": `https://www.farewise.${domain}/nd/flight/search`,
+        "Origin": `https://www.farewise.${domain}`,
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/144.0.0.0 Safari/537.36",
+      },
+      body: bodyStr,
+    }, language);
 
-    console.log(`Farewise reservation response: ${result.status}`, result.body.substring(0, 2000));
+    const resBody = await res.text();
+    console.log(`Farewise reservation response: ${res.status}`, resBody.substring(0, 2000));
 
-    if (!result.ok) {
-      console.error(`Farewise reservation error: ${result.status}`, result.body);
-      return { ok: false, error: `Reservation failed: ${result.status} — ${result.body.substring(0, 500)}` };
+    if (!res.ok) {
+      console.error(`Farewise reservation error: ${res.status}`, resBody);
+      return { ok: false, error: `Reservation failed: ${res.status} — ${resBody.substring(0, 500)}` };
     }
 
-    const data = JSON.parse(result.body);
+    const data = JSON.parse(resBody);
     const pnr = data?.pnr || data?.number || data?.reservationId || data?.id || "";
     const resolvedDatasource = data?.dataSource || data?.datasource || datasource;
     return { ok: true, pnr, datasource: resolvedDatasource, data };
