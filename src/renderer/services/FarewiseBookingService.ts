@@ -42,7 +42,7 @@ export function extractDataSource(rawRecommendation: any): string {
 }
 
 /**
- * Extract Farewise-native segments from a raw recommendation.
+ * Extract Farewise-native segments from a raw recommendation (flat list).
  * Supports both recommendation.options[].legs[] and recommendation.legs[] formats.
  */
 export function extractSegments(rawRecommendation: any): any[] {
@@ -63,24 +63,59 @@ export function extractSegments(rawRecommendation: any): any[] {
 }
 
 /**
+ * Extract Farewise routes for booking API.
+ * Each leg becomes a route entry with its own segments, preserving the structure
+ * required by the Farewise booking endpoint.
+ */
+export function extractRoutes(rawRecommendation: any): any[] {
+  if (!rawRecommendation) return [];
+
+  const legs =
+    rawRecommendation.options?.[0]?.legs ??
+    rawRecommendation.legs ??
+    [];
+
+  const routes = legs
+    .map((leg: any) => {
+      const route = leg.routes?.[0];
+      if (!route?.segments?.length) return null;
+      return {
+        segments: route.segments,
+        totalTime: route.totalTime || leg.totalTime || "",
+        majorityCarrier: route.majorityCarrier || "",
+        validatingCarrier: route.validatingCarrier || "",
+        transaction: route.transaction || "",
+      };
+    })
+    .filter(Boolean);
+
+  if (!routes.length) {
+    console.warn("⚠️ No Farewise routes found for booking", rawRecommendation);
+  }
+
+  return routes;
+}
+
+/**
  * Create a Farewise reservation and return the PNR.
+ * Routes must be extracted via extractRoutes() — each route contains segments as-is from Farewise.
  */
 export async function createReservation(
   datasource: string,
   recommendationId: string,
-  segments: any[],
+  routes: any[],
   adults: number,
   children: number,
   language: string
 ): Promise<{ pnr: string; datasource: string }> {
   if (!datasource) throw new Error("Missing Farewise datasource");
   if (!recommendationId) throw new Error("Missing Farewise recommendationId");
-  if (!segments || segments.length === 0) throw new Error("No Farewise segments found for reservation");
+  if (!routes || routes.length === 0) throw new Error("No Farewise routes found for reservation");
 
   const result = await window.electron.invoke("farewise:createReservation", {
     datasource: datasource.trim(),
     recommendationId,
-    segments,
+    routes,
     adults,
     children,
     language,

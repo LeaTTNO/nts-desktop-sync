@@ -72,7 +72,7 @@ import {
 import { useFlightInfo } from "@/contexts/FlightInfoContext";
 import {
   extractDataSource,
-  extractSegments,
+  extractRoutes,
   createReservation,
   openFarewiseBooking,
 } from "@/services/FarewiseBookingService";
@@ -1618,10 +1618,10 @@ function saveToPowerPointSingle(flight: ProcessedFlight, title: string) {
       }
 
       const datasource = extractDataSource(rawRec);
-      const segments = extractSegments(rawRec);
+      const routes = extractRoutes(rawRec);
       const recommendationId: string = rawRec.id || "";
 
-      if (!datasource || segments.length === 0) {
+      if (!datasource || routes.length === 0) {
         toast.error(
           language === "no"
             ? "Booking feilet – mangler segment-data."
@@ -1635,7 +1635,7 @@ function saveToPowerPointSingle(flight: ProcessedFlight, title: string) {
       const { pnr, datasource: ds } = await createReservation(
         datasource,
         recommendationId,
-        segments,
+        routes,
         adults,
         children,
         language

@@ -628,30 +628,41 @@ ipcMain.handle("farewise:revalidate", async (_, { datasource, segments, adults, 
 // Bruker Node.js native https — Electron net.request med session-partisjon blokkerer
 // cross-origin kall til api.farewise.dk (ERR_BLOCKED_BY_CLIENT).
 // Auth skjer via authorizationGuid i request body, ikke via session-cookies.
-ipcMain.handle("farewise:createReservation", async (_, { datasource, recommendationId, segments, adults, children = 0, language = "no" }) => {
+// Body-struktur følger Farewise booking API-schema.
+ipcMain.handle("farewise:createReservation", async (_, { datasource, recommendationId, routes, adults, children = 0, language = "no" }) => {
   try {
     const region = FAREWISE_REGIONS[language] || FAREWISE_REGIONS.no;
-    const apiUrl = `https://api.farewise.dk/v30/flight/reservations`;
+    const apiUrl = `https://api.farewise.dk/v30/flight/bookings`;
 
-    const childrenList = Array.from({ length: children }, (_, i) => ({ age: 10 }));
+    // Build travellers array (one entry per passenger)
+    const travellers = [
+      ...Array.from({ length: Number(adults) }, () => ({ type: 0 })),
+      ...Array.from({ length: Number(children) }, () => ({ type: 1 })),
+    ];
+
+    // Build routes array — each route gets recommendationId + dataSource
+    const bookingRoutes = (routes || []).map(route => ({
+      recommendationId,
+      dataSource: datasource,
+      segments: route.segments || [],
+      totalTime: route.totalTime || "",
+      majorityCarrier: route.majorityCarrier || "",
+      validatingCarrier: route.validatingCarrier || "",
+      transaction: route.transaction || "",
+    }));
 
     const requestBody = {
-      customerId: region.customerId,
-      customerName: region.customerName,
-      dataSource: datasource,
-      recommendationId,
-      segments,
-      passengers: {
-        adults: Number(adults),
-        children: childrenList,
-      },
+      routes: bookingRoutes,
+      travellers,
+      confirmed: false,
+      loadServices: false,
     };
     if (region.authRequired && FLIGHTROBOT_AUTH_GUID) {
       requestBody.authorizationGuid = FLIGHTROBOT_AUTH_GUID;
     }
 
     const bodyStr = JSON.stringify(requestBody);
-    console.log(`Farewise createReservation (${language.toUpperCase()}):`, bodyStr.substring(0, 1000));
+    console.log(`Farewise createReservation (${language.toUpperCase()}):`, bodyStr.substring(0, 2000));
 
     // Node.js native https — bypasser Electron session-restriksjonene
     const https = await import("https");
@@ -687,7 +698,7 @@ ipcMain.handle("farewise:createReservation", async (_, { datasource, recommendat
     });
 
     if (!result.ok) {
-      console.error(`Farewise createReservation error: ${result.status}`, result.body.substring(0, 500));
+      console.error(`Farewise createReservation error: ${result.status}`, result.body.substring(0, 1000));
       return { ok: false, error: `Reservation failed: ${result.status}` };
     }
 
