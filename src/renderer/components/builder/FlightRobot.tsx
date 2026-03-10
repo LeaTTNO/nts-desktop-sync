@@ -781,6 +781,7 @@ function categorizeFlights(
   bestQuality: ProcessedFlight | null;
   cheapestExtended: ProcessedFlight | null;
   bestAndCheapestIsBest: boolean;
+  bestAndCheapestIsAlsoCheapest: boolean;
 } {
   const MAX_BEST_AND_CHEAPEST_HOURS = getMaxBestAndCheapestDurationHours(departureAirport);
   const MAX_BEST_QUALITY_HOURS = getMaxBestQualityDurationHours(departureAirport);
@@ -805,7 +806,7 @@ function categorizeFlights(
   
   if (validFlights.length === 0) {
     console.warn('⚠️ Ingen fly under 23 timer – viser ingenting');
-    return { bestAndCheapest: null, bestQuality: null, cheapestExtended: null, bestAndCheapestIsBest: false };
+    return { bestAndCheapest: null, bestQuality: null, cheapestExtended: null, bestAndCheapestIsBest: false, bestAndCheapestIsAlsoCheapest: false };
   }
 
   // Felles sorteringsregler for alle 3 kategorier:
@@ -931,20 +932,22 @@ function categorizeFlights(
   }
 
   // CATEGORY 3: BILLIGSTE (≤23t, ingen nattfly)
-  // Billigste fly som er RIMELIGERE enn B&B og ikke er samme fly
-  // (fjernet krav om lengre reisetid – 1-stopp B&B kan ha kortere max-ben enn 2-stopp alternativer)
+  // Finn billigste fly som IKKE er samme fly som B&B (uavhengig av pris)
+  // Hvis B&B allerede er det billigste alternativet, vises neste billigste med et notat
   const cheapestExtended = sortedFlights.find(f =>
     f.totalDurationMinutes <= MAX_EXTENDED_DURATION_HOURS * 60 &&
     !f.hasNightFlight &&
-    f.price < basePrice &&
     f.id !== bestAndCheapest?.id
   ) ?? null;
+  // Flagg: B&B er allerede det billigste – Billigste viser neste alternativ
+  const bestAndCheapestIsAlsoCheapest = bestAndCheapest !== null && cheapestExtended !== null && cheapestExtended.price >= basePrice;
 
   return {
     bestAndCheapest,
     bestQuality,
     cheapestExtended,
     bestAndCheapestIsBest,
+    bestAndCheapestIsAlsoCheapest,
   };
 }
 
@@ -1135,6 +1138,8 @@ export default function FlightRobot() {
 
   // Flagg: Beste og Billigste er allerede den korteste reisen på denne datoen
   const [bestAndCheapestIsBest, setBestAndCheapestIsBest] = useState(false);
+  // Flagg: Beste og Billigste er allerede det billigste – Billigste viser neste alternativ
+  const [bestAndCheapestIsAlsoCheapest, setBestAndCheapestIsAlsoCheapest] = useState(false);
 
   // Preferred airline results (separate state since they're shown alongside regular results)
   const [preferredAirlineResults, setPreferredAirlineResults] = useState<{
@@ -1232,6 +1237,7 @@ export default function FlightRobot() {
     });
     setHasPreferredAirlineResults(false);
     setBestAndCheapestIsBest(false);
+    setBestAndCheapestIsAlsoCheapest(false);
     setSearchProgress({ current: 0, max: 0 });
     abortController?.abort();
     setAbortController(null);
@@ -1330,6 +1336,7 @@ export default function FlightRobot() {
 
     // BESTE-flagg
     setBestAndCheapestIsBest(false);
+    setBestAndCheapestIsAlsoCheapest(false);
 
     // Søkefremgang
     setSearchProgress({ current: 0, max: 0 });
@@ -1711,6 +1718,7 @@ function saveToPowerPointSingle(flight: ProcessedFlight, title: string) {
     setMainResults({ bestAndCheapest: null, cheapest: null });
     setBestQualityResult(null);
     setBestAndCheapestIsBest(false);
+    setBestAndCheapestIsAlsoCheapest(false);
     setCheapestExtendedResult(null);
     setFlexibleResult(null);
     setAddNightsResult(null);
@@ -1742,6 +1750,7 @@ function saveToPowerPointSingle(flight: ProcessedFlight, title: string) {
       setMainResults({ bestAndCheapest: categories.bestAndCheapest, cheapest: null });
       setBestQualityResult(categories.bestQuality);
       setBestAndCheapestIsBest(categories.bestAndCheapestIsBest);
+      setBestAndCheapestIsAlsoCheapest(categories.bestAndCheapestIsAlsoCheapest);
       setCheapestExtendedResult(categories.cheapestExtended);
       
       let foundCount = 0;
@@ -3113,6 +3122,13 @@ function saveToPowerPointSingle(flight: ProcessedFlight, title: string) {
                 <div>
                   <h3 className="font-semibold text-foreground">{t.cheapest}</h3>
                   <p className="text-xs text-muted-foreground">{cheapestExtendedDesc}</p>
+                  {bestAndCheapestIsAlsoCheapest && (
+                    <p className="text-xs text-amber-600 dark:text-amber-400 mt-0.5">
+                      {language === 'da'
+                        ? '⚠ Bedste og billigste er allerede det billigste alternativ – viser næstbilligste her'
+                        : '⚠ Beste og billigste er allerede det billigste alternativet – viser nest billigste her'}
+                    </p>
+                  )}
                 </div>
               </div>
               <FlightResultCard
