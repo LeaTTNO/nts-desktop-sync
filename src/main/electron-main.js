@@ -628,6 +628,8 @@ ipcMain.handle("farewise:revalidate", async (_, { datasource, segments, adults, 
 // Swagger endpoint: POST /v30/flight/recommendations/book ("Book recommendation")
 // Web proxy: /api/recommendations/book (same pattern as search/revalidate)
 // Uses sessionFetch with login cookies — same auth as search + revalidate.
+// Segments are sent in the original Farewise search response format (nested objects),
+// just like revalidate does — the web proxy handles any format conversion.
 ipcMain.handle("farewise:createReservation", async (_, { datasource, recommendationId, routes, adults, children = 0, language = "no" }) => {
   try {
     const region = FAREWISE_REGIONS[language] || FAREWISE_REGIONS.no;
@@ -644,37 +646,21 @@ ipcMain.handle("farewise:createReservation", async (_, { datasource, recommendat
       ...Array.from({ length: Number(children) }, () => ({ type: 1 })),
     ];
 
-    // Build routes array — each route gets recommendationId + dataSource
-    // Segments must be converted from Farewise search response format (nested objects)
-    // to booking API RecommendationSegment format (flat strings).
+    // Build routes array — each route gets recommendationId + dataSource.
+    // Segments are passed as-is from the Farewise search response (same format
+    // the web frontend uses — nested objects like departure: {code, terminal}).
     const bookingRoutes = (routes || []).map(route => ({
       recommendationId,
       dataSource: datasource,
-      segments: (route.segments || []).map(seg => ({
-        number: seg.number ?? 0,
-        departureDate: seg.departureDate || "",
-        arrivalDate: seg.arrivalDate || "",
-        departureAirport: seg.departure?.code || seg.departureAirport || "",
-        departureTerminal: seg.departure?.terminal || seg.departureTerminal || "",
-        arrivalAirport: seg.arrival?.code || seg.arrivalAirport || "",
-        arrivalTerminal: seg.arrival?.terminal || seg.arrivalTerminal || "",
-        marketingCarrier: seg.marketingCarrier?.code || seg.marketingCarrier || "",
-        operatingCarrier: seg.operatingCarrier?.code || seg.operatingCarrier || "",
-        flightNumber: String(seg.flightNumber || ""),
-        equipmentType: seg.equipmentType || "",
-        bookingClass: seg.bookingClass || "",
-        fareBasis: seg.fareBasis || "",
-        cabinClass: seg.cabinClass || "",
-        elapsedFlyingTime: seg.elapsedFlyingTime || "",
-        numberOfTechnicalStops: seg.numberOfTechnicalStops ?? 0,
-      })),
-      totalTime: typeof route.totalTime === "number" ? String(route.totalTime) : (route.totalTime || ""),
-      majorityCarrier: route.majorityCarrier?.code || route.majorityCarrier || "",
-      validatingCarrier: route.validatingCarrier?.code || route.validatingCarrier || "",
+      segments: route.segments || [],
+      totalTime: route.totalTime != null ? route.totalTime : "",
+      majorityCarrier: route.majorityCarrier || "",
+      validatingCarrier: route.validatingCarrier || "",
       transaction: route.transaction || "",
     }));
 
     const requestBody = {
+      language: language === "da" ? "da" : "no",
       routes: bookingRoutes,
       travellers,
       confirmed: false,
@@ -685,28 +671,35 @@ ipcMain.handle("farewise:createReservation", async (_, { datasource, recommendat
     }
 
     const bodyStr = JSON.stringify(requestBody);
-    console.log(`Farewise createReservation (${language.toUpperCase()}):`, bodyStr.substring(0, 2000));
+    console.log(`Farewise createReservation (${language.toUpperCase()}):`, bodyStr.substring(0, 3000));
 
     const res = await sessionFetch(apiUrl, {
       method: "POST",
       headers: {
         "Content-Type": "application/json;charset=UTF-8",
         "Accept": "application/json, text/plain, */*",
+        "Accept-Language": "da-DK,da;q=0.9,en-US;q=0.8,en;q=0.7",
         "Referer": `https://www.farewise.${domain}/nd/flight/search`,
         "Origin": `https://www.farewise.${domain}`,
         "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/144.0.0.0 Safari/537.36",
+        "sec-ch-ua": '"Not(A:Brand";v="8", "Chromium";v="144", "Google Chrome";v="144"',
+        "sec-ch-ua-mobile": "?0",
+        "sec-ch-ua-platform": '"Windows"',
+        "sec-fetch-dest": "empty",
+        "sec-fetch-mode": "cors",
+        "sec-fetch-site": "same-origin",
       },
       body: bodyStr,
     }, language);
 
     if (!res.ok) {
       const errorText = await res.text();
-      console.error(`Farewise createReservation error: ${res.status}`, errorText.substring(0, 1000));
-      return { ok: false, error: `Reservation failed: ${res.status}` };
+      console.error(`Farewise createReservation error: ${res.status}`, errorText);
+      return { ok: false, error: `Reservation failed: ${res.status} — ${errorText.substring(0, 500)}` };
     }
 
     const data = await res.json();
-    console.log("Farewise createReservation result:", JSON.stringify(data, null, 2).substring(0, 1000));
+    console.log("Farewise createReservation result:", JSON.stringify(data, null, 2).substring(0, 2000));
     const pnr = data?.pnr || data?.number || data?.reservationId || data?.id || "";
     const resolvedDatasource = data?.dataSource || data?.datasource || datasource;
     return { ok: true, pnr, datasource: resolvedDatasource, data };
