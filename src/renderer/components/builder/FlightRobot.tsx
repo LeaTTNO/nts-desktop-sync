@@ -2223,36 +2223,28 @@ function saveToPowerPointSingle(flight: ProcessedFlight, title: string) {
           try {
             const offers = await searchFlightsApi(departure, destination, returnFrom, returnTo, searchDepDate, searchRetDate, pax, currency);
             const processed = processFlightOffers(offers, { date: searchDepDate, nightsDiff: 0 }, pax, allowNightFlights, nightFlightStart, nightFlightEnd);
-            // Use BESTE OG BILLIGSTE criteria: Max 21-23h, no night flights
-            let valid = processed.filter(f =>
-              f.totalDurationMinutes <= MAX_BEST_AND_CHEAPEST_HOURS * 60 && !f.hasNightFlight
-            );
-            
-            // Filter Oslo layover (NO only)
-            if (language === 'no') {
-              valid = valid.filter(f => f.hasInvalidOsloLayover !== true);
-            }
 
-            allIntervalFlights.push(...valid); // Store for preferred airline search
+            // Use exactly the same B&B logic as the main search
+            const intervalCats = categorizeFlights(processed, t, departure, language, allowTwoStopBB, useCustomMaxBBHours ? customMaxBBHours : null);
+            const bestForDate = intervalCats.bestAndCheapest;
+            if (!bestForDate) continue;
 
-            // Find BEST AND CHEAPEST using same sort as B&B
-            // and collect all results for alternatives
-            for (const flight of valid) {
-              
-              // Store this result for alternatives list
-              const airline = flight.outbound.airlineNames?.[0] || flight.outbound.airlines[0] || 'N/A';
-              allValidResults.push({
-                departureDate: searchDepDate,
-                returnDate: searchRetDate,
-                price: flight.price,
-                currency: flight.currency,
-                airline: airline,
-                flight: { ...flight, searchDate: searchDepDate }
-              });
-              
-              if (!bestInterval || isBetterBB(flight, bestInterval, language)) {
-                bestInterval = { ...flight, searchDate: searchDepDate };
-              }
+            const flightWithDate = { ...bestForDate, searchDate: searchDepDate };
+            allIntervalFlights.push(flightWithDate); // Store for preferred airline search
+
+            // Store for alternatives list
+            const airline = bestForDate.outbound.airlineNames?.[0] || bestForDate.outbound.airlines[0] || 'N/A';
+            allValidResults.push({
+              departureDate: searchDepDate,
+              returnDate: searchRetDate,
+              price: bestForDate.price,
+              currency: bestForDate.currency,
+              airline,
+              flight: flightWithDate
+            });
+
+            if (!bestInterval || isBetterBB(flightWithDate, bestInterval, language)) {
+              bestInterval = flightWithDate;
             }
           } catch (err) {
             console.log(`Interval search for ${searchDepDate} failed:`, err);
@@ -2757,12 +2749,31 @@ function saveToPowerPointSingle(flight: ProcessedFlight, title: string) {
                   if (!checked) setCustomMaxBBHours(getMaxBestAndCheapestDurationHours(departure || 'OSL'));
                 }}
               />
-              <Label htmlFor="useCustomMaxBBHours" className="cursor-pointer text-sm whitespace-nowrap">
-                {language === 'da' ? 'Maks reisetid B&B:' : 'Maks reisetid B&B:'}
-              </Label>
+              <div className="flex items-center gap-1.5">
+                <Label htmlFor="useCustomMaxBBHours" className="cursor-pointer text-sm whitespace-nowrap">
+                  {language === 'da' ? 'Maks reisetid B&B:' : 'Maks reisetid B&B:'}
+                </Label>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <button className="text-muted-foreground hover:text-foreground transition-colors">
+                      <Info className="h-4 w-4" />
+                    </button>
+                  </TooltipTrigger>
+                  <TooltipContent className="w-80">
+                    <div className="flex gap-2">
+                      <Info className="h-5 w-5 text-blue-500 flex-shrink-0 mt-0.5" />
+                      <p className="text-sm text-muted-foreground">
+                        {language === 'da'
+                          ? `Som standard bruges maks ${getMaxBestAndCheapestDurationHours(departure || 'OSL')}t samlet reisetid for 'Bedste og billigste'. Sæt kryds for at justere med ±5t (${getMaxBestAndCheapestDurationHours(departure || 'OSL') - 5}–${getMaxBestAndCheapestDurationHours(departure || 'OSL') + 5}t). Gælder også datointervall-søgning.`
+                          : `Standard maks reisetid for 'Beste og billigste' er ${getMaxBestAndCheapestDurationHours(departure || 'OSL')}t (20t fra OSL/HAM/CPH, 22t fra andre flyplasser). Kryss av for å justere med ±5t (${getMaxBestAndCheapestDurationHours(departure || 'OSL') - 5}–${getMaxBestAndCheapestDurationHours(departure || 'OSL') + 5}t). Gjelder også datointervall-søk.`}
+                      </p>
+                    </div>
+                  </TooltipContent>
+                </Tooltip>
+              </div>
               <div className="flex items-center gap-1">
                 <button
-                  onClick={() => setCustomMaxBBHours(h => Math.max(5, h - 1))}
+                  onClick={() => setCustomMaxBBHours(h => Math.max(getMaxBestAndCheapestDurationHours(departure || 'OSL') - 5, h - 1))}
                   disabled={!useCustomMaxBBHours}
                   className="w-7 h-7 rounded border border-border bg-muted/30 flex items-center justify-center text-base font-bold hover:bg-muted disabled:opacity-40 disabled:cursor-not-allowed select-none"
                 >−</button>
@@ -2770,7 +2781,7 @@ function saveToPowerPointSingle(flight: ProcessedFlight, title: string) {
                   {useCustomMaxBBHours ? customMaxBBHours : getMaxBestAndCheapestDurationHours(departure || 'OSL')}t
                 </span>
                 <button
-                  onClick={() => setCustomMaxBBHours(h => Math.min(40, h + 1))}
+                  onClick={() => setCustomMaxBBHours(h => Math.min(getMaxBestAndCheapestDurationHours(departure || 'OSL') + 5, h + 1))}
                   disabled={!useCustomMaxBBHours}
                   className="w-7 h-7 rounded border border-border bg-muted/30 flex items-center justify-center text-base font-bold hover:bg-muted disabled:opacity-40 disabled:cursor-not-allowed select-none"
                 >+</button>
