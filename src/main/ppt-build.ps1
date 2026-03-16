@@ -63,8 +63,17 @@ foreach ($modulePath in $ModulePaths) {
 
     # Sett inn slides sekvensielt fra $currentInsertPos
     foreach ($slide in $modulePres.Slides) {
+        # Lagre kildeformatering foer kopiering
+        $srcDesign = $slide.Design
+        $srcLayout = $slide.CustomLayout
+
         $slide.Copy()
-        $presentation.Slides.Paste($currentInsertPos)
+        $pastedRange = $presentation.Slides.Paste($currentInsertPos)
+
+        # Behold kildeformatering: bruk kildens Design og CustomLayout
+        $pastedRange.Design = $srcDesign
+        $pastedRange.CustomLayout = $srcLayout
+
         $currentInsertPos++
     }
 
@@ -88,11 +97,20 @@ if ($flightModulePath -and (Test-Path $flightModulePath)) {
     $insertPos = [Math]::Max(1, $totalSlides - 1)
     Write-Host "Setter inn flyinformasjon paa posisjon: $insertPos (av $totalSlides slides totalt)"
     
-    # Sett inn flyinformasjon slides på nest siste posisjon
+    # Sett inn flyinformasjon slides paa nest siste posisjon
     $slideOffset = 0
     foreach ($slide in $modulePres.Slides) {
+        # Lagre kildeformatering foer kopiering
+        $srcDesign = $slide.Design
+        $srcLayout = $slide.CustomLayout
+
         $slide.Copy()
-        $presentation.Slides.Paste($insertPos + $slideOffset)
+        $pastedRange = $presentation.Slides.Paste($insertPos + $slideOffset)
+
+        # Behold kildeformatering: bruk kildens Design og CustomLayout
+        $pastedRange.Design = $srcDesign
+        $pastedRange.CustomLayout = $srcLayout
+
         $slideOffset++
     }
     
