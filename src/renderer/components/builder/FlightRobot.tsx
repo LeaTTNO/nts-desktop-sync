@@ -1225,6 +1225,20 @@ export default function FlightRobot() {
     };
   }, []);
 
+  // Listen for Farewise booking debug data
+  useEffect(() => {
+    const removeListener = window.electron?.on?.('farewise:booking-debug', (debugData: any) => {
+      console.log('\n📦 FAREWISE BOOKING DEBUG:');
+      console.log('URL:', debugData.url);
+      console.log('Datasource:', debugData.datasource);
+      console.log('RecommendationId:', debugData.recommendationId);
+      console.log('Routes:', debugData.routeCount, '| Segments per route:', debugData.segmentCounts);
+      console.log('First segment:', debugData.firstSegment);
+      console.log('Body length:', debugData.bodyLength);
+    });
+    return () => { removeListener?.(); };
+  }, []);
+
   // Reset all state when language changes (NO ↔ DK)
   useEffect(() => {
     console.log(`🌐 Language changed to ${language}, resetting all state...`);
