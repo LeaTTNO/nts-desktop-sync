@@ -28,7 +28,7 @@ interface FarewiseBookingModalProps {
   onClose: () => void;
 }
 
-const TITLES = ["Mr", "Mrs", "Ms", "Mstr", "Miss"];
+const TITLES = ["Mr", "Mrs", "Ms"];
 
 export default function FarewiseBookingModal({
   isOpen,
@@ -60,7 +60,7 @@ export default function FarewiseBookingModal({
 
   const addPassenger = (type: number) => {
     if (passengers.length >= 9) return;
-    setPassengers([...passengers, { type, title: type === 0 ? "Mr" : "Mstr", firstName: "", lastName: "", ...(type === 1 ? { birthDate: "" } : {}) }]);
+    setPassengers([...passengers, { type, title: "Mr", firstName: "", lastName: "", ...(type === 1 ? { birthDate: "" } : {}) }]);
   };
 
   const removePassenger = (index: number) => {
