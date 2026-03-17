@@ -222,9 +222,17 @@ export const useOneDriveTemplates = (language: 'no' | 'da') => {
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [customCategories, setCustomCategories] = useState<TemplateCategory[]>([]);
   const [categories, setCategories] = useState<string[]>([]);
-  const [folderPath, setFolderPath] = useState<string>('');
+  // Hent lagret mappesti fra localStorage, eller bruk spraakbasert standard
+  const getDefaultFolderPath = (lang: 'no' | 'da') => {
+    const stored = localStorage.getItem(`onedrive-folder-path-${lang}`);
+    if (stored) return stored;
+    // Standard OneDrive-mappestier per spraak
+    return lang === 'da' ? 'NTS DK' : 'NTS NO';
+  };
+  const [folderPath, setFolderPath] = useState<string>(() => getDefaultFolderPath(language));
   const [lastSyncTime, setLastSyncTime] = useState<string | null>(null);
   const isFirstAuth = useRef(true);
+  const lastLoadedLanguage = useRef<string | null>(null);
 
   useEffect(() => {
     initializeOneDrive();
@@ -239,35 +247,42 @@ export const useOneDriveTemplates = (language: 'no' | 'da') => {
   useEffect(() => {
     if (!isAuthenticated) return;
 
+    // Unngaa dobbel-kjoring for samme spraak (React strict mode / re-render)
+    if (lastLoadedLanguage.current === language && !isFirstAuth.current) return;
+
     if (isFirstAuth.current) {
-      // Første gangs autentisering (oppstart) – prøv cache + delta istedet for full scan
+      // Forste gangs autentisering (oppstart) - prov cache + delta istedet for full scan
       isFirstAuth.current = false;
-      const cachedRaw = localStorage.getItem('onedrive-cached-templates');
-      const deltaLink = localStorage.getItem('onedrive-delta-link');
+      lastLoadedLanguage.current = language;
+      const cachedRaw = localStorage.getItem(`onedrive-cached-templates-${language}`);
+      const deltaLink = localStorage.getItem(`onedrive-delta-link-${language}`);
 
       if (cachedRaw && deltaLink) {
         try {
           const cached = JSON.parse(cachedRaw) as OneDriveTemplate[];
           if (cached.length > 0) {
-            console.log(`📋 Oppstart: laster ${cached.length} maler fra cache, kjører delta-sync i bakgrunnen...`);
+            console.log(`Oppstart: laster ${cached.length} maler fra cache, kjorer delta-sync i bakgrunnen...`);
             setTemplates(cached);
-            const storedSync = localStorage.getItem('onedrive-last-sync');
+            const storedSync = localStorage.getItem(`onedrive-last-sync-${language}`);
             if (storedSync) setLastSyncTime(storedSync);
             setIsLoading(false);
-            // Delta-sync i bakgrunnen for å hente eventuelle endringer
-            refreshTemplates();
+            // Stille delta-sync i bakgrunnen (ingen toast med mindre det er endringer)
+            refreshTemplates(true);
             return;
           }
         } catch (e) {
-          console.warn('⚠️ Kunne ikke lese cache – kjører full scan');
+          console.warn('Kunne ikke lese cache - kjorer full scan');
         }
       }
 
-      // Ingen cache eller delta-link → full scan
+      // Ingen cache eller delta-link -> full scan
       loadTemplatesForLanguage(language);
     } else {
-      // Language-bytte → alltid full scan
-      loadTemplatesForLanguage(language);
+      // Language-bytte -> oppdater folderPath og kjor full scan
+      lastLoadedLanguage.current = language;
+      const newPath = getDefaultFolderPath(language);
+      setFolderPath(newPath);
+      loadTemplatesForLanguage(language, newPath);
     }
   }, [language, isAuthenticated]);
 
@@ -276,7 +291,7 @@ export const useOneDriveTemplates = (language: 'no' | 'da') => {
     if (!isAuthenticated) return;
 
     // Load last sync time from localStorage
-    const storedLastSync = localStorage.getItem('onedrive-last-sync');
+    const storedLastSync = localStorage.getItem(`onedrive-last-sync-${language}`);
     if (storedLastSync) {
       setLastSyncTime(storedLastSync);
     }
@@ -300,7 +315,7 @@ export const useOneDriveTemplates = (language: 'no' | 'da') => {
           // Full scan at 08:00 — also refreshes the delta link for manual syncs during the day
           await loadTemplatesForLanguage(language);
           const syncTime = new Date().toISOString();
-          localStorage.setItem('onedrive-last-sync', syncTime);
+          localStorage.setItem(`onedrive-last-sync-${language}`, syncTime);
           setLastSyncTime(syncTime);
           toast.success('OneDrive synkronisert automatisk kl 08:00');
         } catch (error) {
@@ -374,10 +389,8 @@ export const useOneDriveTemplates = (language: 'no' | 'da') => {
   };
 
   const loadTemplatesForLanguage = async (lang: 'no' | 'da', customPath?: string) => {
-    // Start by searching in root folder if no custom path is set
-    const defaultPath = '';  // Empty string means root folder
-    
-    const pathToUse = customPath || folderPath || defaultPath;
+    // Bruk lagret mappesti for gjeldende spraak, fallback til standard
+    const pathToUse = customPath || folderPath || getDefaultFolderPath(lang);
     
     console.log('📁 Attempting to load templates from:', pathToUse);
     
@@ -414,19 +427,19 @@ export const useOneDriveTemplates = (language: 'no' | 'da') => {
 
       setTemplates(newTemplates);
       // Lagre template-listen i cache for rask oppstart neste gang
-      localStorage.setItem('onedrive-cached-templates', JSON.stringify(newTemplates));
+      localStorage.setItem(`onedrive-cached-templates-${lang}`, JSON.stringify(newTemplates));
       
       // Update last sync time
       const syncTime = new Date().toISOString();
-      localStorage.setItem('onedrive-last-sync', syncTime);
+      localStorage.setItem(`onedrive-last-sync-${lang}`, syncTime);
       setLastSyncTime(syncTime);
 
       // Store delta link for incremental syncs
       try {
         const deltaLink = await oneDriveClient.initDeltaLink(pathToUse);
         if (deltaLink) {
-          localStorage.setItem('onedrive-delta-link', deltaLink);
-          localStorage.setItem('onedrive-delta-folder', pathToUse);
+          localStorage.setItem(`onedrive-delta-link-${lang}`, deltaLink);
+          localStorage.setItem(`onedrive-delta-folder-${lang}`, pathToUse);
           console.log('✅ Delta link stored for incremental syncs');
         }
       } catch (deltaErr) {
@@ -488,20 +501,20 @@ export const useOneDriveTemplates = (language: 'no' | 'da') => {
     }
   };
 
-  const refreshTemplates = async () => {
+  const refreshTemplates = async (silent: boolean = false) => {
     if (!isAuthenticated) return;
 
     // Check if we have a delta link for incremental sync
-    const storedDeltaLink = localStorage.getItem('onedrive-delta-link');
+    const storedDeltaLink = localStorage.getItem(`onedrive-delta-link-${language}`);
 
     if (storedDeltaLink) {
       // --- Incremental delta sync: only fetch changed/new/deleted files ---
       try {
-        console.log('🔄 Running incremental delta sync...');
-        setIsLoading(true);
+        console.log('Running incremental delta sync...');
+        if (!silent) setIsLoading(true);
 
         const { changed, deleted, nextDeltaLink } = await oneDriveClient.getDeltaChanges(storedDeltaLink);
-        console.log(`📊 Delta: ${changed.length} endringer, ${deleted.length} slettede`);
+        console.log(`Delta: ${changed.length} endringer, ${deleted.length} slettede`);
 
         // Filter changed items to only .pptx/.ppt files
         const changedPptx = changed.filter(item => {
@@ -512,10 +525,10 @@ export const useOneDriveTemplates = (language: 'no' | 'da') => {
 
         if (deleted.length === 0 && changedPptx.length === 0) {
           const syncTime = new Date().toISOString();
-          localStorage.setItem('onedrive-last-sync', syncTime);
-          localStorage.setItem('onedrive-delta-link', nextDeltaLink);
+          localStorage.setItem(`onedrive-last-sync-${language}`, syncTime);
+          localStorage.setItem(`onedrive-delta-link-${language}`, nextDeltaLink);
           setLastSyncTime(syncTime);
-          toast.success('✅ Ingen nye filer siden sist synkronisering');
+          if (!silent) toast.success('Ingen nye filer siden sist synkronisering');
           setIsLoading(false);
           return;
         }
@@ -552,13 +565,13 @@ export const useOneDriveTemplates = (language: 'no' | 'da') => {
           const kept = prev.filter(t => !deletedIds.has(t.fileId) && !changedFileIds.has(t.fileId));
           const merged = [...kept, ...updatedTemplates];
           // Oppdater cache med merged liste
-          localStorage.setItem('onedrive-cached-templates', JSON.stringify(merged));
+          localStorage.setItem(`onedrive-cached-templates-${language}`, JSON.stringify(merged));
           return merged;
         });
 
         const syncTime = new Date().toISOString();
-        localStorage.setItem('onedrive-last-sync', syncTime);
-        localStorage.setItem('onedrive-delta-link', nextDeltaLink);
+        localStorage.setItem(`onedrive-last-sync-${language}`, syncTime);
+        localStorage.setItem(`onedrive-delta-link-${language}`, nextDeltaLink);
         setLastSyncTime(syncTime);
 
         const addedCount = changedPptx.length;
@@ -572,9 +585,9 @@ export const useOneDriveTemplates = (language: 'no' | 'da') => {
 
       } catch (deltaError: any) {
         if (deltaError?.message === 'DELTA_EXPIRED') {
-          console.warn('⚠️ Delta token utløpt – kjører full synkronisering...');
-          localStorage.removeItem('onedrive-delta-link');
-          localStorage.removeItem('onedrive-delta-folder');
+          console.warn('Delta token utlopt - kjorer full synkronisering...');
+          localStorage.removeItem(`onedrive-delta-link-${language}`);
+          localStorage.removeItem(`onedrive-delta-folder-${language}`);
           // Fall through to full sync below
         } else {
           console.error('Delta sync feilet:', deltaError);
@@ -642,6 +655,7 @@ export const useOneDriveTemplates = (language: 'no' | 'da') => {
 
   const setCustomFolderPath = (path: string) => {
     setFolderPath(path);
+    localStorage.setItem(`onedrive-folder-path-${language}`, path);
     if (isAuthenticated) {
       loadTemplatesForLanguage(language, path);
     }

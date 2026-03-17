@@ -1395,13 +1395,17 @@ ipcMain.handle("ppt:generate", async (_, payload) => {
     // Step 7: Show save dialog starting in correct customer folder
     if (result.ok && mainWindow) {
       const username = os.userInfo().username;
+      const userHome = path.join('C:', 'Users', username);
       const defaultDir = language === 'da'
-        ? path.join('C:', 'Users', username, 'OneDrive - TANZANIA TOURS', 'TANZANIA TOURS - Dokumenter', 'DK TANZANIA TOURS', 'Salg', 'Kunder DK', '2026 DK')
-        : path.join('C:', 'Users', username, 'OneDrive - TANZANIA TOURS', 'TANZANIA TOURS - Dokumenter', 'NO TANZANIA TOURS', 'Kunder NORGE', '2026 NO');
+        ? path.join(userHome, 'OneDrive - TANZANIA TOURS', 'TANZANIA TOURS - Dokumenter', 'DK TANZANIA TOURS', 'Salg', 'Kunder DK', '2026 DK')
+        : path.join(userHome, 'OneDrive - TANZANIA TOURS', 'TANZANIA TOURS - Dokumenter', 'NO TANZANIA TOURS', 'Kunder NORGE', '2026 NO');
+      
+      // Fallback: hvis mappen ikke finnes, bruk Desktop
+      const saveDir = fs.existsSync(defaultDir) ? defaultDir : path.join(userHome, 'Desktop');
 
       const saveResult = await dialog.showSaveDialog(mainWindow, {
         title: language === 'da' ? 'Gem præsentation som...' : 'Lagre presentasjon som...',
-        defaultPath: path.join(defaultDir, fileName),
+        defaultPath: path.join(saveDir, fileName),
         filters: [{ name: 'PowerPoint', extensions: ['pptx'] }],
       });
 
