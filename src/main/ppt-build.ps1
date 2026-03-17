@@ -119,7 +119,10 @@ if ($flightModulePath -and (Test-Path $flightModulePath)) {
 }
 
 # --------------------------------------------------
-# IKKE lagre – brukeren lagrer selv
+# Sett UserControl slik at PowerPoint IKKE lukker seg naar scriptet avsluttes
 # --------------------------------------------------
 
-Write-Host "PowerPoint ferdig bygget – layout bevart – ingen lagring utfort"
+$ppApp.UserControl = $true
+
+Write-Host "PowerPoint ferdig bygget - layout bevart - ingen lagring utfort"
+Write-Host "Slides totalt: $($presentation.Slides.Count)"
