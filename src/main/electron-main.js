@@ -657,9 +657,9 @@ ipcMain.handle("farewise:createReservation", async (_, { datasource, recommendat
         city: "",
         street: "",
         zip: "",
-        myReference: contacts?.myRef || "",
       },
       customerId: region.customerId,
+      customerReference: contacts?.myRef || "",
       passengers: passengerList.map(p => {
         const entry = { type: p.type, title: p.title, firstName: p.firstName, lastName: p.lastName };
         if (p.type === 1 && p.birthDate) entry.birthDate = p.birthDate;
