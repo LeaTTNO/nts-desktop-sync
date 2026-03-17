@@ -627,142 +627,76 @@ ipcMain.handle("farewise:revalidate", async (_, { datasource, segments, adults, 
 });
 
 // ✈️ Farewise: Create reservation (get PNR)
-// Strategy: Try web API first (same system as search), then fall back to BkApi
+// Matches the exact format captured from the Farewise web app:
+// POST /api/recommendations/book with { contacts, customerId, passengers, services, recommendation }
 ipcMain.handle("farewise:createReservation", async (_, { datasource, recommendationId, routes, adults, children = 0, language = "no", rawRecommendation }) => {
   try {
     const region = FAREWISE_REGIONS[language] || FAREWISE_REGIONS.no;
     const domain = language === "da" ? "dk" : "no";
 
-    // === ATTEMPT 1: Web API (same system as search) ===
-    // The revalidate endpoint (which works) uses a flat "segments" array at the top level.
-    // Try the same structure for booking: segments + dataSource + passengers (like revalidate)
-    // plus booking-specific fields.
-    const allSegments = (routes || []).flatMap(route => route.segments || []);
-
-    const webApiBody = {
-      customerId: region.customerId,
-      customerName: region.customerName,
-      dataSource: datasource,
-      recommendationId: recommendationId,
-      // Flat segments at top level — same as revalidate endpoint format
-      segments: allSegments,
-      // Also provide routes for book endpoints that might expect them
-      routes: (routes || []).map(route => ({
-        recommendationId,
-        dataSource: datasource,
-        segments: route.segments || [],
-        totalTime: route.totalTime != null ? route.totalTime : null,
-        majorityCarrier: route.majorityCarrier || null,
-        validatingCarrier: route.validatingCarrier || null,
-        transaction: route.transaction || null,
-      })),
-      passengers: {
-        adults: Number(adults),
-        children: Array.from({ length: Number(children) }, () => ({ age: 10 })),
-      },
-      confirmed: false,
-      loadServices: false,
-    };
-    // Add authorizationGuid if configured (same as revalidate logic)
-    if (region.authRequired && FLIGHTROBOT_AUTH_GUID) {
-      webApiBody.authorizationGuid = FLIGHTROBOT_AUTH_GUID;
+    // Build passengers array with placeholder names — Farewise requires firstName/lastName
+    // The user will edit these on the Farewise reservation page in the browser
+    const passengers = [];
+    for (let i = 0; i < Number(adults); i++) {
+      passengers.push({
+        type: 0,
+        title: "Mr",
+        firstName: "REISENDE",
+        lastName: `VOKSEN${Number(adults) > 1 ? i + 1 : ""}`,
+      });
+    }
+    for (let i = 0; i < Number(children); i++) {
+      passengers.push({
+        type: 1,
+        title: "Mstr",
+        firstName: "REISENDE",
+        lastName: `BARN${Number(children) > 1 ? i + 1 : ""}`,
+      });
     }
 
-    const webUrl = `https://www.farewise.${domain}/api/recommendations/book`;
-    const webBodyStr = JSON.stringify(webApiBody);
+    // The booking body must contain the FULL rawRecommendation as "recommendation"
+    // This is exactly what the Farewise web app sends when you click "Book"
+    const bookingBody = {
+      contacts: {
+        email: "",
+        phone: "",
+        country: "",
+        city: "",
+        street: "",
+        zip: "",
+      },
+      customerId: region.customerId,
+      passengers: passengers,
+      services: [],
+      recommendation: rawRecommendation,
+    };
 
-    console.log(`\n✈️ Farewise BOOKING attempt — Web API (${language.toUpperCase()})`);
-    console.log(`URL: ${webUrl}`);
-    console.log(`RecommendationId: ${recommendationId}`);
-    console.log(`DataSource: ${datasource}`);
-    console.log(`Routes: ${(routes||[]).length}, Segments: ${(routes||[]).map(r => (r.segments||[]).length).join(',')}`);
-    console.log(`Request body (first 5000 chars):`, webBodyStr.substring(0, 5000));
+    const url = `https://www.farewise.${domain}/api/recommendations/book`;
+    const bodyStr = JSON.stringify(bookingBody);
+
+    console.log(`\n✈️ Farewise BOOKING (${language.toUpperCase()})`);
+    console.log(`URL: ${url}`);
+    console.log(`CustomerId: ${region.customerId}`);
+    console.log(`Passengers: ${passengers.length} (${adults} adults, ${children} children)`);
+    console.log(`Recommendation ID: ${rawRecommendation?.id || recommendationId}`);
+    console.log(`DataSources: ${JSON.stringify(rawRecommendation?.dataSources)}`);
+    console.log(`Body length: ${bodyStr.length} chars`);
 
     await loginToFarewise(language);
-    let res = await sessionFetch(webUrl, {
+    const res = await sessionFetch(url, {
       method: "POST",
       headers: {
         "Content-Type": "application/json;charset=UTF-8",
         "Accept": "application/json, text/plain, */*",
-        "Referer": `https://www.farewise.${domain}/nd/flight/search`,
+        "Referer": `https://www.farewise.${domain}/nd/flight/booking`,
         "Origin": `https://www.farewise.${domain}`,
-        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/144.0.0.0 Safari/537.36",
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/145.0.0.0 Safari/537.36",
       },
-      body: webBodyStr,
+      body: bodyStr,
     }, language);
 
-    let resBody = await res.text();
-    console.log(`Web API response: ${res.status}`, resBody.substring(0, 2000));
-
-    // === ATTEMPT 2: If web API fails, try BkApi ===
-    if (!res.ok) {
-      console.log(`\n⚠️ Web API failed (${res.status}), trying BkApi...`);
-
-      // Helper for carrier codes
-      const resolveCode = (val) => {
-        if (!val) return "";
-        if (typeof val === "string") return val;
-        return val.code || val.key || "";
-      };
-
-      // Build BkApi request with flat segment format
-      const bkApiBody = {
-        authorizationGuid: region.authGuid || FLIGHTROBOT_AUTH_GUID,
-        language: language === "da" ? "da" : "no",
-        customer: {},
-        travellers: [
-          ...Array.from({ length: Number(adults) }, () => ({ type: 0 })),
-          ...Array.from({ length: Number(children) }, () => ({ type: 1 })),
-        ],
-        routes: (routes || []).map(route => ({
-          recommendationId,
-          dataSource: datasource,
-          totalTime: route.totalTime != null ? String(route.totalTime) : "",
-          majorityCarrier: resolveCode(route.majorityCarrier),
-          validatingCarrier: resolveCode(route.validatingCarrier),
-          transaction: route.transaction || "",
-          segments: (route.segments || []).map(seg => ({
-            number: seg.number || 0,
-            status: seg.status || "",
-            departureDate: seg.departureDate || "",
-            arrivalDate: seg.arrivalDate || "",
-            departureAirport: seg.departure?.code || seg.departureAirport || "",
-            departureTerminal: seg.departure?.terminal || seg.departureTerminal || "",
-            arrivalAirport: seg.arrival?.code || seg.arrivalAirport || "",
-            arrivalTerminal: seg.arrival?.terminal || seg.arrivalTerminal || "",
-            marketingCarrier: resolveCode(seg.marketingCarrier),
-            operatingCarrier: resolveCode(seg.operatingCarrier),
-            flightNumber: String(seg.flightNumber || ""),
-            equipmentType: seg.equipmentType || "",
-            electronicTicketing: seg.electronicTicketing || "",
-            bookingClass: seg.bookingClass || "",
-            fareBasis: seg.fareBasis || "",
-            cabinClass: seg.cabinClass || seg.cabin || "",
-            elapsedFlyingTime: seg.elapsedFlyingTime || "",
-            numberOfTechnicalStops: seg.numberOfTechnicalStops || 0,
-          })),
-        })),
-        confirmed: false,
-        loadServices: false,
-      };
-
-      const bkUrl = "https://api.farewise.dk/v30/flight/recommendations/book";
-      const bkBodyStr = JSON.stringify(bkApiBody);
-      console.log(`BkApi URL: ${bkUrl}`);
-      console.log(`BkApi body (first 5000 chars):`, bkBodyStr.substring(0, 5000));
-
-      res = await sessionFetch(bkUrl, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json;charset=UTF-8",
-          "Accept": "application/json, text/plain, */*",
-        },
-        body: bkBodyStr,
-      }, language);
-
-      resBody = await res.text();
-      console.log(`BkApi response: ${res.status}`, resBody.substring(0, 2000));
-    }
+    const resBody = await res.text();
+    console.log(`Farewise booking response: ${res.status}`, resBody.substring(0, 2000));
 
     if (!res.ok) {
       console.error(`Farewise reservation error: ${res.status}`, resBody);
