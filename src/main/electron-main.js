@@ -629,44 +629,42 @@ ipcMain.handle("farewise:revalidate", async (_, { datasource, segments, adults, 
 // ✈️ Farewise: Create reservation (get PNR)
 // Matches the exact format captured from the Farewise web app:
 // POST /api/recommendations/book with { contacts, customerId, passengers, services, recommendation }
-ipcMain.handle("farewise:createReservation", async (_, { datasource, recommendationId, routes, adults, children = 0, language = "no", rawRecommendation }) => {
+ipcMain.handle("farewise:createReservation", async (_, { datasource, recommendationId, routes, adults, children = 0, language = "no", rawRecommendation, passengers, contacts }) => {
   try {
     const region = FAREWISE_REGIONS[language] || FAREWISE_REGIONS.no;
     const domain = language === "da" ? "dk" : "no";
 
-    // Build passengers array with placeholder names — Farewise requires firstName/lastName
-    // The user will edit these on the Farewise reservation page in the browser
-    const passengers = [];
-    for (let i = 0; i < Number(adults); i++) {
-      passengers.push({
-        type: 0,
-        title: "Mr",
-        firstName: "REISENDE",
-        lastName: `VOKSEN${Number(adults) > 1 ? i + 1 : ""}`,
-      });
-    }
-    for (let i = 0; i < Number(children); i++) {
-      passengers.push({
-        type: 1,
-        title: "Mstr",
-        firstName: "REISENDE",
-        lastName: `BARN${Number(children) > 1 ? i + 1 : ""}`,
-      });
+    // Use real passenger data from the booking modal (title, firstName, lastName)
+    // Falls back to placeholder if no passenger data provided
+    let passengerList = passengers;
+    if (!passengerList || passengerList.length === 0) {
+      passengerList = [];
+      for (let i = 0; i < Number(adults); i++) {
+        passengerList.push({ type: 0, title: "Mr", firstName: "REISENDE", lastName: "VOKSEN" });
+      }
+      for (let i = 0; i < Number(children); i++) {
+        passengerList.push({ type: 1, title: "Mstr", firstName: "REISENDE", lastName: "BARN" });
+      }
     }
 
     // The booking body must contain the FULL rawRecommendation as "recommendation"
     // This is exactly what the Farewise web app sends when you click "Book"
     const bookingBody = {
       contacts: {
-        email: "",
-        phone: "",
+        email: contacts?.email || "",
+        phone: contacts?.phone || "",
         country: "",
         city: "",
         street: "",
         zip: "",
+        myReference: contacts?.myRef || "",
       },
       customerId: region.customerId,
-      passengers: passengers,
+      passengers: passengerList.map(p => {
+        const entry = { type: p.type, title: p.title, firstName: p.firstName, lastName: p.lastName };
+        if (p.type === 1 && p.birthDate) entry.birthDate = p.birthDate;
+        return entry;
+      }),
       services: [],
       recommendation: rawRecommendation,
     };
@@ -677,9 +675,9 @@ ipcMain.handle("farewise:createReservation", async (_, { datasource, recommendat
     console.log(`\n✈️ Farewise BOOKING (${language.toUpperCase()})`);
     console.log(`URL: ${url}`);
     console.log(`CustomerId: ${region.customerId}`);
-    console.log(`Passengers: ${passengers.length} (${adults} adults, ${children} children)`);
+    console.log(`Passengers: ${passengerList.length} — ${passengerList.map(p => `${p.title} ${p.firstName} ${p.lastName}`).join(', ')}`);
+    console.log(`Contacts: ${contacts?.email || '(none)'} / ${contacts?.phone || '(none)'}`);
     console.log(`Recommendation ID: ${rawRecommendation?.id || recommendationId}`);
-    console.log(`DataSources: ${JSON.stringify(rawRecommendation?.dataSources)}`);
     console.log(`Body length: ${bodyStr.length} chars`);
 
     await loginToFarewise(language);

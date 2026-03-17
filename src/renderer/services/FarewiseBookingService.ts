@@ -108,11 +108,12 @@ export async function createReservation(
   adults: number,
   children: number,
   language: string,
-  rawRecommendation?: any
+  rawRecommendation?: any,
+  passengers?: any[],
+  contacts?: { email: string; phone: string; myRef?: string }
 ): Promise<{ pnr: string; datasource: string }> {
   if (!datasource) throw new Error("Missing Farewise datasource");
   if (!recommendationId) throw new Error("Missing Farewise recommendationId");
-  if (!routes || routes.length === 0) throw new Error("No Farewise routes found for reservation");
 
   const result = await window.electron.invoke("farewise:createReservation", {
     datasource: datasource.trim(),
@@ -122,6 +123,8 @@ export async function createReservation(
     children,
     language,
     rawRecommendation,
+    passengers,
+    contacts,
   });
 
   if (!result?.ok) throw new Error(result?.error || "Farewise reservation creation failed");

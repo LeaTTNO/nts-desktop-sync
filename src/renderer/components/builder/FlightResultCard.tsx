@@ -5,7 +5,7 @@ import { Badge } from "@/components/ui/badge";
 import { Copy, Check, Users, ChevronDown, FileDown } from "lucide-react";
 import { toast } from "sonner";
 import { FlightOffer, airportNames } from "@/lib/amadeusClient";
-import FarewiseBookingModal from "@/components/FarewiseBookingModal";
+import FarewiseBookingModal, { type FarewiseBookingData } from "@/components/FarewiseBookingModal";
 
 interface FlightLeg {
   departure: string;
@@ -58,7 +58,7 @@ interface FlightResultCardProps {
   formatDuration: (iso: string) => string;
   onSave?: (flight: ProcessedFlight, title: string) => void;
   onSendToPowerPoint?: (flight: ProcessedFlight) => void;
-  onBookFarewise?: (flight: ProcessedFlight, adults: number, children: number) => void;
+  onBookFarewise?: (flight: ProcessedFlight, bookingData: FarewiseBookingData) => void;
   title?: string;
   childrenCount?: number;
   hasNightFlight?: boolean;
@@ -544,10 +544,10 @@ export default function FlightResultCard({
           isOpen={showBookingModal}
           isLoading={isBookingLoading}
           language={language}
-          onConfirm={async (adults, children) => {
+          onConfirm={async (bookingData) => {
             setIsBookingLoading(true);
             try {
-              await onBookFarewise(flight, adults, children);
+              await onBookFarewise(flight, bookingData);
             } finally {
               setIsBookingLoading(false);
               setShowBookingModal(false);

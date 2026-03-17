@@ -72,7 +72,6 @@ import {
 import { useFlightInfo } from "@/contexts/FlightInfoContext";
 import {
   extractDataSource,
-  extractRoutes,
   createReservation,
   openFarewiseBooking,
 } from "@/services/FarewiseBookingService";
@@ -1619,7 +1618,7 @@ function saveToPowerPointSingle(flight: ProcessedFlight, title: string) {
     }
   }
 
-  async function handleFarewiseBooking(flight: ProcessedFlight, adults: number, children: number) {
+  async function handleFarewiseBooking(flight: ProcessedFlight, bookingData: any) {
     try {
       const rawRec = flight.rawOffer?.rawRecommendation;
       if (!rawRec) {
@@ -1632,28 +1631,31 @@ function saveToPowerPointSingle(flight: ProcessedFlight, title: string) {
       }
 
       const datasource = extractDataSource(rawRec);
-      const routes = extractRoutes(rawRec);
       const recommendationId: string = rawRec.id || "";
 
-      if (!datasource || routes.length === 0) {
+      if (!datasource) {
         toast.error(
           language === "no"
-            ? "Booking feilet – mangler segment-data."
-            : "Booking fejlede – mangler segment-data."
+            ? "Booking feilet – mangler datasource."
+            : "Booking fejlede – mangler datasource."
         );
         return;
       }
 
-      // Create reservation directly (no revalidation step)
+      // Create reservation with full passenger details from the modal
       toast.info(language === "no" ? "Oppretter reservasjon..." : "Opretter reservation...");
+      const adults = bookingData.passengers.filter((p: any) => p.type === 0).length;
+      const children = bookingData.passengers.filter((p: any) => p.type === 1).length;
       const { pnr, datasource: ds } = await createReservation(
         datasource,
         recommendationId,
-        routes,
+        [],
         adults,
         children,
         language,
-        rawRec
+        rawRec,
+        bookingData.passengers,
+        bookingData.contacts
       );
 
       // Step 3: Open booking URL
