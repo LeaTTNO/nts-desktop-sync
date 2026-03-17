@@ -625,21 +625,27 @@ ipcMain.handle("farewise:revalidate", async (_, { datasource, segments, adults, 
 });
 
 // ✈️ Farewise: Create reservation (get PNR)
-// Endpoint: POST www.farewise.{domain}/api/recommendations/book (web API — same as search/revalidate)
-// Body format matches revalidate: customerId, customerName, dataSource, passengers, routes with raw segments
+// Endpoint: POST www.farewise.{domain}/api/recommendations/book
+// Backend requires travellers[] array (not passengers object) — same schema as BkApi BookRecommendationCommand
 ipcMain.handle("farewise:createReservation", async (_, { datasource, recommendationId, routes, adults, children = 0, language = "no" }) => {
   try {
     const region = FAREWISE_REGIONS[language] || FAREWISE_REGIONS.no;
     const domain = language === "da" ? "dk" : "no";
 
-    // Children ages array (matching revalidate format)
-    const childrenList = Array.from({ length: Number(children) }, () => ({ age: 10 }));
+    // Build travellers array — backend requires type per traveller (0=adult, 1=child)
+    const travellers = [];
+    for (let i = 0; i < Number(adults); i++) {
+      travellers.push({ type: 0, title: "", firstName: "PASSENGER", lastName: `ADULT${i + 1}` });
+    }
+    for (let i = 0; i < Number(children); i++) {
+      travellers.push({ type: 1, title: "", firstName: "PASSENGER", lastName: `CHILD${i + 1}` });
+    }
 
-    // Build routes array — send segments as-is from Farewise search (nested objects, same format as revalidate)
+    // Build routes array — send segments as-is from Farewise search (nested objects)
     const bookingRoutes = (routes || []).map(route => ({
       recommendationId,
       dataSource: datasource,
-      segments: route.segments || [],  // Raw Farewise segments — same nested objects from search response
+      segments: route.segments || [],
       totalTime: route.totalTime != null ? route.totalTime : null,
       majorityCarrier: route.majorityCarrier || null,
       validatingCarrier: route.validatingCarrier || null,
@@ -647,31 +653,25 @@ ipcMain.handle("farewise:createReservation", async (_, { datasource, recommendat
     }));
 
     const requestBody = {
+      authorizationGuid: FLIGHTROBOT_AUTH_GUID,
+      language: language === "da" ? "da" : "no",
       customerId: region.customerId,
       customerName: region.customerName,
+      customer: {},
+      travellers,
       dataSource: datasource,
       recommendationId,
       routes: bookingRoutes,
-      passengers: {
-        adults: Number(adults),
-        children: childrenList,
-      },
       confirmed: false,
       loadServices: false,
-      language: language === "da" ? "da" : "no",
     };
-
-    // Add authorizationGuid for all regions
-    if (FLIGHTROBOT_AUTH_GUID) {
-      requestBody.authorizationGuid = FLIGHTROBOT_AUTH_GUID;
-    }
 
     const url = `https://www.farewise.${domain}/api/recommendations/book`;
     const bodyStr = JSON.stringify(requestBody);
     console.log(`Farewise createReservation (${language.toUpperCase()}) → ${url}`);
     console.log(`Request body (first 4000 chars):`, bodyStr.substring(0, 4000));
 
-    // Use sessionFetch with login cookies — same as search/revalidate
+    // Use sessionFetch with login cookies
     await loginToFarewise(language);
     const res = await sessionFetch(url, {
       method: "POST",
