@@ -98,7 +98,8 @@ export function extractRoutes(rawRecommendation: any): any[] {
 
 /**
  * Create a Farewise reservation and return the PNR.
- * Routes must be extracted via extractRoutes() — each route contains segments as-is from Farewise.
+ * Sends the full raw recommendation to the main process so it can forward
+ * the complete data to the Farewise booking endpoint.
  */
 export async function createReservation(
   datasource: string,
@@ -106,7 +107,8 @@ export async function createReservation(
   routes: any[],
   adults: number,
   children: number,
-  language: string
+  language: string,
+  rawRecommendation?: any
 ): Promise<{ pnr: string; datasource: string }> {
   if (!datasource) throw new Error("Missing Farewise datasource");
   if (!recommendationId) throw new Error("Missing Farewise recommendationId");
@@ -119,6 +121,7 @@ export async function createReservation(
     adults,
     children,
     language,
+    rawRecommendation,
   });
 
   if (!result?.ok) throw new Error(result?.error || "Farewise reservation creation failed");

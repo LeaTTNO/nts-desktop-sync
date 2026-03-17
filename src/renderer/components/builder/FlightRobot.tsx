@@ -1652,7 +1652,8 @@ function saveToPowerPointSingle(flight: ProcessedFlight, title: string) {
         routes,
         adults,
         children,
-        language
+        language,
+        rawRec
       );
 
       // Step 3: Open booking URL
