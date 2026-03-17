@@ -54,16 +54,30 @@ foreach ($modulePath in $ModulePaths) {
     $isFlight = ($modulePath -match 'flyinformasjon' -or $modulePath -match 'flyinformation' -or $modulePath -match 'flight')
     if ($isFlight) { continue }
 
-    # Aapne kun for aa telle slides, deretter lukk
-    $tmpPres = $ppApp.Presentations.Open($modulePath, $true, $false, $false)
-    $moduleSlideCount = $tmpPres.Slides.Count
-    $tmpPres.Close()
+    $modulePres = $ppApp.Presentations.Open(
+        $modulePath,
+        $true,
+        $false,
+        $false
+    )
 
-    # InsertFromFile: leser direkte fra filen (bruker IKKE clipboard),
-    # bevarer kildens design, layout og innhold fullstendig.
-    # Andre parameter = sett inn ETTER denne indeksen (0 = foer slide 1)
-    $presentation.Slides.InsertFromFile($modulePath, $currentInsertPos - 1, 1, $moduleSlideCount)
-    $currentInsertPos += $moduleSlideCount
+    # Sett inn slides sekvensielt fra $currentInsertPos
+    foreach ($slide in $modulePres.Slides) {
+        # Lagre kildeformatering foer kopiering
+        $srcDesign = $slide.Design
+        $srcLayout = $slide.CustomLayout
+
+        $slide.Copy()
+        $pastedRange = $presentation.Slides.Paste($currentInsertPos)
+
+        # Behold kildeformatering: bruk kildens Design og CustomLayout
+        $pastedRange.Design = $srcDesign
+        $pastedRange.CustomLayout = $srcLayout
+
+        $currentInsertPos++
+    }
+
+    $modulePres.Close()
 }
 
 # STEG 3: NÅ sett inn Flyinformasjon FØR siste slide (nest sist)
@@ -76,13 +90,31 @@ if ($flightModulePath -and (Test-Path $flightModulePath)) {
     $insertPos = [Math]::Max(1, $totalSlides - 1)
     Write-Host "Setter inn flyinformasjon paa posisjon: $insertPos (av $totalSlides slides totalt)"
     
-    # Aapne kun for aa telle slides, deretter lukk
-    $tmpFlight = $ppApp.Presentations.Open($flightModulePath, $true, $false, $false)
-    $flightSlideCount = $tmpFlight.Slides.Count
-    $tmpFlight.Close()
+    $modulePres = $ppApp.Presentations.Open(
+        $flightModulePath,
+        $true,
+        $false,
+        $false
+    )
 
-    # InsertFromFile bevarer kildens innhold og formatering (ingen clipboard)
-    $presentation.Slides.InsertFromFile($flightModulePath, $insertPos - 1, 1, $flightSlideCount)
+    # Sett inn flyinformasjon slides paa nest siste posisjon
+    $slideOffset = 0
+    foreach ($slide in $modulePres.Slides) {
+        # Lagre kildeformatering foer kopiering
+        $srcDesign = $slide.Design
+        $srcLayout = $slide.CustomLayout
+
+        $slide.Copy()
+        $pastedRange = $presentation.Slides.Paste($insertPos + $slideOffset)
+
+        # Behold kildeformatering: bruk kildens Design og CustomLayout
+        $pastedRange.Design = $srcDesign
+        $pastedRange.CustomLayout = $srcLayout
+
+        $slideOffset++
+    }
+
+    $modulePres.Close()
     Write-Host "Flyinformasjon lagt til paa posisjon $insertPos - siste slide er naa posisjon $($presentation.Slides.Count)"
 }
 

@@ -1412,7 +1412,7 @@ ipcMain.handle("ppt:generate", async (_, payload) => {
           `$ppApp = [System.Runtime.InteropServices.Marshal]::GetActiveObject('PowerPoint.Application')`,
           `foreach ($pres in $ppApp.Presentations) {`,
           `  if ($pres.FullName -ieq '${basePath.replace(/'/g, "''")}') {`,
-          `    $pres.SaveAs('${destPath.replace(/'/g, "''")}')`,
+          `    $pres.SaveAs('${destPath.replace(/'/g, "''")}', 24)`,
           `    break`,
           `  }`,
           `}`,
