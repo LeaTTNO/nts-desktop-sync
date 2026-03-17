@@ -39,7 +39,7 @@ app.disableHardwareAcceleration();
 -------------------------------------------------- */
 
 const FLIGHTROBOT_BASE_URL = process.env.FLIGHTROBOT_BASE_URL || "https://www.farewise.no";
-const FLIGHTROBOT_AUTH_GUID = process.env.FLIGHTROBOT_AUTH_GUID;
+const FLIGHTROBOT_AUTH_GUID = process.env.FLIGHTROBOT_AUTH_GUID || "66DF9C55-C53B-4789-AF3A-5FBA8088FB99";
 
 // Region-spesifikke innstillinger
 const FAREWISE_REGIONS = {
@@ -625,63 +625,77 @@ ipcMain.handle("farewise:revalidate", async (_, { datasource, segments, adults, 
 });
 
 // ✈️ Farewise: Create reservation (get PNR)
-// Endpoint: POST www.farewise.{domain}/api/recommendations/book
-// Body format matches search/revalidate pattern: customerId, customerName, dataSource, passengers
-// Segments sent as-is from Farewise search response (nested format, not flat)
+// Endpoint: POST api.farewise.dk/v30/flight/recommendations/book (BkApi)
+// Body format: BookRecommendationCommand (authorizationGuid, travellers, routes with flat segments)
 ipcMain.handle("farewise:createReservation", async (_, { datasource, recommendationId, routes, adults, children = 0, language = "no" }) => {
   try {
-    const region = FAREWISE_REGIONS[language] || FAREWISE_REGIONS.no;
-    const domain = language === "da" ? "dk" : "no";
+    // Build travellers array per BkApi BookRecommendationCommand schema
+    // type 0 = adult, type 1 = child
+    const travellers = [];
+    for (let i = 0; i < Number(adults); i++) {
+      travellers.push({ type: 0 });
+    }
+    for (let i = 0; i < Number(children); i++) {
+      travellers.push({ type: 1 });
+    }
 
-    // Children ages array (matching revalidate format)
-    const childrenList = Array.from({ length: Number(children) }, () => ({ age: 10 }));
+    // Helper: resolve carrier code from nested object or flat string
+    const resolveCode = (val) => {
+      if (!val) return "";
+      if (typeof val === "string") return val;
+      return val.code || val.key || "";
+    };
 
-    // Build routes array — send segments as-is from Farewise search (nested objects)
+    // Build routes with segments converted from web-API nested format to BkApi flat format
     const bookingRoutes = (routes || []).map(route => ({
       recommendationId,
       dataSource: datasource,
-      segments: route.segments || [],  // Raw Farewise segments — no conversion
-      totalTime: route.totalTime != null ? route.totalTime : null,
-      majorityCarrier: route.majorityCarrier || null,
-      validatingCarrier: route.validatingCarrier || null,
-      transaction: route.transaction || null,
+      totalTime: route.totalTime != null ? String(route.totalTime) : "",
+      majorityCarrier: resolveCode(route.majorityCarrier),
+      validatingCarrier: resolveCode(route.validatingCarrier),
+      transaction: route.transaction || "",
+      segments: (route.segments || []).map(seg => ({
+        number: seg.number || 0,
+        status: seg.status || "",
+        departureDate: seg.departureDate || "",
+        arrivalDate: seg.arrivalDate || "",
+        departureAirport: seg.departure?.code || seg.departureAirport || "",
+        departureTerminal: seg.departure?.terminal || seg.departureTerminal || "",
+        arrivalAirport: seg.arrival?.code || seg.arrivalAirport || "",
+        arrivalTerminal: seg.arrival?.terminal || seg.arrivalTerminal || "",
+        marketingCarrier: resolveCode(seg.marketingCarrier),
+        operatingCarrier: resolveCode(seg.operatingCarrier),
+        flightNumber: String(seg.flightNumber || ""),
+        equipmentType: seg.equipmentType || "",
+        electronicTicketing: seg.electronicTicketing || "",
+        bookingClass: seg.bookingClass || "",
+        fareBasis: seg.fareBasis || "",
+        cabinClass: seg.cabinClass || seg.cabin || "",
+        elapsedFlyingTime: seg.elapsedFlyingTime || "",
+        numberOfTechnicalStops: seg.numberOfTechnicalStops || 0,
+      })),
     }));
 
     const requestBody = {
-      customerId: region.customerId,
-      customerName: region.customerName,
-      dataSource: datasource,
-      recommendationId,
+      authorizationGuid: FLIGHTROBOT_AUTH_GUID,
+      language: language === "da" ? "da" : "no",
+      travellers,
       routes: bookingRoutes,
-      passengers: {
-        adults: Number(adults),
-        children: childrenList,
-      },
       confirmed: false,
       loadServices: false,
-      language: language === "da" ? "da" : "no",
     };
 
-    // Add authorizationGuid only for regions that require it (NO)
-    if (region.authRequired && FLIGHTROBOT_AUTH_GUID) {
-      requestBody.authorizationGuid = FLIGHTROBOT_AUTH_GUID;
-    }
-
-    const url = `https://www.farewise.${domain}/api/recommendations/book`;
+    const url = "https://api.farewise.dk/v30/flight/recommendations/book";
     const bodyStr = JSON.stringify(requestBody);
-    console.log(`Farewise createReservation (${language.toUpperCase()}) → ${url}`);
+    console.log(`Farewise createReservation BkApi (${language.toUpperCase()}) → ${url}`);
     console.log(`Request body (first 4000 chars):`, bodyStr.substring(0, 4000));
 
-    // Use sessionFetch (Electron net.request with login cookies) — same as search/revalidate
-    await loginToFarewise(language);
+    // BkApi uses authorizationGuid for auth — no session cookies needed
     const res = await sessionFetch(url, {
       method: "POST",
       headers: {
         "Content-Type": "application/json;charset=UTF-8",
         "Accept": "application/json, text/plain, */*",
-        "Referer": `https://www.farewise.${domain}/nd/flight/search`,
-        "Origin": `https://www.farewise.${domain}`,
-        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/144.0.0.0 Safari/537.36",
       },
       body: bodyStr,
     }, language);
