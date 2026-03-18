@@ -43,8 +43,7 @@ const mapFolderToCategory = (folderName: string, fullPath?: string): string => {
   if (lower === 'kilimanjaro') return 'kilimanjaro';
   if (lower === 'arusha aktiviteter' || lower === 'arusha activities') return 'arusha_activities_slides';
   if (lower === 'fastland' || lower === 'mainland' || lower === 'diverse mainland') return 'diverse_mainland';
-  if (lower === 'flyinformasjon' || lower === 'flight information') return 'flyinformasjon';
-  if (lower === 'flyinformation') return 'flyinformation';
+  if (lower === 'flyinformasjon' || lower === 'flyinformation' || lower === 'flight information') return 'flyinformasjon';
   if (lower === 'reiseprogram og tilbud' || lower === 'rejseprogram og tilbud' || lower === 'base program') return 'base_program';
   if (lower === 'ekstra slides' || lower === 'extra slides') return 'extra_slides';
   
@@ -287,54 +286,14 @@ export const useOneDriveTemplates = (language: 'no' | 'da') => {
   }, [language, isAuthenticated]);
 
   // Auto-sync scheduler: full scan kl 08:00 (oppdaterer også delta-link for dagen)
+  // Auto-sync kl 08:00 håndteres av TemplateLibrary.tsx (inkrementell synk)
+  // Denne hooken laster kun sync-tidspunkt for visning
   useEffect(() => {
     if (!isAuthenticated) return;
-
-    // Load last sync time from localStorage
     const storedLastSync = localStorage.getItem(`onedrive-last-sync-${language}`);
     if (storedLastSync) {
       setLastSyncTime(storedLastSync);
     }
-
-    const scheduleNextSync = () => {
-      const now = new Date();
-      const next8AM = new Date(now);
-      next8AM.setHours(8, 0, 0, 0);
-      
-      // If 08:00 has passed today, schedule for tomorrow
-      if (next8AM <= now) {
-        next8AM.setDate(next8AM.getDate() + 1);
-      }
-      
-      const timeUntil8AM = next8AM.getTime() - now.getTime();
-      console.log(`🔄 OneDrive auto-sync scheduled for ${next8AM.toLocaleString('nb-NO')} (in ${Math.round(timeUntil8AM / 1000 / 60)} minutes)`);
-      
-      const timeoutId = setTimeout(async () => {
-        console.log('🔄 Running scheduled OneDrive sync at 08:00...');
-        try {
-          // Full scan at 08:00 — also refreshes the delta link for manual syncs during the day
-          await loadTemplatesForLanguage(language);
-          const syncTime = new Date().toISOString();
-          localStorage.setItem(`onedrive-last-sync-${language}`, syncTime);
-          setLastSyncTime(syncTime);
-          toast.success('OneDrive synkronisert automatisk kl 08:00');
-        } catch (error) {
-          console.error('Auto-sync failed:', error);
-          toast.error('Automatisk synkronisering feilet');
-        }
-        
-        // Schedule next sync
-        scheduleNextSync();
-      }, timeUntil8AM);
-      
-      return timeoutId;
-    };
-
-    const timeoutId = scheduleNextSync();
-    
-    return () => {
-      clearTimeout(timeoutId);
-    };
   }, [isAuthenticated, language]);
 
   useEffect(() => {
@@ -354,27 +313,7 @@ export const useOneDriveTemplates = (language: 'no' | 'da') => {
     localStorage.setItem('custom-categories', JSON.stringify(customCategories));
   }, [customCategories]);
 
-  // 🔄 Auto-sync listener - triggered daily at 08:00 by main process
-  useEffect(() => {
-    if (!window.electron?.on) return;
-
-    console.log('🔔 Setting up OneDrive auto-sync listener');
-    
-    const unsubscribe = window.electron.on('onedrive:auto-sync-trigger', () => {
-      console.log('⏰ Auto-sync triggered at 08:00');
-      if (isAuthenticated) {
-        console.log('🔄 Refreshing templates from OneDrive...');
-        loadTemplatesForLanguage(language);
-        toast.info('Auto-synkroniserer maler fra OneDrive...');
-      } else {
-        console.log('⚠️ Auto-sync skipped: not authenticated');
-      }
-    });
-
-    return () => {
-      if (unsubscribe) unsubscribe();
-    };
-  }, [isAuthenticated, language]);
+  // Auto-sync IPC-lytter fjernet — håndteres av TemplateLibrary.tsx (inkrementell synk)
 
   const initializeOneDrive = async () => {
     try {

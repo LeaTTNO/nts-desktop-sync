@@ -68,10 +68,11 @@ foreach ($modulePath in $ModulePaths) {
 if ($flightModulePath -and (Test-Path $flightModulePath)) {
     Write-Host "Setter inn Flyinformasjon FOR siste basefil-slide..."
     
-    # KORREKT METODE: Sett inn foer de 2 siste slidene
-    # Paste(N) setter inn PAA posisjon N (ikke etter), saa N-1 gir posisjon foer de 2 siste
+    # NEST SIST: Flyinformasjon skal ALLTID vaere nest siste slide (N-1 av N)
+    # InsertFromFile($path, afterIndex, ...) setter inn ETTER afterIndex
+    # Saa afterIndex = totalSlides - 1 gir fly paa posisjon totalSlides, og siste slide skyves til totalSlides+1
     $totalSlides = $presentation.Slides.Count
-    $insertPos = [Math]::Max(1, $totalSlides - 1)
+    $insertPos = [Math]::Max(1, $totalSlides)
     Write-Host "Setter inn flyinformasjon paa posisjon: $insertPos (av $totalSlides slides totalt)"
     
     # Tell slides i flyinformasjon-modulen

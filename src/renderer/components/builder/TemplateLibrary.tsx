@@ -4,7 +4,7 @@ import { useUserCategoryStore } from "@/store/useUserCategoryStore";
 import { useAuth } from "@/contexts/AuthContext";
 import { getUploadableCategories, getUserPersonalCategory, getAllUserBaseCategories, getUserBaseCategory, getCategoryNameForLanguage } from "@/config/templateCategories";
 import { getUserPrefix } from "@/config/userConfig";
-import { saveTemplate, deleteTemplateFromStorage, clearAllTemplates, type TemplateEntry } from "@/services/templateStorage";
+import { saveTemplate, deleteTemplateFromStorage, clearAllTemplates, getAllTemplateIds, type TemplateEntry } from "@/services/templateStorage";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -485,6 +485,9 @@ export default function TemplateLibrary() {
     const lastSyncDate = lastSyncTs ? new Date(lastSyncTs) : null;
     console.log(`🕐 ${lang.toUpperCase()}: siste synk ${lastSyncDate?.toLocaleString() ?? 'aldri'}`);
 
+    // Hent IDer DIREKTE fra IndexedDB — ikke fra Zustand-store som kan være tom/utdatert
+    const existingIds = new Set(await getAllTemplateIds());
+
     // Regn ut forventet ID for hver manifestfil
     const getExpectedId = (f: { categoryId?: string; category?: string; name: string }) => {
       const safeCatKey = (f.categoryId || f.category || 'uncategorized').replace(/[^a-zA-Z0-9_-]/g, '_');
@@ -498,18 +501,17 @@ export default function TemplateLibrary() {
 
     // Slett maler som er fjernet fra OneDrive (finnes i DB men ikke i manifest)
     const manifestIds = new Set(files.map(getExpectedId));
-    const removedFromOneDrive = templates.filter(
-      t => t.id.startsWith(`onedrive-${lang}-`) && !manifestIds.has(t.id)
-    );
-    for (const old of removedFromOneDrive) {
-      await deleteTemplateFromStorage(old.id);
-      console.log(`🗑️ Slettet (fjernet fra OneDrive): ${old.id}`);
+    const removedFromOneDrive = [...existingIds]
+      .filter(id => id.startsWith(`onedrive-${lang}-`) && !manifestIds.has(id));
+    for (const oldId of removedFromOneDrive) {
+      await deleteTemplateFromStorage(oldId);
+      console.log(`🗑️ Slettet (fjernet fra OneDrive): ${oldId}`);
     }
 
     // Filtrer til kun filer som er nye/oppdaterte siden siste synk, eller mangler i DB
     const filesToDownload = files.filter(f => {
       const expectedId = getExpectedId(f);
-      const alreadyInDB = templates.some(t => t.id === expectedId);
+      const alreadyInDB = existingIds.has(expectedId);
       const isNewOrUpdated = !lastSyncDate || (f.uploadedAt && new Date(f.uploadedAt) > lastSyncDate);
       return isNewOrUpdated || !alreadyInDB;
     });
@@ -552,15 +554,11 @@ export default function TemplateLibrary() {
           .replace(/[^a-zA-Z0-9_-]/g, '_');
         const newId = `onedrive-${lang}-${safeCatKey}-${file.name}`;
 
-        // Finn duplikater i gamle ID-formater
-        const duplicates = templates.filter(t =>
-          t.fileName === file.name &&
-          t.id !== newId &&
-          (t.categoryId === file.categoryId ||
-           t.category === (file.category || 'onedrive-sync') ||
-           t.id === `onedrive-${file.name}` ||
-           t.id === `onedrive-${safeCatKey}-${file.name}`)
-        );
+        // Fjern duplikater med gamle ID-formater (uten språk-prefix)
+        const legacyIds = [
+          `onedrive-${file.name}`,
+          `onedrive-${safeCatKey}-${file.name}`,
+        ].filter(id => id !== newId && existingIds.has(id));
 
         const template: TemplateEntry = {
           id: newId,
@@ -576,9 +574,9 @@ export default function TemplateLibrary() {
         };
 
         await saveTemplate(template);
-        for (const dup of duplicates) {
-          await deleteTemplateFromStorage(dup.id);
-          console.log(`🗑️ Fjernet duplikat: ${dup.id}`);
+        for (const dupId of legacyIds) {
+          await deleteTemplateFromStorage(dupId);
+          console.log(`🗑️ Fjernet duplikat: ${dupId}`);
         }
         successCount++;
         console.log(`✅ Lagret [${lang.toUpperCase()}]: ${file.name} (${file.category})`);

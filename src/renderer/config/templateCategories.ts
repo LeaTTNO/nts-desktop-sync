@@ -28,7 +28,6 @@ export const defaultCategories: TemplateCategory[] = [
   { id: "diverse_mainland", name: "Diverse Fastland", kind: "optional", order: 80, isDefault: true },
   { id: "extra_slides", name: "Ekstra Slides", kind: "optional", order: 90, isDefault: true },
   { id: "flyinformasjon", name: "Flyinformasjon", kind: "optional", order: 100, isDefault: true },
-  { id: "flyinformation",  name: "Flyinformation",  kind: "optional", order: 100, isDefault: true }
 ];
 
 // Helper functions
@@ -69,7 +68,6 @@ export const categoryNamesDanish: Record<string, string> = {
   "diverse_mainland":            "Diverse Fastland",
   "extra_slides":                "Ekstra Slides",
   "flyinformasjon":              "Flyinformation",
-  "flyinformation":               "Flyinformation",
   "base_program":                "Basisprogram",
 };
 

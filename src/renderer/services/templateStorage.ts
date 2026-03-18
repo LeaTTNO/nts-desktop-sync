@@ -78,6 +78,12 @@ export async function loadAllTemplates(): Promise<TemplateEntry[]> {
   return db.getAll(STORE_NAME);
 }
 
+/** Hent kun IDer — rask, laster IKKE blobs */
+export async function getAllTemplateIds(): Promise<string[]> {
+  const db = await getDB();
+  return db.getAllKeys(STORE_NAME) as Promise<string[]>;
+}
+
 /** Hent templates etter kategori */
 export async function loadTemplatesByCategory(category: string): Promise<TemplateEntry[]> {
   const db = await getDB();
