@@ -1712,7 +1712,7 @@ ipcMain.handle("onedrive:get-file", async (event, args) => {
     if (!fs.existsSync(fullPath)) return { success: false, error: `Fil ikke funnet: ${relPath}` };
 
     const buffer = fs.readFileSync(fullPath);
-    return { success: true, data: buffer.toString('base64') };
+    return { success: true, data: buffer }; // Return Buffer directly — avoids base64 overhead
   } catch (error) {
     console.error(`❌ Failed to read file ${relPath}:`, error.message);
     return { success: false, error: error.message };

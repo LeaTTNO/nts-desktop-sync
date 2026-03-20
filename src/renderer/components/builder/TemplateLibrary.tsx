@@ -543,12 +543,12 @@ export default function TemplateLibrary() {
           continue;
         }
 
-        const binaryString = atob(fileResult.data);
-        const bytes = new Uint8Array(binaryString.length);
-        for (let j = 0; j < binaryString.length; j++) {
-          bytes[j] = binaryString.charCodeAt(j);
-        }
-        const arrayBuffer = bytes.buffer;
+        // IPC returns a Uint8Array (Node Buffer serialized via structured clone)
+        const received = fileResult.data as Uint8Array;
+        const arrayBuffer = received.buffer.slice(
+          received.byteOffset,
+          received.byteOffset + received.byteLength
+        );
 
         const safeCatKey = (file.categoryId || file.category || 'uncategorized')
           .replace(/[^a-zA-Z0-9_-]/g, '_');
@@ -580,6 +580,8 @@ export default function TemplateLibrary() {
         }
         successCount++;
         console.log(`✅ Lagret [${lang.toUpperCase()}]: ${file.name} (${file.category})`);
+        // Yield to event loop between files so V8 GC can reclaim large buffers
+        await new Promise(r => setTimeout(r, 0));
       } catch (error) {
         console.error(`❌ Feil ved lagring av ${file.name}:`, error);
         errorCount++;
@@ -597,11 +599,9 @@ export default function TemplateLibrary() {
       console.log("🔄 Starting OneDrive sync – NO + DK...");
       toast.info("Synkroniserer NO og DK fra OneDrive...");
 
-      // Synk begge språk i sekvens
-      const [resNo, resDk] = await Promise.all([
-        syncLanguage('no'),
-        syncLanguage('da'),
-      ]);
+      // Synk sekvensielt for å unngå OOM ved nedlasting av store .pptx-filer
+      const resNo = await syncLanguage('no');
+      const resDk = await syncLanguage('da');
 
       const totalSuccess = resNo.successCount + resDk.successCount;
       const totalErrors = resNo.errorCount + resDk.errorCount;
