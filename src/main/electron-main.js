@@ -1413,7 +1413,7 @@ ipcMain.handle("ppt:generate", async (_, payload) => {
       const saveResult = await dialog.showSaveDialog(mainWindow, {
         title: language === 'da' ? 'Gem præsentation som...' : 'Lagre presentasjon som...',
         defaultPath: path.join(saveDir, fileName),
-        filters: [{ name: 'PowerPoint', extensions: ['pptx'] }],
+        filters: [{ name: 'PowerPoint-presentasjon', extensions: ['pptx'] }],
       });
 
       if (!saveResult.canceled && saveResult.filePath) {

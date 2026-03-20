@@ -4,7 +4,7 @@ import { useUserCategoryStore } from "@/store/useUserCategoryStore";
 import { useAuth } from "@/contexts/AuthContext";
 import { getUploadableCategories, getUserPersonalCategory, getAllUserBaseCategories, getUserBaseCategory, getCategoryNameForLanguage } from "@/config/templateCategories";
 import { getUserPrefix } from "@/config/userConfig";
-import { saveTemplate, deleteTemplateFromStorage, clearAllTemplates, getAllTemplateIds, type TemplateEntry } from "@/services/templateStorage";
+import { saveTemplate, deleteTemplateFromStorage, clearAllTemplates, getAllTemplateIds, loadAllTemplatesMetadata, getTemplateById, type TemplateEntry } from "@/services/templateStorage";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -47,6 +47,7 @@ export default function TemplateLibrary() {
   const [editingCategoryId, setEditingCategoryId] = useState<string | null>(null);
   const [editingCategoryName, setEditingCategoryName] = useState<string>("");
   const [hiddenCategories, setHiddenCategories] = useState<string[]>([]);
+  const [markedForDeletion, setMarkedForDeletion] = useState<Set<string>>(new Set());
   // State for innebygde kategoriers synlighet og checkbox for admin
   const [builtInCategorySettings, setBuiltInCategorySettings] = useState<Record<string, { isVisible?: boolean; hasCheckbox?: boolean }>>({});;
 
@@ -443,7 +444,45 @@ export default function TemplateLibrary() {
   function handleDelete(id: string, name: string) {
     if (!userIsAdmin && !confirm(`Slett "${name}"?\n\nMalen fjernes fra din lokale database. Synkroniser på nytt for å hente den tilbake.`)) return;
     deleteTemplate(id);
+    setMarkedForDeletion(prev => { const next = new Set(prev); next.delete(id); return next; });
     toast.success(`"${name}" slettet`);
+  }
+
+  function toggleMarkTemplate(id: string) {
+    setMarkedForDeletion(prev => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id); else next.add(id);
+      return next;
+    });
+  }
+
+  function toggleMarkAll(list: { id: string }[]) {
+    setMarkedForDeletion(prev => {
+      const ids = list.map(t => t.id);
+      const allMarked = ids.every(id => prev.has(id));
+      const next = new Set(prev);
+      if (allMarked) {
+        ids.forEach(id => next.delete(id));
+      } else {
+        ids.forEach(id => next.add(id));
+      }
+      return next;
+    });
+  }
+
+  async function handleBulkDelete(list: { id: string; name: string }[]) {
+    const toDelete = list.filter(t => markedForDeletion.has(t.id));
+    if (toDelete.length === 0) return;
+    if (!confirm(`Slett ${toDelete.length} markerte mal${toDelete.length !== 1 ? 'er' : ''}?`)) return;
+    for (const t of toDelete) {
+      await deleteTemplate(t.id);
+    }
+    setMarkedForDeletion(prev => {
+      const next = new Set(prev);
+      toDelete.forEach(t => next.delete(t.id));
+      return next;
+    });
+    toast.success(`${toDelete.length} mal${toDelete.length !== 1 ? 'er' : ''} slettet`);
   }
 
   function toggleVisibility(id: string, currentlyVisible: boolean) {
@@ -488,6 +527,17 @@ export default function TemplateLibrary() {
     // Hent IDer DIREKTE fra IndexedDB — ikke fra Zustand-store som kan være tom/utdatert
     const existingIds = new Set(await getAllTemplateIds());
 
+    // Last metadata for å finne duplikater basert på filnavn+kategori+språk (ikke bare ID)
+    const allMeta = await loadAllTemplatesMetadata();
+    // Bygg oppslag: "fileName|categoryId|language" → id[]
+    const metaByKey = new Map<string, string[]>();
+    for (const m of allMeta) {
+      const key = `${m.fileName}|${m.categoryId || m.category}|${m.language || ''}`;
+      const ids = metaByKey.get(key) || [];
+      ids.push(m.id);
+      metaByKey.set(key, ids);
+    }
+
     // Regn ut forventet ID for hver manifestfil
     const getExpectedId = (f: { categoryId?: string; category?: string; name: string }) => {
       const safeCatKey = (f.categoryId || f.category || 'uncategorized').replace(/[^a-zA-Z0-9_-]/g, '_');
@@ -509,12 +559,62 @@ export default function TemplateLibrary() {
     }
 
     // Filtrer til kun filer som er nye/oppdaterte siden siste synk, eller mangler i DB
-    const filesToDownload = files.filter(f => {
+    // Sjekk BÅDE deterministisk ID og metadata-oppslag (filnavn+kategori+språk)
+    const filesToDownload: typeof files = [];
+    const filesToReId: { file: typeof files[0]; existingId: string; newId: string }[] = [];
+
+    for (const f of files) {
       const expectedId = getExpectedId(f);
       const alreadyInDB = existingIds.has(expectedId);
-      const isNewOrUpdated = !lastSyncDate || (f.uploadedAt && new Date(f.uploadedAt) > lastSyncDate);
-      return isNewOrUpdated || !alreadyInDB;
-    });
+
+      if (alreadyInDB) {
+        // Filen finnes allerede med riktig onedrive-ID — sjekk om den er oppdatert
+        const isNewOrUpdated = !lastSyncDate || (f.uploadedAt && new Date(f.uploadedAt) > lastSyncDate);
+        if (isNewOrUpdated) filesToDownload.push(f);
+        continue;
+      }
+
+      // Sjekk om filen allerede finnes under en annen ID (f.eks. manuell opplasting med nanoid)
+      const metaKey = `${f.name}|${f.categoryId || f.category || 'uncategorized'}|${lang}`;
+      const existingDupIds = metaByKey.get(metaKey) || [];
+      if (existingDupIds.length > 0) {
+        // Filen finnes allerede — ikke last ned på nytt, bare oppdater IDen
+        filesToReId.push({ file: f, existingId: existingDupIds[0], newId: expectedId });
+        continue;
+      }
+
+      // Filen finnes ikke i DB — last ned
+      filesToDownload.push(f);
+    }
+
+    // Re-ID eksisterende maler (manuelt opplastet → onedrive-ID) uten å laste ned på nytt
+    for (const { file, existingId, newId } of filesToReId) {
+      try {
+        const existing = await getTemplateById(existingId);
+        if (existing) {
+          const updated: TemplateEntry = {
+            ...existing,
+            id: newId,
+            categoryId: file.categoryId || existing.categoryId,
+            category: file.category || existing.category,
+          };
+          await saveTemplate(updated);
+          await deleteTemplateFromStorage(existingId);
+          console.log(`🔄 Re-ID: ${existingId} → ${newId} (ingen nedlasting)`);
+          // Fjern andre duplikater med samme key
+          const metaKey = `${file.name}|${file.categoryId || file.category || 'uncategorized'}|${lang}`;
+          const allDups = metaByKey.get(metaKey) || [];
+          for (const dupId of allDups) {
+            if (dupId === existingId || dupId === newId) continue;
+            await deleteTemplateFromStorage(dupId);
+            console.log(`🗑️ Fjernet ekstra duplikat: ${dupId}`);
+          }
+        }
+      } catch (e) {
+        console.warn(`⚠️ Kunne ikke re-IDe ${existingId}:`, e);
+        filesToDownload.push(file); // Fallback: last ned
+      }
+    }
 
     console.log(`⬇️ ${lang.toUpperCase()}: ${filesToDownload.length} av ${files.length} filer trenger nedlasting`);
 
@@ -577,6 +677,17 @@ export default function TemplateLibrary() {
         for (const dupId of legacyIds) {
           await deleteTemplateFromStorage(dupId);
           console.log(`🗑️ Fjernet duplikat: ${dupId}`);
+        }
+
+        // Fjern eventuelle andre duplikater med samme filnavn+kategori+språk men annet ID
+        // (f.eks. maler opprettet via manuell opplasting med nanoid-ID)
+        const metaKey = `${file.name}|${file.categoryId || file.category || 'uncategorized'}|${lang}`;
+        const dupIds = metaByKey.get(metaKey) || [];
+        for (const existId of dupIds) {
+          if (existId === newId) continue;
+          if (legacyIds.includes(existId)) continue; // allerede slettet
+          await deleteTemplateFromStorage(existId);
+          console.log(`🗑️ Fjernet duplikat (annet format): ${existId}`);
         }
         successCount++;
         console.log(`✅ Lagret [${lang.toUpperCase()}]: ${file.name} (${file.category})`);
@@ -818,9 +929,9 @@ export default function TemplateLibrary() {
 
                 <AccordionContent className="pt-2 pb-4">
                   <div className="space-y-4">
-                    {/* Upload button - kun for admin eller brukerens personlige kategori */}
-                    {(userIsAdmin || isPersonalCategory) && (
-                      <div>
+                    {/* Upload + bulk actions */}
+                    <div className="flex items-center gap-2 flex-wrap">
+                      {(userIsAdmin || isPersonalCategory) && (
                         <Button 
                           variant="outline" 
                           size="sm"
@@ -830,8 +941,33 @@ export default function TemplateLibrary() {
                           <Upload className="h-4 w-4" />
                           Last opp filer
                         </Button>
-                      </div>
-                    )}
+                      )}
+                      {list.length > 0 && (
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => toggleMarkAll(list)}
+                          className="gap-2"
+                        >
+                          {list.every(t => markedForDeletion.has(t.id)) ? (
+                            <><CheckSquare className="h-4 w-4" /> Fjern markering</>
+                          ) : (
+                            <><Square className="h-4 w-4" /> Marker alle</>
+                          )}
+                        </Button>
+                      )}
+                      {list.some(t => markedForDeletion.has(t.id)) && (
+                        <Button
+                          variant="destructive"
+                          size="sm"
+                          onClick={() => handleBulkDelete(list)}
+                          className="gap-2"
+                        >
+                          <Trash2 className="h-4 w-4" />
+                          Slett {list.filter(t => markedForDeletion.has(t.id)).length} markerte
+                        </Button>
+                      )}
+                    </div>
 
                     {/* Template list */}
                     {list.length === 0 ? (
@@ -843,9 +979,14 @@ export default function TemplateLibrary() {
                         {list.map((t) => (
                           <div
                             key={t.id}
-                            className="flex items-center justify-between p-3 rounded-md border bg-background gap-3"
+                            className={`flex items-center justify-between p-3 rounded-md border gap-3 ${markedForDeletion.has(t.id) ? 'bg-red-50 border-red-200' : 'bg-background'}`}
                           >
                             <div className="flex items-center gap-3 flex-1 min-w-0">
+                              <Checkbox
+                                checked={markedForDeletion.has(t.id)}
+                                onCheckedChange={() => toggleMarkTemplate(t.id)}
+                                className="flex-shrink-0"
+                              />
                               <span className="font-medium text-sm truncate">{t.name}</span>
                             </div>
 
