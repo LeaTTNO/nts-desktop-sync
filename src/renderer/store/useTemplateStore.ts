@@ -164,8 +164,9 @@ export const useTemplateStore = create<Store>((set, get) => ({
       defaultDayOffset: t.defaultDayOffset,
     };
     await saveTemplate(entry);
+    // Store metadata only in Zustand — blob stays in IndexedDB
     set(s => ({ 
-      templates: [...s.templates, entry].sort((a, b) => a.order - b.order) 
+      templates: [...s.templates, { ...entry, blob: null }].sort((a, b) => a.order - b.order) 
     }));
   },
 

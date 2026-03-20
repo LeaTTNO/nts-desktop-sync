@@ -81,8 +81,16 @@ export async function loadAllTemplates(): Promise<TemplateEntry[]> {
 /** Hent alle templates UTEN blobs — trygt for UI/store (unngår OOM) */
 export async function loadAllTemplatesMetadata(): Promise<TemplateEntry[]> {
   const db = await getDB();
-  const all = await db.getAll(STORE_NAME);
-  return all.map(t => ({ ...t, blob: null }));
+  const templates: TemplateEntry[] = [];
+  const tx = db.transaction(STORE_NAME, 'readonly');
+  let cursor = await tx.store.openCursor();
+  while (cursor) {
+    // Destructure to avoid keeping blob reference in memory
+    const { blob, ...meta } = cursor.value;
+    templates.push({ ...meta, blob: null });
+    cursor = await cursor.continue();
+  }
+  return templates;
 }
 
 /** Hent kun IDer — rask, laster IKKE blobs */
