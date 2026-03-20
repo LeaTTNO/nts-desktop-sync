@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { localFileSystemClient, LocalFile } from '@/lib/localFileSystem';
 import { 
-  loadAllTemplates as getAllTemplatesFromIndexedDB,
+  loadAllTemplatesMetadata as getAllTemplatesMetadata,
   deleteTemplatesByCategory,
   clearAllTemplates,
   deleteTemplateFromStorage as deleteTemplateById
@@ -28,15 +28,15 @@ export const useLocalTemplates = () => {
     const loadData = async () => {
       try {
         console.log('useLocalTemplates - Loading templates from IndexedDB...');
-        // Load templates from IndexedDB
-        const storedTemplates = await getAllTemplatesFromIndexedDB();
+        // Load templates metadata from IndexedDB (without blobs to avoid OOM)
+        const storedTemplates = await getAllTemplatesMetadata();
         console.log('useLocalTemplates - Stored templates from IndexedDB:', storedTemplates.length);
         
         const refs: TemplateReference[] = storedTemplates.map(t => ({
           id: t.id,
           name: t.name,
           category: t.category,
-          file: new File([t.blob || new ArrayBuffer(0)], t.fileName, { type: 'application/vnd.openxmlformats-officedocument.presentationml.presentation' })
+          file: new File([], t.fileName, { type: 'application/vnd.openxmlformats-officedocument.presentationml.presentation' })
         }));
         
         console.log('useLocalTemplates - Converted to TemplateReferences:', refs.length);

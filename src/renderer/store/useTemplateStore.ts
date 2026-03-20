@@ -3,10 +3,11 @@ import { nanoid } from "nanoid";
 import { defaultCategories } from "../../config/templateCategories";
 import { categoryNamesDanish } from "../config/templateCategories";
 import {
-  loadAllTemplates,
+  loadAllTemplatesMetadata,
   saveTemplate,
   deleteTemplateFromStorage,
   getDefaultOrder,
+  getTemplateById,
   type TemplateEntry,
 } from "../services/templateStorage";
 
@@ -61,7 +62,7 @@ type Store = {
 
   getTemplatesByCategoryId: (catName: string) => TemplateEntry[];
   getTemplatesByCategoryName: (catName: string) => TemplateEntry[];
-  getTemplateBlob: (id: string) => ArrayBuffer | null | undefined;
+  getTemplateBlob: (id: string) => Promise<ArrayBuffer | null>;
 };
 
 const LOCKED_CATEGORY = "Reiseprogram og Tilbud";
@@ -98,7 +99,7 @@ export const useTemplateStore = create<Store>((set, get) => ({
     set((s) => ({ slides: s.slides.filter(slide => !(typeof slide === "object" && slide.type === "flight")) })),
 
   loadFromDB: async () => {
-    const templates = await loadAllTemplates();
+    const templates = await loadAllTemplatesMetadata();
     // Sort by order field
     templates.sort((a, b) => a.order - b.order);
     set({ templates });
@@ -239,8 +240,8 @@ export const useTemplateStore = create<Store>((set, get) => ({
   getTemplatesByCategoryName: (catName) =>
     get().templates.filter(t => t.category === catName),
 
-  getTemplateBlob: (id) => {
-    const tpl = get().templates.find(t => t.id === id);
-    return tpl?.blob;
+  getTemplateBlob: async (id) => {
+    const tpl = await getTemplateById(id);
+    return tpl?.blob ?? null;
   },
 }));

@@ -22,6 +22,7 @@ import { nb, da } from "date-fns/locale";
 import { GripVertical, X, FileDown, RotateCcw, Loader2, ChevronDown, ArrowLeft, Check, Info } from "lucide-react";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
+import { getTemplateById } from "@/services/templateStorage";
 
 /* =========================
    KONSTANTER - KATEGORIER (språkavhengige)
@@ -294,8 +295,15 @@ export default function TravelProgramBuilder({ language = 'no' }: TravelProgramB
     try {
       // Basefil er alltid først i listen
       const baseTemplate = templates.find(t => t.id === baseProgramId);
-      if (!baseTemplate || !baseTemplate.blob) {
+      if (!baseTemplate) {
         toast.error("Basefil ikke funnet");
+        return;
+      }
+
+      // Hent blob fra IndexedDB on-demand (ikke lagret i store)
+      const baseEntry = await getTemplateById(baseProgramId);
+      if (!baseEntry?.blob) {
+        toast.error("Basefil blob ikke funnet i databasen");
         return;
       }
 
@@ -311,10 +319,10 @@ export default function TravelProgramBuilder({ language = 'no' }: TravelProgramB
           return aFlight - bFlight;
         }) as typeof templates;
 
-      // Konverter blobs til ArrayBuffers
-      const baseBuffer = baseTemplate.blob instanceof Blob 
-        ? await baseTemplate.blob.arrayBuffer() 
-        : baseTemplate.blob;
+      // Hent blob fra IndexedDB
+      const baseBuffer = baseEntry.blob instanceof Blob 
+        ? await baseEntry.blob.arrayBuffer() 
+        : baseEntry.blob;
       
       // DEBUG: Log module order being sent to PowerShell
       console.log('📋 Module order being sent to PowerShell:');
@@ -323,12 +331,13 @@ export default function TravelProgramBuilder({ language = 'no' }: TravelProgramB
         console.log(`  ${idx + 1}. ${m.name} ${days ? `(${days} dager)` : '(no days)'} [category: ${m.category}]`);
       });
       
-      const moduleBuffers = await Promise.all(
-        moduleTemplates.map(async (t) => ({
-          name: t.name,
-          buffer: t.blob instanceof Blob ? await t.blob.arrayBuffer() : t.blob,
-        }))
-      );
+      // Hent blobs fra IndexedDB én om gangen
+      const moduleBuffers = [];
+      for (const t of moduleTemplates) {
+        const entry = await getTemplateById(t.id);
+        const buffer = entry?.blob instanceof Blob ? await entry.blob.arrayBuffer() : entry?.blob ?? null;
+        moduleBuffers.push({ name: t.name, buffer });
+      }
 
       // Hent flyinformasjon fra global slides state
       const flightSlide = slides.find(s => typeof s === "object" && s.type === "flight");
@@ -349,9 +358,10 @@ export default function TravelProgramBuilder({ language = 'no' }: TravelProgramB
           t.category === flyCat
         );
         if (flightTemplate) {
-          const flightBuffer = flightTemplate.blob instanceof Blob
-            ? await flightTemplate.blob.arrayBuffer()
-            : flightTemplate.blob;
+          const flightEntry = await getTemplateById(flightTemplate.id);
+          const flightBuffer = flightEntry?.blob instanceof Blob
+            ? await flightEntry.blob.arrayBuffer()
+            : flightEntry?.blob ?? null;
           moduleBuffers.push({ name: flightTemplate.name, buffer: flightBuffer });
         } else {
           // Ingen mal funnet — bruk tom buffer (electron-main lager noe enkelt)

@@ -78,6 +78,13 @@ export async function loadAllTemplates(): Promise<TemplateEntry[]> {
   return db.getAll(STORE_NAME);
 }
 
+/** Hent alle templates UTEN blobs — trygt for UI/store (unngår OOM) */
+export async function loadAllTemplatesMetadata(): Promise<TemplateEntry[]> {
+  const db = await getDB();
+  const all = await db.getAll(STORE_NAME);
+  return all.map(t => ({ ...t, blob: null }));
+}
+
 /** Hent kun IDer — rask, laster IKKE blobs */
 export async function getAllTemplateIds(): Promise<string[]> {
   const db = await getDB();
