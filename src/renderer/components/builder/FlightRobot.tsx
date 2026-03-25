@@ -221,7 +221,7 @@ const translations = {
     dateInterval: "Dato-intervall",
     dateIntervalInfo: "Søker på alle datoer i perioden med valgt antall netter. Bruker samme kriterier som 'Beste og billigste' (maks 20-22t, ingen nattfly). Viser det beste og billigste alternativet i hele perioden, og andre datoer med lignende pris (±600 kr).",
     earliestDeparture: "Tidligste avreise",
-    latestDeparture: "Seneste avreise",
+    latestDeparture: "Seneste hjemreise",
     searchInInterval: "Søk billigste i periode",
     iataPlaceholder: "IATA (f.eks. OSL)",
     showDetails: "Vis detaljer",
@@ -300,7 +300,7 @@ const translations = {
     dateInterval: "Datointervall",
     dateIntervalInfo: "Søger på alle datoer i perioden med valgt antal nætter. Bruger samme kriterier som 'Bedste og billigste' (maks 20-22t, ingen natfly). Viser det bedste og billigste alternativ i hele perioden, og andre datoer med lignende pris (±600 kr).",
     earliestDeparture: "Tidligste afrejse",
-    latestDeparture: "Seneste afrejse",
+    latestDeparture: "Seneste hjemrejse",
     searchInInterval: "Søg billigste i periode",
     iataPlaceholder: "IATA (f.eks. CPH)",
     showDetails: "Vis detaljer",
@@ -3011,7 +3011,7 @@ function saveToPowerPointSingle(flight: ProcessedFlight, title: string) {
                           <CalendarIcon className="h-4 w-4" />
                         </Button>
                       </PopoverTrigger>
-                      <PopoverContent className="w-auto p-0" side="bottom" align="start" avoidCollisions={false}>
+                      <PopoverContent className="w-auto p-0" side="bottom" align="end">
                         <Calendar
                           mode="single"
                           selected={latestDeparture}
