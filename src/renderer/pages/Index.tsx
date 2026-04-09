@@ -2,7 +2,7 @@ import React, { useState } from "react";
 import { LanguageToggle } from "@/components/LanguageToggle";
 import UserMenu from "@/components/UserMenu";
 import TravelProgramBuilder from "@/components/builder/TravelProgramBuilder";
-import FlightRobot from "@/components/builder/FlightRobot";
+import FlightRobotTabs from "@/components/builder/FlightRobotTabs";
 import TemplateLibrary from "@/components/builder/TemplateLibrary";
 import { useTemplateStore } from "@/store/useTemplateStore";
 import { useAuth } from "@/contexts/AuthContext";
@@ -126,7 +126,7 @@ export default function Index() {
                   <TravelProgramBuilder language={language} />
                 </div>
                 <div style={{ display: activeTab === "flight" ? "block" : "none" }}>
-                  <FlightRobot />
+                  <FlightRobotTabs />
                 </div>
                 <div style={{ display: activeTab === "library" ? "block" : "none" }}>
                   <TemplateLibrary />

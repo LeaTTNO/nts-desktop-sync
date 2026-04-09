@@ -36,7 +36,7 @@ import { Calendar } from "@/components/ui/calendar";
 import SectionDivider from "@/components/SectionDivider";
 import FlightResultCard from "./FlightResultCard";
 import { useTemplateStore } from "@/store/useTemplateStore";
-import { useFlightStore } from "@/store/useFlightStore";
+// useFlightStore removed – results are now local state per instance (multi-tab support)
 
 import {
   Plane,
@@ -1147,27 +1147,42 @@ export default function FlightRobot() {
   const [showIntervalAlternatives, setShowIntervalAlternatives] = useState(false);
   const [expandedIntervalIdx, setExpandedIntervalIdx] = useState<number | null>(null);
 
-  // Results - nå fra Zustand store med auto-persist
+  // Extended interval search options (checkboxes)
+  const [intervalIncludeBeste, setIntervalIncludeBeste] = useState(false);
+  const [intervalIncludeBilligste, setIntervalIncludeBilligste] = useState(false);
+  const [intervalIncludeAddNights, setIntervalIncludeAddNights] = useState(false);
+  const [intervalAddNightsCount, setIntervalAddNightsCount] = useState(1);
+  const [intervalIncludeRemoveNights, setIntervalIncludeRemoveNights] = useState(false);
+  const [intervalRemoveNightsCount, setIntervalRemoveNightsCount] = useState(1);
+
+  // Extended interval results
+  type IntervalCategoryResult = {
+    best: ProcessedFlight | null;
+    alternatives: Array<{ departureDate: string; returnDate: string; price: number; currency: string; airline: string; flight: ProcessedFlight }>;
+  };
+  const [intervalBesteResult, setIntervalBesteResult] = useState<IntervalCategoryResult>({ best: null, alternatives: [] });
+  const [intervalBilligsteResult, setIntervalBilligsteResult] = useState<IntervalCategoryResult>({ best: null, alternatives: [] });
+  const [intervalAddNightsResult, setIntervalAddNightsResult] = useState<IntervalCategoryResult>({ best: null, alternatives: [] });
+  const [intervalRemoveNightsResult, setIntervalRemoveNightsResult] = useState<IntervalCategoryResult>({ best: null, alternatives: [] });
+  const [showIntervalBesteAlts, setShowIntervalBesteAlts] = useState(false);
+  const [showIntervalBilligsteAlts, setShowIntervalBilligsteAlts] = useState(false);
+  const [showIntervalAddNightsAlts, setShowIntervalAddNightsAlts] = useState(false);
+  const [showIntervalRemoveNightsAlts, setShowIntervalRemoveNightsAlts] = useState(false);
+  const [expandedIntervalBesteIdx, setExpandedIntervalBesteIdx] = useState<number | null>(null);
+  const [expandedIntervalBilligsteIdx, setExpandedIntervalBilligsteIdx] = useState<number | null>(null);
+  const [expandedIntervalAddNightsIdx, setExpandedIntervalAddNightsIdx] = useState<number | null>(null);
+  const [expandedIntervalRemoveNightsIdx, setExpandedIntervalRemoveNightsIdx] = useState<number | null>(null);
+
+  // Results - local state per instance (multi-tab support)
   const { savedFlights, addFlight, clearFlights } = useFlightInfo();
-  const {
-    mainResults,
-    bestQualityResult,
-    cheapestExtendedResult,
-    flexibleResult,
-    addNightsResult,
-    removeNightsResult,
-    dateIntervalResult,
-    setMainResults,
-    setBestQualityResult,
-    setCheapestExtendedResult,
-    setFlexibleResult,
-    setAddNightsResult,
-    setRemoveNightsResult,
-    setDateIntervalResult,
-    setHasSearched,
-    resetAll: resetFlightStore,
-  } = useFlightStore();
-  const hasSearched = useFlightStore(state => state.hasSearched);
+  const [mainResults, setMainResults] = useState<MainResults>({ bestAndCheapest: null, cheapest: null });
+  const [bestQualityResult, setBestQualityResult] = useState<ProcessedFlight | null>(null);
+  const [cheapestExtendedResult, setCheapestExtendedResult] = useState<ProcessedFlight | null>(null);
+  const [flexibleResult, setFlexibleResult] = useState<ProcessedFlight | null>(null);
+  const [addNightsResult, setAddNightsResult] = useState<ProcessedFlight | null>(null);
+  const [removeNightsResult, setRemoveNightsResult] = useState<ProcessedFlight | null>(null);
+  const [dateIntervalResult, setDateIntervalResult] = useState<ProcessedFlight | null>(null);
+  const [hasSearched, setHasSearched] = useState(false);
 
   // Flagg: Beste og Billigste er allerede den korteste reisen på denne datoen
   const [bestAndCheapestIsBest, setBestAndCheapestIsBest] = useState(false);
@@ -1193,10 +1208,7 @@ export default function FlightRobot() {
     dateInterval: null,
   });
 
-  // Clear search results on app startup
-  useEffect(() => {
-    resetFlightStore();
-  }, [resetFlightStore]);
+  // No startup reset needed – local state starts fresh per instance
 
   // Listen for Farewise EK debug data from electron-main
   useEffect(() => {
@@ -1270,9 +1282,25 @@ export default function FlightRobot() {
     setIntervalAlternatives([]);
     setShowIntervalAlternatives(false);
     setExpandedIntervalIdx(null);
+    // Reset extended interval results
+    setIntervalIncludeBeste(false);
+    setIntervalIncludeBilligste(false);
+    setIntervalIncludeAddNights(false);
+    setIntervalIncludeRemoveNights(false);
+    setIntervalBesteResult({ best: null, alternatives: [] });
+    setIntervalBilligsteResult({ best: null, alternatives: [] });
+    setIntervalAddNightsResult({ best: null, alternatives: [] });
+    setIntervalRemoveNightsResult({ best: null, alternatives: [] });
     
-    // Reset all flight results
-    resetFlightStore();
+    // Reset all flight results (local state)
+    setMainResults({ bestAndCheapest: null, cheapest: null });
+    setBestQualityResult(null);
+    setCheapestExtendedResult(null);
+    setFlexibleResult(null);
+    setAddNightsResult(null);
+    setRemoveNightsResult(null);
+    setDateIntervalResult(null);
+    setHasSearched(false);
     clearFlights();
     setPreferredAirlineResults({
       bestAndCheapest: null,
@@ -1324,7 +1352,15 @@ export default function FlightRobot() {
   // Nullstill-knapp
   function handleReset() {
     clearFlights();
-    resetFlightStore();
+    // Reset local results
+    setMainResults({ bestAndCheapest: null, cheapest: null });
+    setBestQualityResult(null);
+    setCheapestExtendedResult(null);
+    setFlexibleResult(null);
+    setAddNightsResult(null);
+    setRemoveNightsResult(null);
+    setDateIntervalResult(null);
+    setHasSearched(false);
 
     // IATA-koder – tilbake til default
     setDeparture(language === "da" ? "CPH" : "OSL");
@@ -1384,6 +1420,15 @@ export default function FlightRobot() {
     setIntervalAlternatives([]);
     setShowIntervalAlternatives(false);
     setExpandedIntervalIdx(null);
+    // Reset extended interval
+    setIntervalIncludeBeste(false);
+    setIntervalIncludeBilligste(false);
+    setIntervalIncludeAddNights(false);
+    setIntervalIncludeRemoveNights(false);
+    setIntervalBesteResult({ best: null, alternatives: [] });
+    setIntervalBilligsteResult({ best: null, alternatives: [] });
+    setIntervalAddNightsResult({ best: null, alternatives: [] });
+    setIntervalRemoveNightsResult({ best: null, alternatives: [] });
 
     // BESTE-flagg
     setBestAndCheapestIsBest(false);
@@ -1796,8 +1841,12 @@ function saveToPowerPointSingle(flight: ProcessedFlight, title: string) {
     // Calculate max expected results based on enabled options
     let maxResults: number;
     if (useDateInterval) {
-      // Dato-intervall-modus: kun 1 resultat (beste og billigste i perioden)
+      // Dato-intervall-modus: 1 B&B + extra categories
       maxResults = 1;
+      if (intervalIncludeBeste) maxResults += 1;
+      if (intervalIncludeBilligste) maxResults += 1;
+      if (intervalIncludeAddNights) maxResults += 1;
+      if (intervalIncludeRemoveNights) maxResults += 1;
     } else {
       maxResults = 3; // 3 main categories always
       if (flexibleDates) maxResults += 1;
@@ -1826,6 +1875,11 @@ function saveToPowerPointSingle(flight: ProcessedFlight, title: string) {
     setAddNightsResult(null);
     setRemoveNightsResult(null);
     setDateIntervalResult(null);
+    // Clear extended interval results
+    setIntervalBesteResult({ best: null, alternatives: [] });
+    setIntervalBilligsteResult({ best: null, alternatives: [] });
+    setIntervalAddNightsResult({ best: null, alternatives: [] });
+    setIntervalRemoveNightsResult({ best: null, alternatives: [] });
 
     const currency = language === "da" ? "DKK" : "NOK";
     const pax = parseInt(passengers);
@@ -2206,7 +2260,7 @@ function saveToPowerPointSingle(flight: ProcessedFlight, title: string) {
       } // end if (!skipMainSearch)
 
       // 4. DATE INTERVAL SEARCH (search all dates in range with user-specified number of nights)
-      // FOLLOWS "BESTE OG BILLIGSTE" CRITERIA
+      // FOLLOWS "BESTE OG BILLIGSTE" CRITERIA + optional extra categories
       if (useDateInterval && earliestDeparture && latestDeparture) {
         console.log('📅 INTERVAL SEARCH START:', { departure, destination, returnFrom, returnTo, earliestDeparture: format(new Date(earliestDeparture), 'yyyy-MM-dd'), latestDeparture: format(new Date(latestDeparture), 'yyyy-MM-dd'), intervalNights, pax, currency });
         const MAX_BEST_AND_CHEAPEST_HOURS = useCustomMaxBBHours ? customMaxBBHours : getMaxBestAndCheapestDurationHours(departure);
@@ -2221,6 +2275,16 @@ function saveToPowerPointSingle(flight: ProcessedFlight, title: string) {
           airline: string;
           flight: ProcessedFlight;
         }> = []; // Store all results for alternatives
+
+        // Extended category collectors
+        let bestBesteInterval: ProcessedFlight | null = null;
+        const allBesteResults: typeof allValidResults = [];
+        let bestBilligsteInterval: ProcessedFlight | null = null;
+        const allBilligsteResults: typeof allValidResults = [];
+        let bestAddNightsInterval: ProcessedFlight | null = null;
+        const allAddNightsResults: typeof allValidResults = [];
+        let bestRemoveNightsInterval: ProcessedFlight | null = null;
+        const allRemoveNightsResults: typeof allValidResults = [];
 
         // Calculate number of days in the interval
         const startDate = new Date(earliestDeparture);
@@ -2249,29 +2313,96 @@ function saveToPowerPointSingle(flight: ProcessedFlight, title: string) {
             // Use exactly the same B&B logic as the main search
             const intervalCats = categorizeFlights(processed, t, departure, language, allowTwoStopBB, useCustomMaxBBHours ? customMaxBBHours : null);
             const bestForDate = intervalCats.bestAndCheapest;
-            if (!bestForDate) continue;
 
-            const flightWithDate = { ...bestForDate, searchDate: searchDepDate };
-            allIntervalFlights.push(flightWithDate); // Store for preferred airline search
+            if (bestForDate) {
+              const flightWithDate = { ...bestForDate, searchDate: searchDepDate };
+              allIntervalFlights.push(flightWithDate);
 
-            // Store for alternatives list
-            const airline = bestForDate.outbound.airlineNames?.[0] || bestForDate.outbound.airlines[0] || 'N/A';
-            allValidResults.push({
-              departureDate: searchDepDate,
-              returnDate: searchRetDate,
-              price: bestForDate.price,
-              currency: bestForDate.currency,
-              airline,
-              flight: flightWithDate
-            });
+              const airline = bestForDate.outbound.airlineNames?.[0] || bestForDate.outbound.airlines[0] || 'N/A';
+              allValidResults.push({
+                departureDate: searchDepDate,
+                returnDate: searchRetDate,
+                price: bestForDate.price,
+                currency: bestForDate.currency,
+                airline,
+                flight: flightWithDate
+              });
 
-            if (!bestInterval || isBetterBB(flightWithDate, bestInterval, language)) {
-              bestInterval = flightWithDate;
+              if (!bestInterval || isBetterBB(flightWithDate, bestInterval, language)) {
+                bestInterval = flightWithDate;
+              }
+            }
+
+            // BESTE (best quality) per date
+            if (intervalIncludeBeste && intervalCats.bestQuality) {
+              const bq = { ...intervalCats.bestQuality, searchDate: searchDepDate };
+              const bqAirline = bq.outbound.airlineNames?.[0] || bq.outbound.airlines[0] || 'N/A';
+              allBesteResults.push({ departureDate: searchDepDate, returnDate: searchRetDate, price: bq.price, currency: bq.currency, airline: bqAirline, flight: bq });
+              if (!bestBesteInterval || bq.totalDurationMinutes < bestBesteInterval.totalDurationMinutes) {
+                bestBesteInterval = bq;
+              }
+            }
+
+            // BILLIGSTE (cheapest extended) per date
+            if (intervalIncludeBilligste && intervalCats.cheapestExtended) {
+              const ce = { ...intervalCats.cheapestExtended, searchDate: searchDepDate };
+              const ceAirline = ce.outbound.airlineNames?.[0] || ce.outbound.airlines[0] || 'N/A';
+              allBilligsteResults.push({ departureDate: searchDepDate, returnDate: searchRetDate, price: ce.price, currency: ce.currency, airline: ceAirline, flight: ce });
+              if (!bestBilligsteInterval || ce.price < bestBilligsteInterval.price) {
+                bestBilligsteInterval = ce;
+              }
             }
           } catch (err) {
             console.log(`Interval search for ${searchDepDate} failed:`, err);
           }
           if (signal.aborted) break;
+
+          // ADD NIGHTS per date (search extra return dates)
+          if (intervalIncludeAddNights && intervalAddNightsCount > 0 && !signal.aborted) {
+            for (let n = 1; n <= intervalAddNightsCount; n++) {
+              const addRetDate = addDays(searchDepDate, tripNights + n);
+              try {
+                const addOffers = await searchFlightsApi(departure, destination, returnFrom, returnTo, searchDepDate, addRetDate, pax, currency);
+                const addProcessed = processFlightOffers(addOffers, { date: searchDepDate, nightsDiff: n }, pax, allowNightFlights, nightFlightStart, nightFlightEnd);
+                const addCats = categorizeFlights(addProcessed, t, departure, language, allowTwoStopBB, useCustomMaxBBHours ? customMaxBBHours : null);
+                if (addCats.bestAndCheapest) {
+                  const f = { ...addCats.bestAndCheapest, searchDate: searchDepDate, nightsDiff: n };
+                  const fAirline = f.outbound.airlineNames?.[0] || f.outbound.airlines[0] || 'N/A';
+                  allAddNightsResults.push({ departureDate: searchDepDate, returnDate: addRetDate, price: f.price, currency: f.currency, airline: fAirline, flight: f });
+                  if (!bestAddNightsInterval || isBetterBB(f, bestAddNightsInterval, language)) {
+                    bestAddNightsInterval = f;
+                  }
+                }
+              } catch (err) {
+                console.log(`Interval add nights +${n} for ${searchDepDate} failed:`, err);
+              }
+              if (signal.aborted) break;
+            }
+          }
+
+          // REMOVE NIGHTS per date (search shorter return dates)
+          if (intervalIncludeRemoveNights && intervalRemoveNightsCount > 0 && !signal.aborted) {
+            for (let n = 1; n <= intervalRemoveNightsCount; n++) {
+              if (tripNights - n < 1) continue;
+              const remRetDate = addDays(searchDepDate, tripNights - n);
+              try {
+                const remOffers = await searchFlightsApi(departure, destination, returnFrom, returnTo, searchDepDate, remRetDate, pax, currency);
+                const remProcessed = processFlightOffers(remOffers, { date: searchDepDate, nightsDiff: -n }, pax, allowNightFlights, nightFlightStart, nightFlightEnd);
+                const remCats = categorizeFlights(remProcessed, t, departure, language, allowTwoStopBB, useCustomMaxBBHours ? customMaxBBHours : null);
+                if (remCats.bestAndCheapest) {
+                  const f = { ...remCats.bestAndCheapest, searchDate: searchDepDate, nightsDiff: -n };
+                  const fAirline = f.outbound.airlineNames?.[0] || f.outbound.airlines[0] || 'N/A';
+                  allRemoveNightsResults.push({ departureDate: searchDepDate, returnDate: remRetDate, price: f.price, currency: f.currency, airline: fAirline, flight: f });
+                  if (!bestRemoveNightsInterval || isBetterBB(f, bestRemoveNightsInterval, language)) {
+                    bestRemoveNightsInterval = f;
+                  }
+                }
+              } catch (err) {
+                console.log(`Interval remove nights -${n} for ${searchDepDate} failed:`, err);
+              }
+              if (signal.aborted) break;
+            }
+          }
         }
 
         // ALWAYS show the best interval option (by score) - even if more expensive!
@@ -2298,6 +2429,34 @@ function saveToPowerPointSingle(flight: ProcessedFlight, title: string) {
           setShowIntervalAlternatives(true); // Auto-ekspander datoliste
         } else {
           setIntervalAlternatives([]);
+        }
+
+        // Set extended interval results
+        const dedup = (arr: typeof allValidResults) => {
+          const seen = new Map<string, typeof arr[number]>();
+          for (const r of arr) {
+            const key = `${r.departureDate}_${r.returnDate}`;
+            const existing = seen.get(key);
+            if (!existing || r.price < existing.price) seen.set(key, r);
+          }
+          return Array.from(seen.values()).sort((a, b) => new Date(a.departureDate).getTime() - new Date(b.departureDate).getTime());
+        };
+
+        if (intervalIncludeBeste && bestBesteInterval) {
+          setIntervalBesteResult({ best: bestBesteInterval, alternatives: dedup(allBesteResults) });
+          setSearchProgress(prev => ({ ...prev, current: prev.current + 1 }));
+        }
+        if (intervalIncludeBilligste && bestBilligsteInterval) {
+          setIntervalBilligsteResult({ best: bestBilligsteInterval, alternatives: dedup(allBilligsteResults) });
+          setSearchProgress(prev => ({ ...prev, current: prev.current + 1 }));
+        }
+        if (intervalIncludeAddNights && bestAddNightsInterval) {
+          setIntervalAddNightsResult({ best: bestAddNightsInterval, alternatives: dedup(allAddNightsResults) });
+          setSearchProgress(prev => ({ ...prev, current: prev.current + 1 }));
+        }
+        if (intervalIncludeRemoveNights && bestRemoveNightsInterval) {
+          setIntervalRemoveNightsResult({ best: bestRemoveNightsInterval, alternatives: dedup(allRemoveNightsResults) });
+          setSearchProgress(prev => ({ ...prev, current: prev.current + 1 }));
         }
         
         // Find best interval option for each selected airline
@@ -3054,6 +3213,78 @@ function saveToPowerPointSingle(flight: ProcessedFlight, title: string) {
                   </Select>
                 </div>
               </div>
+
+              {/* Extended interval categories */}
+              {useDateInterval && (
+                <div className="mt-3 pl-6 space-y-2">
+                  <p className="text-xs font-medium text-muted-foreground">
+                    {language === 'da' ? 'Ekstra kategorier i intervallsøgning:' : 'Ekstra kategorier i intervallsøk:'}
+                  </p>
+                  <div className="flex flex-wrap gap-x-6 gap-y-2">
+                    <div className="flex items-center gap-2">
+                      <Checkbox
+                        id="intervalBeste"
+                        checked={intervalIncludeBeste}
+                        onCheckedChange={(c) => setIntervalIncludeBeste(c === true)}
+                      />
+                      <Label htmlFor="intervalBeste" className="cursor-pointer text-sm">{t.beste}</Label>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <Checkbox
+                        id="intervalBilligste"
+                        checked={intervalIncludeBilligste}
+                        onCheckedChange={(c) => setIntervalIncludeBilligste(c === true)}
+                      />
+                      <Label htmlFor="intervalBilligste" className="cursor-pointer text-sm">{t.cheapest}</Label>
+                    </div>
+                    <div className="flex items-center gap-3">
+                      <div className="flex items-center gap-2">
+                        <Checkbox
+                          id="intervalAddNights"
+                          checked={intervalIncludeAddNights}
+                          onCheckedChange={(c) => setIntervalIncludeAddNights(c === true)}
+                        />
+                        <Label htmlFor="intervalAddNights" className="cursor-pointer text-sm">
+                          {language === 'da' ? 'Tilføj nætter +' : 'Legg til netter +'}
+                        </Label>
+                      </div>
+                      {intervalIncludeAddNights && (
+                        <Select value={String(intervalAddNightsCount)} onValueChange={(v) => setIntervalAddNightsCount(parseInt(v))}>
+                          <SelectTrigger className="w-[60px] h-7 text-xs bg-muted/30"><SelectValue /></SelectTrigger>
+                          <SelectContent position="popper" className="bg-background z-50">
+                            {[1,2,3].map(n => <SelectItem key={n} value={String(n)}>{n}</SelectItem>)}
+                          </SelectContent>
+                        </Select>
+                      )}
+                    </div>
+                    <div className="flex items-center gap-3">
+                      <div className="flex items-center gap-2">
+                        <Checkbox
+                          id="intervalRemoveNights"
+                          checked={intervalIncludeRemoveNights}
+                          onCheckedChange={(c) => setIntervalIncludeRemoveNights(c === true)}
+                        />
+                        <Label htmlFor="intervalRemoveNights" className="cursor-pointer text-sm">
+                          {language === 'da' ? 'Fjern nætter -' : 'Fjern netter -'}
+                        </Label>
+                      </div>
+                      {intervalIncludeRemoveNights && (
+                        <Select value={String(intervalRemoveNightsCount)} onValueChange={(v) => setIntervalRemoveNightsCount(parseInt(v))}>
+                          <SelectTrigger className="w-[60px] h-7 text-xs bg-muted/30"><SelectValue /></SelectTrigger>
+                          <SelectContent position="popper" className="bg-background z-50">
+                            {[1,2,3].map(n => <SelectItem key={n} value={String(n)}>{n}</SelectItem>)}
+                          </SelectContent>
+                        </Select>
+                      )}
+                    </div>
+                  </div>
+                  <p className="text-[11px] text-amber-500/80">
+                    {language === 'da'
+                      ? '⚠ Ekstra kategorier øger søgetiden markant'
+                      : '⚠ Ekstra kategorier øker søketiden markant'}
+                  </p>
+                </div>
+              )}
             </div>
 
             {/* Search and Cancel Buttons */}
@@ -3630,6 +3861,246 @@ function saveToPowerPointSingle(flight: ProcessedFlight, title: string) {
                     </div>
                   </CardContent>
                 </Card>
+              )}
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* EXTENDED INTERVAL: Beste */}
+      {intervalBesteResult.best && (
+        <div className="space-y-4">
+          <div className="flex items-center gap-2">
+            <Trophy className="h-5 w-5 text-amber-500" />
+            <div>
+              <h3 className="font-semibold text-foreground">{t.beste} ({language === 'da' ? 'Intervall' : 'Intervall'})</h3>
+              {intervalBesteResult.best.searchDate && (
+                <p className="text-xs text-muted-foreground">
+                  {language === 'da' ? 'Afrejse' : 'Avreise'}: {format(new Date(intervalBesteResult.best.searchDate), "dd.MM.yyyy")}
+                </p>
+              )}
+            </div>
+          </div>
+          <FlightResultCard
+            flight={intervalBesteResult.best}
+            language={language}
+            translations={t}
+            formatTime={formatTime}
+            formatDate={formatDate}
+            formatDuration={formatDuration}
+            onSave={saveToPowerPointSingle}
+            title={t.beste}
+            childrenCount={parseInt(children)}
+            hasNightFlight={intervalBesteResult.best.hasNightFlight}
+            onBookFarewise={handleFarewiseBooking}
+          />
+          {intervalBesteResult.alternatives.length > 1 && (
+            <div className="space-y-2">
+              <Button variant="outline" onClick={() => setShowIntervalBesteAlts(!showIntervalBesteAlts)} className="w-full flex items-center justify-between gap-2">
+                <span className="text-sm">{showIntervalBesteAlts ? (language === 'da' ? 'Skjul alle datoer' : 'Skjul alle datoer') : `${language === 'da' ? 'Vis alle' : 'Vis alle'} ${intervalBesteResult.alternatives.length - 1} ${language === 'da' ? 'andre datoer' : 'andre datoer'}`}</span>
+                <ChevronDown className={`h-4 w-4 transition-transform ${showIntervalBesteAlts ? 'rotate-180' : ''}`} />
+              </Button>
+              {showIntervalBesteAlts && (
+                <Card className="border-border/50 bg-muted/20"><CardContent className="pt-4 pb-4"><div className="space-y-2">
+                  {intervalBesteResult.alternatives.map((alt, idx) => (
+                    <div key={idx} className="rounded-md border border-border/30 overflow-hidden">
+                      <div className="flex items-center justify-between py-2 px-3 bg-background/50 hover:bg-background/80 transition-colors cursor-pointer" onClick={() => setExpandedIntervalBesteIdx(expandedIntervalBesteIdx === idx ? null : idx)}>
+                        <span className="text-sm font-medium">{format(new Date(alt.departureDate), 'dd')} – {format(new Date(alt.returnDate), 'dd MMMM', { locale: language === 'da' ? daFns : nbFns })}</span>
+                        <span className="text-sm text-muted-foreground">{alt.airline}</span>
+                        <div className="flex items-center gap-2">
+                          <span className="text-sm font-semibold">{Math.round(alt.price).toLocaleString(language === 'da' ? 'da-DK' : 'nb-NO')} {alt.currency}</span>
+                          <ChevronDown className={`h-4 w-4 text-muted-foreground transition-transform ${expandedIntervalBesteIdx === idx ? 'rotate-180' : ''}`} />
+                        </div>
+                      </div>
+                      {expandedIntervalBesteIdx === idx && (
+                        <div className="border-t border-border/30 p-3 bg-muted/10">
+                          <FlightResultCard flight={alt.flight} language={language} translations={t} formatTime={formatTime} formatDate={formatDate} formatDuration={formatDuration} onSave={saveToPowerPointSingle} title={t.beste} childrenCount={parseInt(children)} hasNightFlight={alt.flight.hasNightFlight} onBookFarewise={handleFarewiseBooking} />
+                        </div>
+                      )}
+                    </div>
+                  ))}
+                </div></CardContent></Card>
+              )}
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* EXTENDED INTERVAL: Billigste */}
+      {intervalBilligsteResult.best && (
+        <div className="space-y-4">
+          <div className="flex items-center gap-2">
+            <TrendingDown className="h-5 w-5 text-green-500" />
+            <div>
+              <h3 className="font-semibold text-foreground">{t.cheapest} ({language === 'da' ? 'Intervall' : 'Intervall'})</h3>
+              {intervalBilligsteResult.best.searchDate && (
+                <p className="text-xs text-muted-foreground">
+                  {language === 'da' ? 'Afrejse' : 'Avreise'}: {format(new Date(intervalBilligsteResult.best.searchDate), "dd.MM.yyyy")}
+                </p>
+              )}
+            </div>
+          </div>
+          <FlightResultCard
+            flight={intervalBilligsteResult.best}
+            language={language}
+            translations={t}
+            formatTime={formatTime}
+            formatDate={formatDate}
+            formatDuration={formatDuration}
+            onSave={saveToPowerPointSingle}
+            title={t.cheapest}
+            childrenCount={parseInt(children)}
+            hasNightFlight={intervalBilligsteResult.best.hasNightFlight}
+            onBookFarewise={handleFarewiseBooking}
+          />
+          {intervalBilligsteResult.alternatives.length > 1 && (
+            <div className="space-y-2">
+              <Button variant="outline" onClick={() => setShowIntervalBilligsteAlts(!showIntervalBilligsteAlts)} className="w-full flex items-center justify-between gap-2">
+                <span className="text-sm">{showIntervalBilligsteAlts ? (language === 'da' ? 'Skjul alle datoer' : 'Skjul alle datoer') : `${language === 'da' ? 'Vis alle' : 'Vis alle'} ${intervalBilligsteResult.alternatives.length - 1} ${language === 'da' ? 'andre datoer' : 'andre datoer'}`}</span>
+                <ChevronDown className={`h-4 w-4 transition-transform ${showIntervalBilligsteAlts ? 'rotate-180' : ''}`} />
+              </Button>
+              {showIntervalBilligsteAlts && (
+                <Card className="border-border/50 bg-muted/20"><CardContent className="pt-4 pb-4"><div className="space-y-2">
+                  {intervalBilligsteResult.alternatives.map((alt, idx) => (
+                    <div key={idx} className="rounded-md border border-border/30 overflow-hidden">
+                      <div className="flex items-center justify-between py-2 px-3 bg-background/50 hover:bg-background/80 transition-colors cursor-pointer" onClick={() => setExpandedIntervalBilligsteIdx(expandedIntervalBilligsteIdx === idx ? null : idx)}>
+                        <span className="text-sm font-medium">{format(new Date(alt.departureDate), 'dd')} – {format(new Date(alt.returnDate), 'dd MMMM', { locale: language === 'da' ? daFns : nbFns })}</span>
+                        <span className="text-sm text-muted-foreground">{alt.airline}</span>
+                        <div className="flex items-center gap-2">
+                          <span className="text-sm font-semibold">{Math.round(alt.price).toLocaleString(language === 'da' ? 'da-DK' : 'nb-NO')} {alt.currency}</span>
+                          <ChevronDown className={`h-4 w-4 text-muted-foreground transition-transform ${expandedIntervalBilligsteIdx === idx ? 'rotate-180' : ''}`} />
+                        </div>
+                      </div>
+                      {expandedIntervalBilligsteIdx === idx && (
+                        <div className="border-t border-border/30 p-3 bg-muted/10">
+                          <FlightResultCard flight={alt.flight} language={language} translations={t} formatTime={formatTime} formatDate={formatDate} formatDuration={formatDuration} onSave={saveToPowerPointSingle} title={t.cheapest} childrenCount={parseInt(children)} hasNightFlight={alt.flight.hasNightFlight} onBookFarewise={handleFarewiseBooking} />
+                        </div>
+                      )}
+                    </div>
+                  ))}
+                </div></CardContent></Card>
+              )}
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* EXTENDED INTERVAL: B&B med ekstra netter */}
+      {intervalAddNightsResult.best && (
+        <div className="space-y-4">
+          <div className="flex items-center gap-2">
+            <Clock className="h-5 w-5 text-purple-500" />
+            <div>
+              <h3 className="font-semibold text-foreground">
+                {t.bestAndCheapest} + {intervalAddNightsResult.best.nightsDiff} {language === 'da' ? 'ekstra nætter' : 'ekstra netter'} ({language === 'da' ? 'Intervall' : 'Intervall'})
+              </h3>
+              {intervalAddNightsResult.best.searchDate && (
+                <p className="text-xs text-muted-foreground">
+                  {language === 'da' ? 'Afrejse' : 'Avreise'}: {format(new Date(intervalAddNightsResult.best.searchDate), "dd.MM.yyyy")}
+                </p>
+              )}
+            </div>
+          </div>
+          <FlightResultCard
+            flight={intervalAddNightsResult.best}
+            language={language}
+            translations={t}
+            formatTime={formatTime}
+            formatDate={formatDate}
+            formatDuration={formatDuration}
+            onSave={saveToPowerPointSingle}
+            title={`${t.bestAndCheapest} +${intervalAddNightsResult.best.nightsDiff}n`}
+            childrenCount={parseInt(children)}
+            hasNightFlight={intervalAddNightsResult.best.hasNightFlight}
+            onBookFarewise={handleFarewiseBooking}
+          />
+          {intervalAddNightsResult.alternatives.length > 1 && (
+            <div className="space-y-2">
+              <Button variant="outline" onClick={() => setShowIntervalAddNightsAlts(!showIntervalAddNightsAlts)} className="w-full flex items-center justify-between gap-2">
+                <span className="text-sm">{showIntervalAddNightsAlts ? (language === 'da' ? 'Skjul alle datoer' : 'Skjul alle datoer') : `${language === 'da' ? 'Vis alle' : 'Vis alle'} ${intervalAddNightsResult.alternatives.length - 1} ${language === 'da' ? 'andre datoer' : 'andre datoer'}`}</span>
+                <ChevronDown className={`h-4 w-4 transition-transform ${showIntervalAddNightsAlts ? 'rotate-180' : ''}`} />
+              </Button>
+              {showIntervalAddNightsAlts && (
+                <Card className="border-border/50 bg-muted/20"><CardContent className="pt-4 pb-4"><div className="space-y-2">
+                  {intervalAddNightsResult.alternatives.map((alt, idx) => (
+                    <div key={idx} className="rounded-md border border-border/30 overflow-hidden">
+                      <div className="flex items-center justify-between py-2 px-3 bg-background/50 hover:bg-background/80 transition-colors cursor-pointer" onClick={() => setExpandedIntervalAddNightsIdx(expandedIntervalAddNightsIdx === idx ? null : idx)}>
+                        <span className="text-sm font-medium">{format(new Date(alt.departureDate), 'dd')} – {format(new Date(alt.returnDate), 'dd MMMM', { locale: language === 'da' ? daFns : nbFns })}</span>
+                        <span className="text-sm text-muted-foreground">{alt.airline}</span>
+                        <div className="flex items-center gap-2">
+                          <span className="text-sm font-semibold">{Math.round(alt.price).toLocaleString(language === 'da' ? 'da-DK' : 'nb-NO')} {alt.currency}</span>
+                          <ChevronDown className={`h-4 w-4 text-muted-foreground transition-transform ${expandedIntervalAddNightsIdx === idx ? 'rotate-180' : ''}`} />
+                        </div>
+                      </div>
+                      {expandedIntervalAddNightsIdx === idx && (
+                        <div className="border-t border-border/30 p-3 bg-muted/10">
+                          <FlightResultCard flight={alt.flight} language={language} translations={t} formatTime={formatTime} formatDate={formatDate} formatDuration={formatDuration} onSave={saveToPowerPointSingle} title={`${t.bestAndCheapest} +${alt.flight.nightsDiff}n`} childrenCount={parseInt(children)} hasNightFlight={alt.flight.hasNightFlight} onBookFarewise={handleFarewiseBooking} />
+                        </div>
+                      )}
+                    </div>
+                  ))}
+                </div></CardContent></Card>
+              )}
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* EXTENDED INTERVAL: B&B med færre netter */}
+      {intervalRemoveNightsResult.best && (
+        <div className="space-y-4">
+          <div className="flex items-center gap-2">
+            <Clock className="h-5 w-5 text-orange-500" />
+            <div>
+              <h3 className="font-semibold text-foreground">
+                {t.bestAndCheapest} {intervalRemoveNightsResult.best.nightsDiff} {language === 'da' ? 'færre nætter' : 'færre netter'} ({language === 'da' ? 'Intervall' : 'Intervall'})
+              </h3>
+              {intervalRemoveNightsResult.best.searchDate && (
+                <p className="text-xs text-muted-foreground">
+                  {language === 'da' ? 'Afrejse' : 'Avreise'}: {format(new Date(intervalRemoveNightsResult.best.searchDate), "dd.MM.yyyy")}
+                </p>
+              )}
+            </div>
+          </div>
+          <FlightResultCard
+            flight={intervalRemoveNightsResult.best}
+            language={language}
+            translations={t}
+            formatTime={formatTime}
+            formatDate={formatDate}
+            formatDuration={formatDuration}
+            onSave={saveToPowerPointSingle}
+            title={`${t.bestAndCheapest} ${intervalRemoveNightsResult.best.nightsDiff}n`}
+            childrenCount={parseInt(children)}
+            hasNightFlight={intervalRemoveNightsResult.best.hasNightFlight}
+            onBookFarewise={handleFarewiseBooking}
+          />
+          {intervalRemoveNightsResult.alternatives.length > 1 && (
+            <div className="space-y-2">
+              <Button variant="outline" onClick={() => setShowIntervalRemoveNightsAlts(!showIntervalRemoveNightsAlts)} className="w-full flex items-center justify-between gap-2">
+                <span className="text-sm">{showIntervalRemoveNightsAlts ? (language === 'da' ? 'Skjul alle datoer' : 'Skjul alle datoer') : `${language === 'da' ? 'Vis alle' : 'Vis alle'} ${intervalRemoveNightsResult.alternatives.length - 1} ${language === 'da' ? 'andre datoer' : 'andre datoer'}`}</span>
+                <ChevronDown className={`h-4 w-4 transition-transform ${showIntervalRemoveNightsAlts ? 'rotate-180' : ''}`} />
+              </Button>
+              {showIntervalRemoveNightsAlts && (
+                <Card className="border-border/50 bg-muted/20"><CardContent className="pt-4 pb-4"><div className="space-y-2">
+                  {intervalRemoveNightsResult.alternatives.map((alt, idx) => (
+                    <div key={idx} className="rounded-md border border-border/30 overflow-hidden">
+                      <div className="flex items-center justify-between py-2 px-3 bg-background/50 hover:bg-background/80 transition-colors cursor-pointer" onClick={() => setExpandedIntervalRemoveNightsIdx(expandedIntervalRemoveNightsIdx === idx ? null : idx)}>
+                        <span className="text-sm font-medium">{format(new Date(alt.departureDate), 'dd')} – {format(new Date(alt.returnDate), 'dd MMMM', { locale: language === 'da' ? daFns : nbFns })}</span>
+                        <span className="text-sm text-muted-foreground">{alt.airline}</span>
+                        <div className="flex items-center gap-2">
+                          <span className="text-sm font-semibold">{Math.round(alt.price).toLocaleString(language === 'da' ? 'da-DK' : 'nb-NO')} {alt.currency}</span>
+                          <ChevronDown className={`h-4 w-4 text-muted-foreground transition-transform ${expandedIntervalRemoveNightsIdx === idx ? 'rotate-180' : ''}`} />
+                        </div>
+                      </div>
+                      {expandedIntervalRemoveNightsIdx === idx && (
+                        <div className="border-t border-border/30 p-3 bg-muted/10">
+                          <FlightResultCard flight={alt.flight} language={language} translations={t} formatTime={formatTime} formatDate={formatDate} formatDuration={formatDuration} onSave={saveToPowerPointSingle} title={`${t.bestAndCheapest} ${alt.flight.nightsDiff}n`} childrenCount={parseInt(children)} hasNightFlight={alt.flight.hasNightFlight} onBookFarewise={handleFarewiseBooking} />
+                        </div>
+                      )}
+                    </div>
+                  ))}
+                </div></CardContent></Card>
               )}
             </div>
           )}

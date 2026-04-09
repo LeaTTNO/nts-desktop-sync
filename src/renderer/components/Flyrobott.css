@@ -130,6 +130,70 @@
   margin-top: 10px;
 }
 
+/* ===== FlightRobot sub-tabs ===== */
+.fr-tabs-bar {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  margin-bottom: 16px;
+  border-bottom: 2px solid #e5e7eb;
+  padding-bottom: 0;
+}
+
+.fr-tab {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 16px;
+  font-size: 13px;
+  font-weight: 500;
+  color: #6b7280;
+  background: transparent;
+  border: none;
+  border-bottom: 2px solid transparent;
+  margin-bottom: -2px;
+  cursor: pointer;
+  transition: color 0.15s, border-color 0.15s;
+  font-family: "Montserrat", sans-serif;
+  letter-spacing: 0.5px;
+}
+
+.fr-tab:hover {
+  color: #2f4a3a;
+}
+
+.fr-tab-active {
+  color: #2f4a3a;
+  border-bottom-color: #2f4a3a;
+  font-weight: 600;
+}
+
+.fr-tab-close {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  opacity: 0.4;
+  transition: opacity 0.15s, background 0.15s;
+}
+
+.fr-tab-close:hover {
+  opacity: 1;
+  background: rgba(0, 0, 0, 0.08);
+}
+
+.fr-tab-add {
+  padding: 6px 10px;
+  color: #9ca3af;
+}
+
+.fr-tab-add:hover {
+  color: #2f4a3a;
+}
+}
+
 .selected-list li {
   display: flex;
   justify-content: space-between;
