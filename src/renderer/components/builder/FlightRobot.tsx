@@ -1820,7 +1820,7 @@ function saveToPowerPointSingle(flight: ProcessedFlight, title: string) {
 
   // Main search handler
   async function handleSearch() {
-    // Datointervall-modus: trenger ikke datoer øverst, bare intervall-datoer og netter
+    // Valider felt: datointervall trenger intervall-datoer, hovedsøk trenger hoveddatoer
     if (useDateInterval) {
       if (!departure || !earliestDeparture || !latestDeparture) {
         toast.error(t.fillFields);
@@ -1833,31 +1833,35 @@ function saveToPowerPointSingle(flight: ProcessedFlight, title: string) {
       }
     }
 
+    // Kan kjøre hovedsøk hvis hoveddatoer er fylt ut
+    const hasMainDates = !!(departureDateStr && returnDateStr);
+
     // Create new abort controller for this search
     const newAbortController = new AbortController();
     const signal = newAbortController.signal;
     setAbortController(newAbortController);
 
     // Calculate max expected results based on enabled options
-    let maxResults: number;
-    if (useDateInterval) {
-      // Dato-intervall-modus: 1 B&B + extra categories
-      maxResults = 1;
-      if (intervalIncludeBeste) maxResults += 1;
-      if (intervalIncludeBilligste) maxResults += 1;
-      if (intervalIncludeAddNights) maxResults += 1;
-      if (intervalIncludeRemoveNights) maxResults += 1;
-    } else {
-      maxResults = 3; // 3 main categories always
+    let maxResults = 0;
+    // Hovedsøk-resultater (hvis hoveddatoer finnes)
+    if (!useDateInterval || hasMainDates) {
+      maxResults += 3; // 3 main categories always
       if (flexibleDates) maxResults += 1;
       if (addNights) maxResults += 1;
       if (removeNights) maxResults += 1;
       if (usePreferredAirline && selectedAirlines.length > 0) {
-        maxResults += 3; // Up to 3 preferred airline categories
+        maxResults += 3;
       }
-      // Cap at 9 for display purposes
-      maxResults = Math.min(maxResults, 9);
     }
+    // Intervall-resultater
+    if (useDateInterval) {
+      maxResults += 1; // B&B interval
+      if (intervalIncludeBeste) maxResults += 1;
+      if (intervalIncludeBilligste) maxResults += 1;
+      if (intervalIncludeAddNights) maxResults += 1;
+      if (intervalIncludeRemoveNights) maxResults += 1;
+    }
+    maxResults = Math.min(maxResults, 15);
     
     setSearchProgress({ current: 0, max: maxResults });
     setIsSearching(true);
@@ -1885,8 +1889,8 @@ function saveToPowerPointSingle(flight: ProcessedFlight, title: string) {
     const pax = parseInt(passengers);
 
     try {
-      // Datointervall-modus: hopp alltid over hoved-søk — søker kun i intervallet
-      const skipMainSearch = useDateInterval;
+      // Hopp over hovedsøk kun hvis hoveddatoer mangler
+      const skipMainSearch = useDateInterval && !hasMainDates;
 
       // Deklareres utenfor blokken slik at toast og interval-søk kan bruke dem
       let basePrice = Infinity;
