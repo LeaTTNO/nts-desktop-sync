@@ -1154,6 +1154,9 @@ export default function FlightRobot() {
   const [intervalAddNightsCount, setIntervalAddNightsCount] = useState(1);
   const [intervalIncludeRemoveNights, setIntervalIncludeRemoveNights] = useState(false);
   const [intervalRemoveNightsCount, setIntervalRemoveNightsCount] = useState(1);
+  // Interval-specific overrides
+  const [intervalAllowNightFlights, setIntervalAllowNightFlights] = useState(false);
+  const [intervalAllowTwoStopBB, setIntervalAllowTwoStopBB] = useState(false);
 
   // Extended interval results
   type IntervalCategoryResult = {
@@ -1287,6 +1290,8 @@ export default function FlightRobot() {
     setIntervalIncludeBilligste(false);
     setIntervalIncludeAddNights(false);
     setIntervalIncludeRemoveNights(false);
+    setIntervalAllowNightFlights(false);
+    setIntervalAllowTwoStopBB(false);
     setIntervalBesteResult({ best: null, alternatives: [] });
     setIntervalBilligsteResult({ best: null, alternatives: [] });
     setIntervalAddNightsResult({ best: null, alternatives: [] });
@@ -1425,6 +1430,8 @@ export default function FlightRobot() {
     setIntervalIncludeBilligste(false);
     setIntervalIncludeAddNights(false);
     setIntervalIncludeRemoveNights(false);
+    setIntervalAllowNightFlights(false);
+    setIntervalAllowTwoStopBB(false);
     setIntervalBesteResult({ best: null, alternatives: [] });
     setIntervalBilligsteResult({ best: null, alternatives: [] });
     setIntervalAddNightsResult({ best: null, alternatives: [] });
@@ -2296,6 +2303,8 @@ function saveToPowerPointSingle(flight: ProcessedFlight, title: string) {
         const daysDiff = Math.round((endDate.getTime() - startDate.getTime()) / (1000 * 60 * 60 * 24));
 
         // Search ALL dates in interval to find BEST option using SCORE (not just price!)
+        const intNightFlights = intervalAllowNightFlights || allowNightFlights;
+        const intTwoStopBB = intervalAllowTwoStopBB || allowTwoStopBB;
         for (let i = 0; i <= daysDiff; i++) {
           const searchDepDate = format(new Date(startDate.getTime() + i * 24 * 60 * 60 * 1000), 'yyyy-MM-dd');
           const searchRetDate = addDays(searchDepDate, tripNights);
@@ -2312,10 +2321,10 @@ function saveToPowerPointSingle(flight: ProcessedFlight, title: string) {
 
           try {
             const offers = await searchFlightsApi(departure, destination, returnFrom, returnTo, searchDepDate, searchRetDate, pax, currency);
-            const processed = processFlightOffers(offers, { date: searchDepDate, nightsDiff: 0 }, pax, allowNightFlights, nightFlightStart, nightFlightEnd);
+            const processed = processFlightOffers(offers, { date: searchDepDate, nightsDiff: 0 }, pax, intNightFlights, nightFlightStart, nightFlightEnd);
 
             // Use exactly the same B&B logic as the main search
-            const intervalCats = categorizeFlights(processed, t, departure, language, allowTwoStopBB, useCustomMaxBBHours ? customMaxBBHours : null);
+            const intervalCats = categorizeFlights(processed, t, departure, language, intTwoStopBB, useCustomMaxBBHours ? customMaxBBHours : null);
             const bestForDate = intervalCats.bestAndCheapest;
 
             if (bestForDate) {
@@ -2367,8 +2376,8 @@ function saveToPowerPointSingle(flight: ProcessedFlight, title: string) {
               const addRetDate = addDays(searchDepDate, tripNights + n);
               try {
                 const addOffers = await searchFlightsApi(departure, destination, returnFrom, returnTo, searchDepDate, addRetDate, pax, currency);
-                const addProcessed = processFlightOffers(addOffers, { date: searchDepDate, nightsDiff: n }, pax, allowNightFlights, nightFlightStart, nightFlightEnd);
-                const addCats = categorizeFlights(addProcessed, t, departure, language, allowTwoStopBB, useCustomMaxBBHours ? customMaxBBHours : null);
+                const addProcessed = processFlightOffers(addOffers, { date: searchDepDate, nightsDiff: n }, pax, intNightFlights, nightFlightStart, nightFlightEnd);
+                const addCats = categorizeFlights(addProcessed, t, departure, language, intTwoStopBB, useCustomMaxBBHours ? customMaxBBHours : null);
                 if (addCats.bestAndCheapest) {
                   const f = { ...addCats.bestAndCheapest, searchDate: searchDepDate, nightsDiff: n };
                   const fAirline = f.outbound.airlineNames?.[0] || f.outbound.airlines[0] || 'N/A';
@@ -2391,8 +2400,8 @@ function saveToPowerPointSingle(flight: ProcessedFlight, title: string) {
               const remRetDate = addDays(searchDepDate, tripNights - n);
               try {
                 const remOffers = await searchFlightsApi(departure, destination, returnFrom, returnTo, searchDepDate, remRetDate, pax, currency);
-                const remProcessed = processFlightOffers(remOffers, { date: searchDepDate, nightsDiff: -n }, pax, allowNightFlights, nightFlightStart, nightFlightEnd);
-                const remCats = categorizeFlights(remProcessed, t, departure, language, allowTwoStopBB, useCustomMaxBBHours ? customMaxBBHours : null);
+                const remProcessed = processFlightOffers(remOffers, { date: searchDepDate, nightsDiff: -n }, pax, intNightFlights, nightFlightStart, nightFlightEnd);
+                const remCats = categorizeFlights(remProcessed, t, departure, language, intTwoStopBB, useCustomMaxBBHours ? customMaxBBHours : null);
                 if (remCats.bestAndCheapest) {
                   const f = { ...remCats.bestAndCheapest, searchDate: searchDepDate, nightsDiff: -n };
                   const fAirline = f.outbound.airlineNames?.[0] || f.outbound.airlines[0] || 'N/A';
@@ -3279,6 +3288,35 @@ function saveToPowerPointSingle(flight: ProcessedFlight, title: string) {
                             {[1,2,3].map(n => <SelectItem key={n} value={String(n)}>{n}</SelectItem>)}
                           </SelectContent>
                         </Select>
+                      )}
+                    </div>
+                  </div>
+                  <div className="mt-2 border-t border-border/30 pt-2">
+                    <p className="text-xs font-medium text-muted-foreground mb-1">
+                      {language === 'da' ? 'Intervall-overstyr:' : 'Intervall-overstyring:'}
+                    </p>
+                    <div className="flex flex-wrap gap-x-6 gap-y-2">
+                      <div className="flex items-center gap-2">
+                        <Checkbox
+                          id="intervalAllowNightFlights"
+                          checked={intervalAllowNightFlights}
+                          onCheckedChange={(c) => setIntervalAllowNightFlights(c === true)}
+                        />
+                        <Label htmlFor="intervalAllowNightFlights" className="cursor-pointer text-sm">
+                          {language === 'da' ? 'Tillad natfly i tidsrum' : 'Tillat nattfly i tidsrom'}
+                        </Label>
+                      </div>
+                      {['OSL', 'HAM', 'CPH'].includes((departure || '').toUpperCase()) && (
+                        <div className="flex items-center gap-2">
+                          <Checkbox
+                            id="intervalAllowTwoStopBB"
+                            checked={intervalAllowTwoStopBB}
+                            onCheckedChange={(c) => setIntervalAllowTwoStopBB(c === true)}
+                          />
+                          <Label htmlFor="intervalAllowTwoStopBB" className="cursor-pointer text-sm">
+                            {t.allowTwoStopBB}
+                          </Label>
+                        </div>
                       )}
                     </div>
                   </div>
