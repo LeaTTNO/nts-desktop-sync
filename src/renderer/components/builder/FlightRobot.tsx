@@ -2307,7 +2307,9 @@ function saveToPowerPointSingle(flight: ProcessedFlight, title: string) {
         const intTwoStopBB = intervalAllowTwoStopBB || allowTwoStopBB;
         for (let i = 0; i <= daysDiff; i++) {
           const searchDepDate = format(new Date(startDate.getTime() + i * 24 * 60 * 60 * 1000), 'yyyy-MM-dd');
-          const searchRetDate = addDays(searchDepDate, tripNights);
+          // +1 because "antall netter" = nights at destination (from arrival day, not departure day)
+          // For long-haul flights the arrival is typically the next day after departure
+          const searchRetDate = addDays(searchDepDate, tripNights + 1);
 
           // CRITICAL: Check that BOTH departure AND return dates are within the selected period
           // Compare as strings (YYYY-MM-DD) to avoid timezone-shifted Date comparisons
@@ -2373,7 +2375,7 @@ function saveToPowerPointSingle(flight: ProcessedFlight, title: string) {
           // ADD NIGHTS per date (search extra return dates)
           if (intervalIncludeAddNights && intervalAddNightsCount > 0 && !signal.aborted) {
             for (let n = 1; n <= intervalAddNightsCount; n++) {
-              const addRetDate = addDays(searchDepDate, tripNights + n);
+              const addRetDate = addDays(searchDepDate, tripNights + n + 1);
               try {
                 const addOffers = await searchFlightsApi(departure, destination, returnFrom, returnTo, searchDepDate, addRetDate, pax, currency);
                 const addProcessed = processFlightOffers(addOffers, { date: searchDepDate, nightsDiff: n }, pax, intNightFlights, nightFlightStart, nightFlightEnd);
@@ -2397,7 +2399,7 @@ function saveToPowerPointSingle(flight: ProcessedFlight, title: string) {
           if (intervalIncludeRemoveNights && intervalRemoveNightsCount > 0 && !signal.aborted) {
             for (let n = 1; n <= intervalRemoveNightsCount; n++) {
               if (tripNights - n < 1) continue;
-              const remRetDate = addDays(searchDepDate, tripNights - n);
+              const remRetDate = addDays(searchDepDate, tripNights - n + 1);
               try {
                 const remOffers = await searchFlightsApi(departure, destination, returnFrom, returnTo, searchDepDate, remRetDate, pax, currency);
                 const remProcessed = processFlightOffers(remOffers, { date: searchDepDate, nightsDiff: -n }, pax, intNightFlights, nightFlightStart, nightFlightEnd);
