@@ -1013,6 +1013,7 @@ export default function FlightRobot() {
   const [nightFlightStart, setNightFlightStart] = useState("00:00");
   const [nightFlightEnd, setNightFlightEnd] = useState("05:30");
   const [allowTwoStopBB, setAllowTwoStopBB] = useState(false);
+  const [onlyBusinessClass, setOnlyBusinessClass] = useState(false);
   const [useCustomMaxBBHours, setUseCustomMaxBBHours] = useState(false);
   const [customMaxBBHours, setCustomMaxBBHours] = useState<number>(20);
 
@@ -1388,6 +1389,7 @@ export default function FlightRobot() {
     setNightFlightStart("00:00");
     setNightFlightEnd("05:30");
     setAllowTwoStopBB(false);
+    setOnlyBusinessClass(false);
     setUseCustomMaxBBHours(false);
     setCustomMaxBBHours(getMaxBestAndCheapestDurationHours(departure || 'OSL'));
 
@@ -2904,6 +2906,18 @@ function saveToPowerPointSingle(flight: ProcessedFlight, title: string) {
                 </Label>
               </div>
 
+              {/* Rad 2 – Kol 4: Kun Business class */}
+              <div className="flex items-center gap-2">
+                <Checkbox
+                  id="onlyBusinessClass"
+                  checked={onlyBusinessClass}
+                  onCheckedChange={(checked) => setOnlyBusinessClass(checked === true)}
+                />
+                <Label htmlFor="onlyBusinessClass" className="cursor-pointer">
+                  {language === 'da' ? 'Kun Business class' : 'Kun Business class'}
+                </Label>
+              </div>
+
               {/* Rad 2 – Kol 3: Tillat 2-stopp (kun OSL/HAM/CPH) */}
               {['OSL', 'HAM', 'CPH'].includes((departure || '').toUpperCase()) ? (
                 <div className="flex items-center gap-2">
@@ -3399,7 +3413,7 @@ function saveToPowerPointSingle(flight: ProcessedFlight, title: string) {
       {hasSearched && (mainResults.bestAndCheapest || bestQualityResult || cheapestExtendedResult) && (
         <div className="space-y-6">
           {/* CATEGORY 1: Best and Cheapest (≤21h, no night) */}
-          {mainResults.bestAndCheapest && (
+          {mainResults.bestAndCheapest && (!onlyBusinessClass || mainResults.bestAndCheapest.travelClass === 'BUSINESS') && (
             <div className="space-y-4">
               <div className="flex items-center gap-2">
                 <Star className="h-5 w-5 text-primary fill-primary" />
@@ -3427,7 +3441,7 @@ function saveToPowerPointSingle(flight: ProcessedFlight, title: string) {
           )}
 
           {/* PREFERRED AIRLINE: Best and Cheapest */}
-          {usePreferredAirline && selectedAirlines.length > 0 && preferredAirlineResults.bestAndCheapest && (
+          {usePreferredAirline && selectedAirlines.length > 0 && preferredAirlineResults.bestAndCheapest && (!onlyBusinessClass || preferredAirlineResults.bestAndCheapest.travelClass === 'BUSINESS') && (
             <div className="space-y-4">
               <div className="flex items-center gap-2">
                 <Star className="h-5 w-5 text-blue-500 fill-blue-500" />
@@ -3481,7 +3495,7 @@ function saveToPowerPointSingle(flight: ProcessedFlight, title: string) {
               </span>
             </div>
           )}
-          {bestQualityResult && (
+          {bestQualityResult && (!onlyBusinessClass || bestQualityResult.travelClass === 'BUSINESS') && (
             <div className="space-y-4">
               <div className="flex items-center gap-2">
                 <Trophy className="h-5 w-5 text-amber-500" />
@@ -3507,7 +3521,7 @@ function saveToPowerPointSingle(flight: ProcessedFlight, title: string) {
           )}
 
           {/* PREFERRED AIRLINE: Best by Quality */}
-          {usePreferredAirline && selectedAirlines.length > 0 && preferredAirlineResults.bestQuality && (
+          {usePreferredAirline && selectedAirlines.length > 0 && preferredAirlineResults.bestQuality && (!onlyBusinessClass || preferredAirlineResults.bestQuality.travelClass === 'BUSINESS') && (
             <div className="space-y-4">
               <div className="flex items-center gap-2">
                 <Trophy className="h-5 w-5 text-blue-500" />
@@ -3550,7 +3564,7 @@ function saveToPowerPointSingle(flight: ProcessedFlight, title: string) {
           )}
 
           {/* CATEGORY 3: Cheapest (≤23h, NO night flights) */}
-          {cheapestExtendedResult && (
+          {cheapestExtendedResult && (!onlyBusinessClass || cheapestExtendedResult.travelClass === 'BUSINESS') && (
             <div className="space-y-4">
               <div className="flex items-center gap-2">
                 <TrendingDown className="h-5 w-5 text-green-500" />
@@ -3583,7 +3597,7 @@ function saveToPowerPointSingle(flight: ProcessedFlight, title: string) {
           )}
 
           {/* PREFERRED AIRLINE: Cheapest Extended */}
-          {usePreferredAirline && selectedAirlines.length > 0 && preferredAirlineResults.cheapestExtended && (
+          {usePreferredAirline && selectedAirlines.length > 0 && preferredAirlineResults.cheapestExtended && (!onlyBusinessClass || preferredAirlineResults.cheapestExtended.travelClass === 'BUSINESS') && (
             <div className="space-y-4">
               <div className="flex items-center gap-2">
                 <TrendingDown className="h-5 w-5 text-blue-500" />
