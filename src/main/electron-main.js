@@ -38,13 +38,13 @@ app.disableHardwareAcceleration();
    🔐 ENV
 -------------------------------------------------- */
 
-const FLIGHTROBOT_BASE_URL = process.env.FLIGHTROBOT_BASE_URL || "https://www.farewise.no";
+const FLIGHTROBOT_BASE_URL = process.env.FLIGHTROBOT_BASE_URL || "https://farewise.no";
 const FLIGHTROBOT_AUTH_GUID = process.env.FLIGHTROBOT_AUTH_GUID || "66DF9C55-C53B-4789-AF3A-5FBA8088FB99";
 
 // Region-spesifikke innstillinger
 const FAREWISE_REGIONS = {
   no: {
-    baseUrl: "https://www.farewise.no",
+    baseUrl: "https://farewise.no",
     currency: "NOK",
     customerId: 17179,
     customerName: "Tanzania Tours ApS",
@@ -52,7 +52,7 @@ const FAREWISE_REGIONS = {
     authGuid: "66DF9C55-C53B-4789-AF3A-5FBA8088FB99",
   },
   da: {
-    baseUrl: "https://www.farewise.dk",
+    baseUrl: "https://farewise.dk",
     currency: "DKK",
     customerId: 1280,
     customerName: "Tanzania Tours ApS",
@@ -134,7 +134,7 @@ async function loginToFarewise(language = 'no') {
   }
 
   const domain = language === 'da' ? 'dk' : 'no';
-  const loginUrl = `https://www.farewise.${domain}/api/accountApi/login`;
+  const loginUrl = `https://farewise.${domain}/api/accountApi/login`;
   console.log(`🔐 Logger inn på Farewise ${language.toUpperCase()} (persistent sesjon)...`);
 
   const res = await sessionFetch(loginUrl, {
@@ -143,8 +143,8 @@ async function loginToFarewise(language = 'no') {
       'Accept': 'application/json, text/plain, */*',
       'Accept-Language': 'da-DK,da;q=0.9,en-US;q=0.8,en;q=0.7',
       'Content-Type': 'application/json;charset=UTF-8',
-      'Referer': `https://www.farewise.${domain}/nd/login`,
-      'Origin': `https://www.farewise.${domain}`,
+      'Referer': `https://farewise.${domain}/nd/login`,
+      'Origin': `https://farewise.${domain}`,
       'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/144.0.0.0 Safari/537.36',
     },
     body: JSON.stringify({ username: FAREWISE_USERNAME, password: FAREWISE_PASSWORD }),
@@ -254,7 +254,7 @@ async function searchFlightsMain(params) {
   }
 
   const domain = language === "da" ? "dk" : "no";
-  const apiUrl = `https://www.farewise.${domain}/api/recommendations/search`;
+  const apiUrl = `https://farewise.${domain}/api/recommendations/search`;
 
   console.log(`Farewise ${language.toUpperCase()} API Request:`, JSON.stringify(requestBody, null, 2));
   console.log(`Using endpoint: ${apiUrl}`);
@@ -266,8 +266,8 @@ async function searchFlightsMain(params) {
       'Content-Type': 'application/json;charset=UTF-8',
       'Accept': 'application/json, text/plain, */*',
       'Accept-Language': 'da-DK,da;q=0.9,en-US;q=0.8,en;q=0.7',
-      'Referer': `https://www.farewise.${domain}/nd/flight/search`,
-      'Origin': `https://www.farewise.${domain}`,
+      'Referer': `https://farewise.${domain}/nd/flight/search`,
+      'Origin': `https://farewise.${domain}`,
       'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/144.0.0.0 Safari/537.36',
       'sec-ch-ua': '"Not(A:Brand";v="8", "Chromium";v="144", "Google Chrome";v="144"',
       'sec-ch-ua-mobile': '?0',
@@ -579,7 +579,7 @@ ipcMain.handle("farewise:revalidate", async (_, { datasource, segments, adults, 
     await loginToFarewise(language);
     const domain = language === "da" ? "dk" : "no";
     const region = FAREWISE_REGIONS[language] || FAREWISE_REGIONS.no;
-    const apiUrl = `https://www.farewise.${domain}/api/recommendations/revalidate`;
+    const apiUrl = `https://farewise.${domain}/api/recommendations/revalidate`;
 
     const childrenList = Array.from({ length: children }, (_, i) => ({ age: 10 }));
 
@@ -604,8 +604,8 @@ ipcMain.handle("farewise:revalidate", async (_, { datasource, segments, adults, 
       headers: {
         "Content-Type": "application/json;charset=UTF-8",
         "Accept": "application/json, text/plain, */*",
-        "Referer": `https://www.farewise.${domain}/nd/flight/search`,
-        "Origin": `https://www.farewise.${domain}`,
+        "Referer": `https://farewise.${domain}/nd/flight/search`,
+        "Origin": `https://farewise.${domain}`,
         "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/144.0.0.0 Safari/537.36",
       },
       body: JSON.stringify(requestBody),
@@ -669,7 +669,7 @@ ipcMain.handle("farewise:createReservation", async (_, { datasource, recommendat
       recommendation: rawRecommendation,
     };
 
-    const url = `https://www.farewise.${domain}/api/recommendations/book`;
+    const url = `https://farewise.${domain}/api/recommendations/book`;
     const bodyStr = JSON.stringify(bookingBody);
 
     console.log(`\n✈️ Farewise BOOKING (${language.toUpperCase()})`);
@@ -686,8 +686,8 @@ ipcMain.handle("farewise:createReservation", async (_, { datasource, recommendat
       headers: {
         "Content-Type": "application/json;charset=UTF-8",
         "Accept": "application/json, text/plain, */*",
-        "Referer": `https://www.farewise.${domain}/nd/flight/booking`,
-        "Origin": `https://www.farewise.${domain}`,
+        "Referer": `https://farewise.${domain}/nd/flight/booking`,
+        "Origin": `https://farewise.${domain}`,
         "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/145.0.0.0 Safari/537.36",
       },
       body: bodyStr,
@@ -715,7 +715,7 @@ ipcMain.handle("farewise:createReservation", async (_, { datasource, recommendat
 ipcMain.handle("farewise:openBooking", async (_, { pnr, datasource, language = "no" }) => {
   try {
     const domain = language === "da" ? "dk" : "no";
-    const url = `https://www.farewise.${domain}/nd/flight/reservation/${encodeURIComponent(pnr)}/${encodeURIComponent(datasource)}`;
+    const url = `https://farewise.${domain}/nd/flight/reservation/${encodeURIComponent(pnr)}/${encodeURIComponent(datasource)}`;
     console.log(`Opening Farewise booking URL: ${url}`);
     await shell.openExternal(url);
     return { ok: true };
