@@ -230,8 +230,8 @@ const translations = {
     noFlightsMainCriteria: "Ingen flyreiser innenfor hovedkriterier (max 20-22t, ingen nattfly 00:00-05:30, KLM/AF: 01:06-05:30)",
     onlyLongerFlights: "Det finnes kun flyreiser med lengre reisetid (over 23 timer)",
     tryExtendingSearch: "Prøv å utvide søket eller endre datoene",
-    preferredAirline: "Velg flyselskap",
-    preferredAirlineInfo: "Filtrer søket til å kun vise resultater med valgte flyselskap. Du kan velge flere flyselskap. Resultatet vises som egne kategorier sammen med hovedresultatene.",
+    preferredAirline: "Velg/fravalg flyselskap",
+    preferredAirlineInfo: "Filtrer søket til å kun vise resultater med valgte flyselskap, eller utelukk flyselskap fra søket. Du kan velge flere flyselskap. Resultatet vises som egne kategorier sammen med hovedresultatene.",
     selectAirline: "Velg flyselskap",
     noPreferredAirlineResults: "Ingen resultater funnet med valgt flyselskap som passer til kriteriene",
     allowTwoStopBB: "Tillat 2-stopp i B&B hvis billigere",
@@ -309,8 +309,8 @@ const translations = {
     noFlightsMainCriteria: "Ingen flyrejser inden for hovedkriterier (max 20-22t, ingen natfly 00:00-05:30, KLM/AF: 01:06-05:30)",
     onlyLongerFlights: "Der findes kun flyrejser med længere rejsetid (over 23 timer)",
     tryExtendingSearch: "Prøv at udvide søgningen eller ændre datoerne",
-    preferredAirline: "Vælg flyselskab",
-    preferredAirlineInfo: "Filtrer søgningen til kun at vise resultater med valgte flyselskaber. Du kan vælge flere flyselskaber. Resultatet vises som egne kategorier sammen med hovedresultaterne.",
+    preferredAirline: "Vælg/fravælg flyselskab",
+    preferredAirlineInfo: "Filtrer søgningen til kun at vise resultater med valgte flyselskaber, eller udeluk flyselskaber fra søgningen. Du kan vælge flere flyselskaber. Resultatet vises som egne kategorier sammen med hovedresultaterne.",
     selectAirline: "Vælg flyselskab",
     noPreferredAirlineResults: "Ingen resultater fundet med valgt flyselskab som passer til kriterierne",
     allowTwoStopBB: "Tillad 2-stop i B&B hvis billigere",
@@ -532,11 +532,9 @@ function hasInvalidOsloLayover(offer: FlightOffer): boolean {
           // Hjemreise: alltid minst 3 timer
           minLayoverMinutes = 180;
         } else {
-          // Utreise: sesongbasert
-          // Sommer: 1 april – 15 oktober → 2 timer
-          // Vinter: 16 oktober – 31 mars → 3 timer
+          // Utreise: sommer (1 apr–15 okt) = 2t, vinter = 3t
           const depDate = new Date(nextSeg.departure.at);
-          const month = depDate.getUTCMonth() + 1; // 1-12
+          const month = depDate.getUTCMonth() + 1;
           const day = depDate.getUTCDate();
           const isSummer =
             (month > 4 || (month === 4 && day >= 1)) &&
@@ -610,7 +608,8 @@ function processFlightOffers(
   passengerCount: number = 1,
   allowNightFlights: boolean = false,
   nightStart: string = "00:30",
-  nightEnd: string = "05:50"
+  nightEnd: string = "05:50",
+  excludeAirlines: string[] = []
 ): ProcessedFlight[] {
   return offers.map((offer): ProcessedFlight => {
     const outboundItinerary = offer.itineraries?.[0];
@@ -732,7 +731,11 @@ function processFlightOffers(
       searchDate: searchInfo?.date,
       nightsDiff: searchInfo?.nightsDiff,
     };
-  }).filter(Boolean); // Remove null entries
+  }).filter(Boolean).filter((f: ProcessedFlight) => {
+    if (excludeAirlines.length === 0) return true;
+    const allCodes = [...f.outbound.airlines, ...(f.inbound?.airlines || [])];
+    return !allCodes.some(a => excludeAirlines.includes(a));
+  }); // Remove null entries and excluded airlines
 }
 
 /**
@@ -1118,6 +1121,7 @@ export default function FlightRobot() {
   // Preferred airline option - CHANGED TO MULTI-SELECT
   const [usePreferredAirline, setUsePreferredAirline] = useState(false);
   const [selectedAirlines, setSelectedAirlines] = useState<string[]>([]); // Multi-select
+  const [excludedAirlines, setExcludedAirlines] = useState<string[]>([]); // Excluded airlines
   const [hasPreferredAirlineResults, setHasPreferredAirlineResults] = useState(false);
 
   // NEW: Abort controller for cancelling search
@@ -1272,6 +1276,7 @@ export default function FlightRobot() {
     // Reset airline selection
     setUsePreferredAirline(false);
     setSelectedAirlines([]);
+    setExcludedAirlines([]);
     
     // Reset flexible options
     setFlexibleDates(false);
@@ -1406,6 +1411,7 @@ export default function FlightRobot() {
     // Tilvalg: foretrukket flyselskap
     setUsePreferredAirline(false);
     setSelectedAirlines([]);
+    setExcludedAirlines([]);
     setHasPreferredAirlineResults(false);
     setPreferredAirlineResults({
       bestAndCheapest: null,
@@ -1911,7 +1917,7 @@ function saveToPowerPointSingle(flight: ProcessedFlight, title: string) {
       console.log('🔍 SEARCH START:', { departure, destination, returnFrom, returnTo, departureDateStr, returnDateStr, pax, currency });
       const mainOffers = await searchFlightsApi(departure, destination, returnFrom, returnTo, departureDateStr, returnDateStr, pax, currency);
       console.log('📡 API RESPONSE:', mainOffers.length, 'offers received');
-      const processedFlights = processFlightOffers(mainOffers, undefined, pax, allowNightFlights, nightFlightStart, nightFlightEnd);
+      const processedFlights = processFlightOffers(mainOffers, undefined, pax, allowNightFlights, nightFlightStart, nightFlightEnd, excludedAirlines);
       console.log('⚙️ PROCESSED:', processedFlights.length, 'flights after processing');
       categories = categorizeFlights(processedFlights, t, departure, language, allowTwoStopBB, useCustomMaxBBHours ? customMaxBBHours : null);
 
@@ -2042,7 +2048,7 @@ function saveToPowerPointSingle(flight: ProcessedFlight, title: string) {
 
           try {
             const offers = await searchFlightsApi(departure, destination, returnFrom, returnTo, newDepDate, newRetDate, pax, currency);
-            const processed = processFlightOffers(offers, { date: newDepDate, nightsDiff: 0 }, pax, allowNightFlights, nightFlightStart, nightFlightEnd);
+            const processed = processFlightOffers(offers, { date: newDepDate, nightsDiff: 0 }, pax, allowNightFlights, nightFlightStart, nightFlightEnd, excludedAirlines);
             // Use BESTE OG BILLIGSTE criteria: Max 21-23h, no night flights
             let valid = processed.filter(f =>
               f.totalDurationMinutes <= MAX_BEST_AND_CHEAPEST_HOURS * 60 && !f.hasNightFlight
@@ -2117,7 +2123,7 @@ function saveToPowerPointSingle(flight: ProcessedFlight, title: string) {
 
           try {
             const offers = await searchFlightsApi(departure, destination, returnFrom, returnTo, departureDateStr, newRetDate, pax, currency);
-            const processed = processFlightOffers(offers, { date: departureDateStr, nightsDiff: i }, pax, allowNightFlights, nightFlightStart, nightFlightEnd);
+            const processed = processFlightOffers(offers, { date: departureDateStr, nightsDiff: i }, pax, allowNightFlights, nightFlightStart, nightFlightEnd, excludedAirlines);
             console.log(`  ✈️ Found ${processed.length} processed flights for +${i} nights`);
             
             // Use BESTE OG BILLIGSTE criteria: Max 21-23h, no night flights
@@ -2201,7 +2207,7 @@ function saveToPowerPointSingle(flight: ProcessedFlight, title: string) {
 
           try {
             const offers = await searchFlightsApi(departure, destination, returnFrom, returnTo, departureDateStr, newRetDate, pax, currency);
-            const processed = processFlightOffers(offers, { date: departureDateStr, nightsDiff: -i }, pax, allowNightFlights, nightFlightStart, nightFlightEnd);
+            const processed = processFlightOffers(offers, { date: departureDateStr, nightsDiff: -i }, pax, allowNightFlights, nightFlightStart, nightFlightEnd, excludedAirlines);
             console.log(`  ✈️ Found ${processed.length} processed flights for -${i} nights`);
             
             // Use BESTE OG BILLIGSTE criteria: Max 21-23h, no night flights
@@ -2325,7 +2331,7 @@ function saveToPowerPointSingle(flight: ProcessedFlight, title: string) {
 
           try {
             const offers = await searchFlightsApi(departure, destination, returnFrom, returnTo, searchDepDate, searchRetDate, pax, currency);
-            const processed = processFlightOffers(offers, { date: searchDepDate, nightsDiff: 0 }, pax, intNightFlights, nightFlightStart, nightFlightEnd);
+            const processed = processFlightOffers(offers, { date: searchDepDate, nightsDiff: 0 }, pax, intNightFlights, nightFlightStart, nightFlightEnd, excludedAirlines);
 
             // Use exactly the same B&B logic as the main search
             const intervalCats = categorizeFlights(processed, t, departure, language, intTwoStopBB, useCustomMaxBBHours ? customMaxBBHours : null);
@@ -2380,7 +2386,7 @@ function saveToPowerPointSingle(flight: ProcessedFlight, title: string) {
               const addRetDate = addDays(searchDepDate, tripNights + n + 1);
               try {
                 const addOffers = await searchFlightsApi(departure, destination, returnFrom, returnTo, searchDepDate, addRetDate, pax, currency);
-                const addProcessed = processFlightOffers(addOffers, { date: searchDepDate, nightsDiff: n }, pax, intNightFlights, nightFlightStart, nightFlightEnd);
+                const addProcessed = processFlightOffers(addOffers, { date: searchDepDate, nightsDiff: n }, pax, intNightFlights, nightFlightStart, nightFlightEnd, excludedAirlines);
                 const addCats = categorizeFlights(addProcessed, t, departure, language, intTwoStopBB, useCustomMaxBBHours ? customMaxBBHours : null);
                 if (addCats.bestAndCheapest) {
                   const f = { ...addCats.bestAndCheapest, searchDate: searchDepDate, nightsDiff: n };
@@ -2404,7 +2410,7 @@ function saveToPowerPointSingle(flight: ProcessedFlight, title: string) {
               const remRetDate = addDays(searchDepDate, tripNights - n + 1);
               try {
                 const remOffers = await searchFlightsApi(departure, destination, returnFrom, returnTo, searchDepDate, remRetDate, pax, currency);
-                const remProcessed = processFlightOffers(remOffers, { date: searchDepDate, nightsDiff: -n }, pax, intNightFlights, nightFlightStart, nightFlightEnd);
+                const remProcessed = processFlightOffers(remOffers, { date: searchDepDate, nightsDiff: -n }, pax, intNightFlights, nightFlightStart, nightFlightEnd, excludedAirlines);
                 const remCats = categorizeFlights(remProcessed, t, departure, language, intTwoStopBB, useCustomMaxBBHours ? customMaxBBHours : null);
                 if (remCats.bestAndCheapest) {
                   const f = { ...remCats.bestAndCheapest, searchDate: searchDepDate, nightsDiff: -n };
@@ -3027,25 +3033,59 @@ function saveToPowerPointSingle(flight: ProcessedFlight, title: string) {
 
             {/* Flyselskap sub-panel – vises under gridet når aktivert */}
             {usePreferredAirline && (
-              <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-2 pl-6 pb-2 border border-border/30 rounded-md p-3 bg-muted/10">
-                {Object.entries(airlineNames).map(([code, name]) => (
-                  <div key={code} className="flex items-center gap-2">
-                    <Checkbox
-                      id={`airline-${code}`}
-                      checked={selectedAirlines.includes(code)}
-                      onCheckedChange={(checked) => {
-                        if (checked) {
-                          setSelectedAirlines(prev => [...prev, code]);
-                        } else {
-                          setSelectedAirlines(prev => prev.filter(c => c !== code));
-                        }
-                      }}
-                    />
-                    <Label htmlFor={`airline-${code}`} className="cursor-pointer text-sm">
-                      {name} ({code})
-                    </Label>
+              <div className="border border-border/30 rounded-md p-3 bg-muted/10 space-y-3">
+                <div>
+                  <p className="text-xs font-semibold text-muted-foreground mb-2">
+                    {language === 'da' ? 'Vis kun flyselskab:' : 'Vis kun flyselskap:'}
+                  </p>
+                  <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-2">
+                    {Object.entries(airlineNames).map(([code, name]) => (
+                      <div key={code} className="flex items-center gap-2">
+                        <Checkbox
+                          id={`airline-include-${code}`}
+                          checked={selectedAirlines.includes(code)}
+                          onCheckedChange={(checked) => {
+                            if (checked) {
+                              setSelectedAirlines(prev => [...prev, code]);
+                              setExcludedAirlines(prev => prev.filter(c => c !== code));
+                            } else {
+                              setSelectedAirlines(prev => prev.filter(c => c !== code));
+                            }
+                          }}
+                        />
+                        <Label htmlFor={`airline-include-${code}`} className="cursor-pointer text-sm">
+                          {name} ({code})
+                        </Label>
+                      </div>
+                    ))}
                   </div>
-                ))}
+                </div>
+                <div className="border-t border-border/30 pt-3">
+                  <p className="text-xs font-semibold text-muted-foreground mb-2">
+                    {language === 'da' ? 'Udeluk flyselskab:' : 'Utelukk flyselskap:'}
+                  </p>
+                  <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-2">
+                    {Object.entries(airlineNames).map(([code, name]) => (
+                      <div key={code} className="flex items-center gap-2">
+                        <Checkbox
+                          id={`airline-exclude-${code}`}
+                          checked={excludedAirlines.includes(code)}
+                          onCheckedChange={(checked) => {
+                            if (checked) {
+                              setExcludedAirlines(prev => [...prev, code]);
+                              setSelectedAirlines(prev => prev.filter(c => c !== code));
+                            } else {
+                              setExcludedAirlines(prev => prev.filter(c => c !== code));
+                            }
+                          }}
+                        />
+                        <Label htmlFor={`airline-exclude-${code}`} className="cursor-pointer text-sm">
+                          {name} ({code})
+                        </Label>
+                      </div>
+                    ))}
+                  </div>
+                </div>
               </div>
             )}
 

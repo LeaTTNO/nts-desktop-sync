@@ -9,11 +9,12 @@ export interface UserCategory {
   order: number;
   hasCheckbox: boolean; // true = checkbox, false = always visible
   isVisible: boolean; // true = vises i frontend, false = skjult
+  parentId?: string; // undefined = root, satt = underkategori
 }
 
 interface UserCategoryStore {
   categories: UserCategory[];
-  addCategory: (name: string, userId: string, hasCheckbox?: boolean) => void;
+  addCategory: (name: string, userId: string, hasCheckbox?: boolean, parentId?: string) => void;
   deleteCategory: (id: string) => void;
   updateCategory: (id: string, updates: Partial<UserCategory>) => void;
   getCategoriesForUser: (userId: string) => UserCategory[];
@@ -28,15 +29,16 @@ export const useUserCategoryStore = create<UserCategoryStore>()(
     (set, get) => ({
       categories: [],
 
-      addCategory: (name, userId, hasCheckbox = true) => {
+      addCategory: (name, userId, hasCheckbox = true, parentId) => {
         const newCategory: UserCategory = {
           id: `user-cat-${Date.now()}`,
           name,
           userId,
           createdAt: Date.now(),
-          order: get().categories.length + 100, // Start after default categories
+          order: get().categories.length + 100,
           hasCheckbox,
           isVisible: true,
+          parentId,
         };
         set((state) => ({
           categories: [...state.categories, newCategory],

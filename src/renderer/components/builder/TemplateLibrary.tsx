@@ -42,6 +42,7 @@ import { oneDriveClient } from "@/lib/oneDriveClient";
 export default function TemplateLibrary() {
   const [uploading, setUploading] = useState<string | null>(null);
   const [newCategoryName, setNewCategoryName] = useState("");
+  const [newCategoryParentId, setNewCategoryParentId] = useState<string | null>(null);
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [openCategories, setOpenCategories] = useState<string[]>([]);
   const [isSyncing, setIsSyncing] = useState(false);
@@ -307,6 +308,13 @@ export default function TemplateLibrary() {
   
   // Filtrer templates – ALT separert mellom NO og DK, ingen unntak
   const langFilteredTemplates = templates.filter(t => t.language === userLanguage);
+
+  // Toppnivå-kategorier til render-løkken (underkategorier rendres nøstet)
+  const rootCategories = visibleCategories.filter(cat => {
+    const userCat = userCategories.find(c => c.id === cat.id);
+    return !userCat?.parentId;
+  });
+
   const filteredTemplates = userIsAdmin 
     ? langFilteredTemplates // Admin ser alle templates for aktivt språk
     : langFilteredTemplates.filter(t => {
@@ -337,9 +345,10 @@ export default function TemplateLibrary() {
     
     // Bruk userEmail som userId
     const userId = userEmail || 'unknown';
-    addUserCategory(newCategoryName.trim(), userId);
+    addUserCategory(newCategoryName.trim(), userId, true, newCategoryParentId ?? undefined);
     toast.success(`Kategori "${newCategoryName}" ble opprettet`);
     setNewCategoryName("");
+    setNewCategoryParentId(null);
     setIsDialogOpen(false);
   };
   
@@ -771,7 +780,7 @@ export default function TemplateLibrary() {
           onValueChange={setOpenCategories}
         >
         <div className="grid grid-cols-1 md:grid-cols-2 gap-2 mb-4 items-start">
-          {visibleCategories.map((cat) => {
+          {rootCategories.map((cat) => {
               // Filtrer templates basert på categoryId (hvis tilgjengelig) eller category navn
               let list = filteredTemplates.filter((t) => 
                 t.categoryId === cat.id || t.category === cat.name || t.category === cat.id
@@ -1062,6 +1071,67 @@ export default function TemplateLibrary() {
                       </div>
                     )}
                   </div>
+
+                  {/* Nøstede underkategorier for denne forelderen */}
+                  {(() => {
+                    const subCats = userCategories.filter(uc => uc.parentId === cat.id && uc.isVisible !== false);
+                    if (subCats.length === 0) return null;
+                    return (
+                      <div className="mt-3 border-t pt-3 space-y-2">
+                        <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">Underkategorier</p>
+                        <Accordion type="multiple">
+                          {subCats.map(subCat => {
+                            const subList = filteredTemplates.filter(t =>
+                              t.categoryId === subCat.id || t.category === subCat.name || t.category === subCat.id
+                            );
+                            const canEditSub = userIsAdmin || subCat.userId === userEmail;
+                            return (
+                              <AccordionItem key={subCat.id} value={subCat.id} className="border rounded-md px-3 py-1">
+                                <AccordionTrigger className="hover:no-underline py-2">
+                                  <div className="flex items-center gap-2">
+                                    {editingCategoryId === subCat.id ? (
+                                      <>
+                                        <Input value={editingCategoryName} onChange={e => setEditingCategoryName(e.target.value)} onClick={e => e.stopPropagation()} onKeyDown={e => { if (e.key === "Enter") handleSaveCategoryName(subCat.id); if (e.key === "Escape") setEditingCategoryId(null); }} className="w-36 h-7 text-sm" autoFocus />
+                                        <span className="inline-flex items-center justify-center h-7 w-7 rounded-md hover:bg-accent cursor-pointer" onClick={e => { e.stopPropagation(); handleSaveCategoryName(subCat.id); }}><Save className="h-4 w-4 text-green-600" /></span>
+                                        <span className="inline-flex items-center justify-center h-7 w-7 rounded-md hover:bg-accent cursor-pointer" onClick={e => { e.stopPropagation(); setEditingCategoryId(null); }}>✕</span>
+                                      </>
+                                    ) : (
+                                      <>
+                                        <span className="font-medium text-sm">{subCat.name}</span>
+                                        {canEditSub && <span className="inline-flex items-center justify-center h-7 w-7 rounded-md hover:bg-accent cursor-pointer" onClick={e => { e.stopPropagation(); handleEditCategory(subCat.id, subCat.name); }}><Edit2 className="h-4 w-4 text-blue-600" /></span>}
+                                        {canEditSub && <span className="inline-flex items-center justify-center h-7 w-7 rounded-md hover:bg-accent cursor-pointer" onClick={e => { e.stopPropagation(); handleDeleteCategory(subCat.id); }}><Trash2 className="h-4 w-4 text-red-600" /></span>}
+                                      </>
+                                    )}
+                                  </div>
+                                </AccordionTrigger>
+                                <AccordionContent>
+                                  <div className="space-y-2 pt-2">
+                                    {canEditSub && (
+                                      <Button variant="outline" size="sm" className="gap-2 mb-2" onClick={() => handleUpload(subCat.name, subCat.id)}>
+                                        <Upload className="h-4 w-4" /> Last opp filer
+                                      </Button>
+                                    )}
+                                    {subList.length === 0 ? (
+                                      <p className="text-sm text-muted-foreground">Ingen maler i denne underkategorien</p>
+                                    ) : (
+                                      <div className="space-y-2">
+                                        {subList.map(t => (
+                                          <div key={t.id} className="flex items-center justify-between p-2 rounded-md border gap-2 bg-background">
+                                            <span className="font-medium text-sm truncate flex-1">{t.name}</span>
+                                            <Button variant="ghost" size="sm" onClick={() => handleDelete(t.id, t.name)} className="h-7 w-7 p-0 text-destructive hover:text-destructive" title="Slett"><Trash2 className="h-4 w-4" /></Button>
+                                          </div>
+                                        ))}
+                                      </div>
+                                    )}
+                                  </div>
+                                </AccordionContent>
+                              </AccordionItem>
+                            );
+                          })}
+                        </Accordion>
+                      </div>
+                    );
+                  })()}
                 </AccordionContent>
               </AccordionItem>
             );
@@ -1123,6 +1193,26 @@ export default function TemplateLibrary() {
                         }
                       }}
                     />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="category-parent">Underkategori av (valgfritt)</Label>
+                    <Select
+                      value={newCategoryParentId ?? "__none__"}
+                      onValueChange={(v) => setNewCategoryParentId(v === "__none__" ? null : v)}
+                    >
+                      <SelectTrigger id="category-parent">
+                        <SelectValue placeholder="Ingen (toppnivå)" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="__none__">Ingen (toppnivå)</SelectItem>
+                        {allCategories
+                          .filter(c => !('parentId' in c && c.parentId))
+                          .map(c => (
+                            <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>
+                          ))
+                        }
+                      </SelectContent>
+                    </Select>
                   </div>
                 </div>
                 <DialogFooter>
