@@ -37,6 +37,7 @@ import { Upload, Trash2, Eye, EyeOff, Plus, Edit2, FolderPlus, RefreshCw, Save, 
 import { toast } from "sonner";
 import { useLanguage } from "@/contexts/LanguageContext";
 import { isAdminUser, toggleAdminUser } from "@/lib/adminManager";
+import { oneDriveClient } from "@/lib/oneDriveClient";
 
 export default function TemplateLibrary() {
   const [uploading, setUploading] = useState<string | null>(null);
@@ -392,29 +393,32 @@ export default function TemplateLibrary() {
             language: userLanguage, // 🌐 Skiller NO og DK maler
           });
           
-          // If admin AND not a personal category: Register file in OneDrive manifest
+          // If admin AND not a personal category: upload file + update manifest in SharePoint
           // Personal categories (user_*_personal) are always local-only, never synced
           const isPersonalCategory = categoryId.startsWith('user_') && categoryId.endsWith('_personal');
           if (userIsAdmin && !isPersonalCategory) {
             try {
-              // @ts-ignore - Electron IPC
-              const result = await window.electron.invoke("onedrive:upload-template", {
-                filePath: filePath,
+              const folderPath = userLanguage === 'da' ? 'NTS DK' : 'NTS NO';
+              const relPath = fileName;
+
+              // 1. Last opp PPTX-filen til SharePoint
+              await oneDriveClient.uploadFile(folderPath, relPath, buf);
+
+              // 2. Oppdater manifest.json i SharePoint
+              await oneDriveClient.updateManifest(folderPath, {
+                filePath: relPath,
+                fileName,
                 category: categoryName,
-                categoryId: categoryId, // Send ID for reference
+                categoryId,
                 order: 999,
-                language: userLanguage,
+                uploadedAt: new Date().toISOString(),
+                uploadedBy: userEmail || undefined,
               });
-              
-              if (result.success) {
-                console.log(`✅ Admin registered ${fileName} in OneDrive manifest`);
-              } else {
-                console.error(`❌ Failed to register ${fileName}:`, result.error);
-                failCount++;
-                continue;
-              }
-            } catch (error) {
-              console.error(`OneDrive registration error for ${fileName}:`, error);
+
+              console.log(`✅ Admin lastet opp og registrerte ${fileName} i SharePoint`);
+            } catch (error: any) {
+              console.error(`SharePoint-opplasting feilet for ${fileName}:`, error);
+              toast.error(`Kunne ikke laste opp til SharePoint: ${error?.message ?? 'Ukjent feil'}`);
               failCount++;
               continue;
             }
@@ -504,18 +508,34 @@ export default function TemplateLibrary() {
     await handleSyncNow();
   }
 
-  // Synkroniser filer for ETT språk fra OneDrive → IndexedDB
-  // Returnerer { successCount, errorCount }
-  async function syncLanguage(lang: 'no' | 'da'): Promise<{ successCount: number; errorCount: number }> {
-    // @ts-ignore - Electron IPC
-    const result = await window.electron.invoke("onedrive:sync-now", { language: lang });
-
-    if (!result.success) {
-      console.warn(`⚠️ Sync feilet for ${lang.toUpperCase()}: ${result.error}`);
-      return { successCount: 0, errorCount: 0 };
+  // Synkroniser filer for ETT språk fra SharePoint (Graph API) → IndexedDB
+  // Returnerer { successCount, errorCount, failed?, failError? }
+  async function syncLanguage(lang: 'no' | 'da'): Promise<{ successCount: number; errorCount: number; failed?: boolean; failError?: string }> {
+    if (!oneDriveClient.isAuthenticated()) {
+      return { successCount: 0, errorCount: 0, failed: true, failError: 'Ikke logget inn på OneDrive' };
     }
 
-    const { files } = result;
+    const folderPath = lang === 'da' ? 'NTS DK' : 'NTS NO';
+
+    let rawFiles: any[];
+    try {
+      rawFiles = await oneDriveClient.fetchManifest(folderPath);
+    } catch (err: any) {
+      console.warn(`⚠️ Manifest-henting feilet for ${lang.toUpperCase()}: ${err?.message}`);
+      return { successCount: 0, errorCount: 0, failed: true, failError: err?.message };
+    }
+
+    // Normaliser manifest-oppføringer til kjent format
+    const files = rawFiles.map((entry: any) => ({
+      name: entry.fileName || entry.name || '',
+      relPath: entry.filePath || entry.fileName || entry.name || '',
+      category: entry.category || '',
+      categoryId: entry.categoryId || entry.category || '',
+      order: entry.order ?? 999,
+      uploadedAt: entry.uploadedAt,
+      uploadedBy: entry.uploadedBy,
+    })).filter(f => f.name);
+
     console.log(`📁 ${lang.toUpperCase()}: ${files.length} filer i manifest`);
 
     // --- Inkrementell synk: bruk tidsstempel for å hoppe over uendrede filer ---
@@ -631,24 +651,7 @@ export default function TemplateLibrary() {
       try {
         toast.info(`[${lang.toUpperCase()}] Laster fil ${i + 1} av ${filesToDownload.length}: ${file.name}`);
 
-        // @ts-ignore - Electron IPC
-        const fileResult = await window.electron.invoke("onedrive:get-file", {
-          language: lang,
-          relPath: file.relPath,
-        });
-
-        if (!fileResult.success) {
-          console.error(`❌ Kunne ikke hente: ${file.name}`, fileResult.error);
-          errorCount++;
-          continue;
-        }
-
-        // IPC returns a Uint8Array (Node Buffer serialized via structured clone)
-        const received = fileResult.data as Uint8Array;
-        const arrayBuffer = received.buffer.slice(
-          received.byteOffset,
-          received.byteOffset + received.byteLength
-        );
+        const arrayBuffer = await oneDriveClient.downloadFileByPath(folderPath, file.relPath);
 
         const safeCatKey = (file.categoryId || file.category || 'uncategorized')
           .replace(/[^a-zA-Z0-9_-]/g, '_');
@@ -716,24 +719,36 @@ export default function TemplateLibrary() {
 
       const totalSuccess = resNo.successCount + resDk.successCount;
       const totalErrors = resNo.errorCount + resDk.errorCount;
+      const bothFailed = resNo.failed && resDk.failed;
+      const anyFailed = resNo.failed || resDk.failed;
 
       // Reload UI
       await loadFromDB();
 
       // Show result
-      if (totalSuccess > 0) {
+      if (bothFailed) {
+        // OneDrive-mappen ble ikke funnet på denne PC-en
+        toast.error(
+          `❌ OneDrive-mappe ikke funnet. Sørg for at OneDrive er synkronisert og at du har tilgang til "TANZANIA TOURS"-biblioteket.`,
+          { duration: 8000 }
+        );
+      } else if (totalSuccess > 0) {
         const noPart = resNo.successCount > 0 ? `${resNo.successCount} NO-mal${resNo.successCount !== 1 ? 'er' : ''}` : null;
         const dkPart = resDk.successCount > 0 ? `${resDk.successCount} DK-mal${resDk.successCount !== 1 ? 'er' : ''}` : null;
         toast.success(`✅ Synkronisert ${[noPart, dkPart].filter(Boolean).join(' + ')}`);
+        if (anyFailed) toast.warning('⚠️ Én språkmappe ble ikke funnet i OneDrive');
       } else {
         toast.info("✅ Alt er oppdatert – ingen nye filer siden siste synk");
+        if (anyFailed) toast.warning('⚠️ Én språkmappe ble ikke funnet i OneDrive');
       }
       if (totalErrors > 0) {
         toast.error(`⚠️ ${totalErrors} feil under synkronisering`);
       }
 
-      // Lagre dato for siste vellykkede synk (brukes til startup-synk)
-      localStorage.setItem('onedrive-last-sync-date', new Date().toDateString());
+      // Lagre dato for siste vellykkede synk kun hvis minst én språkmappe ble funnet
+      if (!bothFailed) {
+        localStorage.setItem('onedrive-last-sync-date', new Date().toDateString());
+      }
       console.log(`🎉 Sync complete: ${totalSuccess} success, ${totalErrors} errors`);
       
     } catch (error) {

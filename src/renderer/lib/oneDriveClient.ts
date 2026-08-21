@@ -14,6 +14,7 @@ const loginRequest = {
   scopes: [
     'Files.Read',
     'Files.Read.All',
+    'Files.ReadWrite',
     'Sites.Read.All',
     'User.Read'
   ],
@@ -538,6 +539,120 @@ class OneDriveClient {
     
     await searchFolder(basePath, basePath || 'root');
     return result;
+  }
+
+  /**
+   * Last opp en fil til SharePoint.
+   * folderPath = f.eks. "NTS DK", relPath = f.eks. "Safari/Arusha.pptx"
+   */
+  async uploadFile(folderPath: string, relPath: string, data: ArrayBuffer): Promise<void> {
+    const token = await this.getAccessToken();
+    const fullPath = `${folderPath}/${relPath}`;
+    const encodedPath = fullPath.split('/').map(encodeURIComponent).join('/');
+    const url = `https://graph.microsoft.com/v1.0/me/drive/root:/${encodedPath}:/content`;
+
+    const response = await fetch(url, {
+      method: 'PUT',
+      headers: {
+        Authorization: `Bearer ${token}`,
+        'Content-Type': 'application/vnd.openxmlformats-officedocument.presentationml.presentation',
+      },
+      body: data,
+    });
+
+    if (!response.ok) {
+      throw new Error(`Kunne ikke laste opp "${relPath}": ${response.statusText}`);
+    }
+  }
+
+  /**
+   * Oppdater manifest.json i SharePoint med ny/oppdatert oppføring.
+   * Henter eksisterende manifest, oppdaterer, og PUT-er tilbake.
+   */
+  async updateManifest(
+    folderPath: string,
+    entry: { filePath: string; fileName: string; category: string; categoryId: string; order: number; uploadedAt: string; uploadedBy?: string }
+  ): Promise<void> {
+    const token = await this.getAccessToken();
+    const encodedFolder = folderPath.split('/').map(encodeURIComponent).join('/');
+    const url = `https://graph.microsoft.com/v1.0/me/drive/root:/${encodedFolder}/manifest.json:/content`;
+
+    // Hent eksisterende manifest
+    let manifest: any[] = [];
+    const getRes = await fetch(url, { headers: { Authorization: `Bearer ${token}` } });
+    if (getRes.ok) {
+      manifest = await getRes.json().catch(() => []);
+      if (!Array.isArray(manifest)) manifest = [];
+    }
+
+    // Legg til eller oppdater oppføring
+    const idx = manifest.findIndex((m: any) => m.filePath === entry.filePath);
+    if (idx >= 0) {
+      manifest[idx] = { ...manifest[idx], ...entry };
+    } else {
+      manifest.push(entry);
+    }
+
+    // PUT oppdatert manifest tilbake
+    const putRes = await fetch(url, {
+      method: 'PUT',
+      headers: {
+        Authorization: `Bearer ${token}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(manifest, null, 2),
+    });
+
+    if (!putRes.ok) {
+      throw new Error(`Kunne ikke oppdatere manifest.json: ${putRes.statusText}`);
+    }
+  }
+
+  /**
+   * Hent og parse manifest.json direkte fra SharePoint via Graph API.
+   * folderPath = f.eks. "NTS DK" eller "NTS NO" (relativt til OneDrive-rot)
+   */
+  async fetchManifest(folderPath: string): Promise<any[]> {
+    const token = await this.getAccessToken();
+    const encodedPath = folderPath.split('/').map(encodeURIComponent).join('/');
+    const url = `https://graph.microsoft.com/v1.0/me/drive/root:/${encodedPath}/manifest.json:/content`;
+
+    const response = await fetch(url, {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+
+    if (response.status === 404) {
+      console.log(`⚠️ Ingen manifest.json funnet i "${folderPath}"`);
+      return [];
+    }
+
+    if (!response.ok) {
+      throw new Error(`Kunne ikke hente manifest fra "${folderPath}": ${response.statusText}`);
+    }
+
+    const json = await response.json();
+    return Array.isArray(json) ? json : [];
+  }
+
+  /**
+   * Last ned én PPTX-fil direkte fra SharePoint via Graph API.
+   * folderPath = f.eks. "NTS DK", relPath = f.eks. "Safari/Arusha.pptx"
+   */
+  async downloadFileByPath(folderPath: string, relPath: string): Promise<ArrayBuffer> {
+    const token = await this.getAccessToken();
+    const fullPath = `${folderPath}/${relPath}`;
+    const encodedPath = fullPath.split('/').map(encodeURIComponent).join('/');
+    const url = `https://graph.microsoft.com/v1.0/me/drive/root:/${encodedPath}:/content`;
+
+    const response = await fetch(url, {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+
+    if (!response.ok) {
+      throw new Error(`Kunne ikke laste ned "${relPath}": ${response.statusText}`);
+    }
+
+    return await response.arrayBuffer();
   }
 }
 

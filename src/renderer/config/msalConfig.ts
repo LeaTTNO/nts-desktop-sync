@@ -34,9 +34,9 @@ export const msalConfig: Configuration = {
 };
 
 export const loginRequest = {
-  scopes: ["User.Read", "Files.Read"],
+  scopes: ["User.Read", "Files.Read", "Files.ReadWrite", "Files.Read.All", "Sites.Read.All"],
 };
 
 export const oneDriveRequest = {
-  scopes: ["Files.Read", "Files.Read.All"],
+  scopes: ["Files.Read", "Files.Read.All", "Files.ReadWrite"],
 };
