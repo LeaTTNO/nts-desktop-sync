@@ -532,9 +532,11 @@ function hasInvalidOsloLayover(offer: FlightOffer): boolean {
           // Hjemreise: alltid minst 3 timer
           minLayoverMinutes = 180;
         } else {
-          // Utreise: sommer (1 apr–15 okt) = 2t, vinter = 3t
+          // Utreise: sesongbasert
+          // Sommer: 1 april – 15 oktober → 2 timer
+          // Vinter: 16 oktober – 31 mars → 3 timer
           const depDate = new Date(nextSeg.departure.at);
-          const month = depDate.getUTCMonth() + 1;
+          const month = depDate.getUTCMonth() + 1; // 1-12
           const day = depDate.getUTCDate();
           const isSummer =
             (month > 4 || (month === 4 && day >= 1)) &&
