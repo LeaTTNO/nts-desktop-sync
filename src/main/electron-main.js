@@ -1552,19 +1552,47 @@ ipcMain.handle("file:read", async (event, filePath) => {
 // Get OneDrive shared folder path
 function getOneDriveSharedPath(language = 'no') {
   const username = os.userInfo().username;
+  const homeDir = os.homedir();
   const languageFolder = language === 'da' ? 'NTS DK' : 'NTS NO';
-  
+  const ntsSubPath = path.join('NO TANZANIA TOURS', 'NTS', languageFolder);
+
+  // Known hardcoded paths first (fast)
   const possiblePaths = [
-    path.join('C:', 'Users', username, 'OneDrive - TANZANIA TOURS', 'TANZANIA TOURS - Dokumenter', 'NO TANZANIA TOURS', 'NTS', languageFolder),
-    path.join(os.homedir(), 'OneDrive - TANZANIA TOURS', 'TANZANIA TOURS - Dokumenter', 'NO TANZANIA TOURS', 'NTS', languageFolder),
+    path.join('C:', 'Users', username, 'OneDrive - TANZANIA TOURS', 'TANZANIA TOURS - Dokumenter', ntsSubPath),
+    path.join(homeDir, 'OneDrive - TANZANIA TOURS', 'TANZANIA TOURS - Dokumenter', ntsSubPath),
+    path.join(homeDir, 'Tanzania Tours', 'TANZANIA TOURS - Dokumenter', ntsSubPath),
+    path.join(homeDir, 'Tanzania Tours AS', 'TANZANIA TOURS - Dokumenter', ntsSubPath),
   ];
-  
+
   for (const p of possiblePaths) {
     if (fs.existsSync(p)) {
+      console.log(`✅ OneDrive path found (hardcoded): ${p}`);
       return p;
     }
   }
-  
+
+  // Fallback: scan top-level folders under homedir for any path ending in NTS\{languageFolder}
+  console.log(`🔍 Scanning ${homeDir} for NTS\\${languageFolder}...`);
+  try {
+    const topDirs = fs.readdirSync(homeDir, { withFileTypes: true })
+      .filter(d => d.isDirectory())
+      .map(d => d.name);
+
+    for (const topDir of topDirs) {
+      const docVariants = ['TANZANIA TOURS - Dokumenter', 'Tanzania Tours - Dokumenter', 'Documents'];
+      for (const docDir of docVariants) {
+        const candidate = path.join(homeDir, topDir, docDir, ntsSubPath);
+        if (fs.existsSync(candidate)) {
+          console.log(`✅ OneDrive path found (scan): ${candidate}`);
+          return candidate;
+        }
+      }
+    }
+  } catch (scanErr) {
+    console.warn('⚠️ OneDrive scan failed:', scanErr.message);
+  }
+
+  console.error(`❌ OneDrive path not found for language: ${language}`);
   return null;
 }
 
