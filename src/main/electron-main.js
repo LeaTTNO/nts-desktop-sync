@@ -385,16 +385,20 @@ function convertFarewiseToAmadeus(farewiseData, currency = "NOK", convertPrices 
           duration = `PT${hours}H${minutes}M`;
         }
 
-        // Log raw segment on first segment of first rec to diagnose v2 format changes
+        // Send raw segment to renderer console so we can diagnose v2 field names
         if (index === 0 && legIndex === 0 && segIndex === 0) {
           console.log('🔍 RAW SEGMENT v2:', JSON.stringify(seg, null, 2).substring(0, 800));
+          const mw = BrowserWindow.getAllWindows()[0];
+          if (mw) mw.webContents.send('farewise:debug-segment', seg);
         }
 
+        // Try object form first, then plain string (v2 flattened some fields)
         const carrierCode =
           seg.marketingCarrier?.code ||
-          seg.carrier?.code ||
-          seg.airline?.code ||
+          (typeof seg.carrier === 'string' ? seg.carrier : seg.carrier?.code) ||
+          (typeof seg.airline === 'string' ? seg.airline : seg.airline?.code) ||
           seg.airlineCode ||
+          seg.iataCode ||
           seg.flightDesignator?.carrierCode ||
           seg.operatingCarrier?.code ||
           "";

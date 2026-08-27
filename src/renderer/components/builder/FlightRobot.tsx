@@ -1222,7 +1222,7 @@ export default function FlightRobot() {
 
   // Listen for Farewise EK debug data from electron-main
   useEffect(() => {
-    const removeListener = window.electron?.on?.('farewise:debug-ek', (debugData: any) => {
+    const removeEkListener = window.electron?.on?.('farewise:debug-ek', (debugData: any) => {
       console.log('\n🔥 RAW FAREWISE EMIRATES DATA FROM API:');
       console.log('Total EK flights:', debugData.count);
       console.log('First EK flight FULL object:', debugData.firstFlight);
@@ -1240,9 +1240,16 @@ export default function FlightRobot() {
         console.log('route object keys:', Object.keys(route));
       }
     });
-    
+
+    // Listen for raw segment debug from v2 API
+    const removeSegmentListener = window.electron?.on?.('farewise:debug-segment', (seg: any) => {
+      console.log('\n🔍 RAW SEGMENT v2 (alle felter):');
+      console.log(JSON.stringify(seg, null, 2));
+    });
+
     return () => {
-      removeListener?.();
+      removeEkListener?.();
+      removeSegmentListener?.();
     };
   }, []);
 
