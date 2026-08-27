@@ -394,13 +394,10 @@ function convertFarewiseToAmadeus(farewiseData, currency = "NOK", convertPrices 
 
         // Try object form first, then plain string (v2 flattened some fields)
         const carrierCode =
+          seg.marketingCarrierCode ||
           seg.marketingCarrier?.code ||
           (typeof seg.carrier === 'string' ? seg.carrier : seg.carrier?.code) ||
-          (typeof seg.airline === 'string' ? seg.airline : seg.airline?.code) ||
           seg.airlineCode ||
-          seg.iataCode ||
-          seg.flightDesignator?.carrierCode ||
-          seg.operatingCarrier?.code ||
           "";
 
         const flightNumber =
@@ -411,11 +408,11 @@ function convertFarewiseToAmadeus(farewiseData, currency = "NOK", convertPrices 
 
         return {
           departure: {
-            iataCode: seg.departure?.code || seg.departureAirport?.code || seg.origin?.code || "",
+            iataCode: seg.departureAirportCode || seg.departure?.code || seg.origin?.code || "",
             at: seg.departureDate || seg.departure?.at || "",
           },
           arrival: {
-            iataCode: seg.arrival?.code || seg.arrivalAirport?.code || seg.destination?.code || "",
+            iataCode: seg.arrivalAirportCode || seg.arrival?.code || seg.destination?.code || "",
             at: seg.arrivalDate || seg.arrival?.at || "",
           },
           carrierCode,
@@ -527,17 +524,18 @@ function convertFarewiseToAmadeus(farewiseData, currency = "NOK", convertPrices 
     } else if (rawCabin.includes('FIRST') || rawCabin === 'F') {
       travelClass = 'FIRST';
     } else {
-      // Check route/segment level booking class
+      // Check route/segment level booking class — v2 uses cabinClassCode/cabinClassName
       const allSegments = firstOption.legs?.flatMap(leg =>
         leg.routes?.flatMap(r => r.segments || []) || []
       ) || [];
       for (const seg of allSegments) {
-        const bc = (seg.bookingClass || seg.cabin || seg.cabinClass || seg.serviceClass || "").toUpperCase();
-        if (BUSINESS_CODES.has(bc) || bc.includes('BUSINESS')) {
+        const bc = (seg.cabinClassCode || seg.bookingClass || seg.cabin || seg.cabinClass || seg.serviceClass || "").toUpperCase();
+        const cn = (seg.cabinClassName || "").toUpperCase();
+        if (BUSINESS_CODES.has(bc) || bc.includes('BUSINESS') || cn.includes('BUSINESS')) {
           travelClass = 'BUSINESS';
           break;
         }
-        if (FIRST_CODES.has(bc) || bc.includes('FIRST')) {
+        if (FIRST_CODES.has(bc) || bc.includes('FIRST') || cn.includes('FIRST')) {
           travelClass = 'FIRST';
           break;
         }
