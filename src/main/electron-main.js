@@ -385,17 +385,37 @@ function convertFarewiseToAmadeus(farewiseData, currency = "NOK", convertPrices 
           duration = `PT${hours}H${minutes}M`;
         }
 
+        // Log raw segment on first segment of first rec to diagnose v2 format changes
+        if (index === 0 && legIndex === 0 && segIndex === 0) {
+          console.log('🔍 RAW SEGMENT v2:', JSON.stringify(seg, null, 2).substring(0, 800));
+        }
+
+        const carrierCode =
+          seg.marketingCarrier?.code ||
+          seg.carrier?.code ||
+          seg.airline?.code ||
+          seg.airlineCode ||
+          seg.flightDesignator?.carrierCode ||
+          seg.operatingCarrier?.code ||
+          "";
+
+        const flightNumber =
+          seg.flightNumber ||
+          seg.flightDesignator?.flightNumber ||
+          seg.number ||
+          "";
+
         return {
           departure: {
-            iataCode: seg.departure?.code || "",
-            at: seg.departureDate || "",
+            iataCode: seg.departure?.code || seg.departureAirport?.code || seg.origin?.code || "",
+            at: seg.departureDate || seg.departure?.at || "",
           },
           arrival: {
-            iataCode: seg.arrival?.code || "",
-            at: seg.arrivalDate || "",
+            iataCode: seg.arrival?.code || seg.arrivalAirport?.code || seg.destination?.code || "",
+            at: seg.arrivalDate || seg.arrival?.at || "",
           },
-          carrierCode: seg.marketingCarrier?.code || "",
-          number: String(seg.flightNumber || ""),
+          carrierCode,
+          number: String(flightNumber),
           duration: duration,
         };
       });
