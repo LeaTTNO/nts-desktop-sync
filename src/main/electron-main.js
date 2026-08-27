@@ -254,7 +254,7 @@ async function searchFlightsMain(params) {
   }
 
   const domain = language === "da" ? "dk" : "no";
-  const apiUrl = `https://farewise.${domain}/api/recommendations/search`;
+  const apiUrl = `https://farewise.${domain}/api/recommendations/search-v2`;
 
   console.log(`Farewise ${language.toUpperCase()} API Request:`, JSON.stringify(requestBody, null, 2));
   console.log(`Using endpoint: ${apiUrl}`);
