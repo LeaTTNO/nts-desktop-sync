@@ -389,7 +389,17 @@ function convertFarewiseToAmadeus(farewiseData, currency = "NOK", convertPrices 
         if (index === 0 && legIndex === 0 && segIndex === 0) {
           console.log('🔍 RAW SEGMENT v2:', JSON.stringify(seg, null, 2).substring(0, 800));
           const mw = BrowserWindow.getAllWindows()[0];
-          if (mw) mw.webContents.send('farewise:debug-segment', seg);
+          if (mw) {
+            mw.webContents.send('farewise:debug-segment', seg);
+            mw.webContents.send('farewise:debug-price', {
+              'firstOption.total': firstOption.total,
+              'rec.total': rec.total,
+              'firstOption.price': firstOption.price,
+              'rec.price': rec.price,
+              'firstOption_keys': Object.keys(firstOption),
+              'rec_keys': Object.keys(rec),
+            });
+          }
         }
 
         // Try object form first, then plain string (v2 flattened some fields)
@@ -459,8 +469,20 @@ function convertFarewiseToAmadeus(farewiseData, currency = "NOK", convertPrices 
     });
 
     // Get price from recommendation
-    const priceTotal = firstOption.total || rec.total || 0;
-    
+    const priceTotal = firstOption.total || rec.total || firstOption.price?.total || rec.price?.total || 0;
+
+    // Log price fields on first recommendation to diagnose v2 format
+    if (index === 0) {
+      console.log('💰 PRICE FIELDS v2:', JSON.stringify({
+        'firstOption.total': firstOption.total,
+        'rec.total': rec.total,
+        'firstOption.price': firstOption.price,
+        'rec.price': rec.price,
+        'firstOption keys': Object.keys(firstOption),
+        'rec keys': Object.keys(rec),
+      }, null, 2).substring(0, 1000));
+    }
+
     // Konverter pris til DKK hvis nødvendig
     const finalPrice = convertPrices ? Math.round(priceTotal * NOK_TO_DKK) : priceTotal;
 

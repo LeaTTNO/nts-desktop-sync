@@ -1247,9 +1247,16 @@ export default function FlightRobot() {
       console.log(JSON.stringify(seg, null, 2));
     });
 
+    // Listen for price field debug from v2 API
+    const removePriceListener = window.electron?.on?.('farewise:debug-price', (data: any) => {
+      console.log('\n💰 PRIS-FELTER v2 (første recommendation):');
+      console.log(JSON.stringify(data, null, 2));
+    });
+
     return () => {
       removeEkListener?.();
       removeSegmentListener?.();
+      removePriceListener?.();
     };
   }, []);
 
