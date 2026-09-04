@@ -1462,30 +1462,34 @@ ipcMain.handle("ppt:generate", async (_, payload) => {
 
       if (!saveResult.canceled && saveResult.filePath) {
         const destPath = saveResult.filePath.endsWith('.pptx') ? saveResult.filePath : saveResult.filePath + '.pptx';
-        // PowerShell: finn åpen presentasjon og SaveAs til valgt sti
+        debugLog(`Step 7: Saving copy to ${destPath}`);
+        // SaveCopyAs keeps the generated presentation open from its local temp path.
+        // SaveAs makes PowerPoint switch to the SharePoint URL behind a synced folder.
         const saveScript = [
+          `$ErrorActionPreference = 'Stop'`,
           `$ppApp = [System.Runtime.InteropServices.Marshal]::GetActiveObject('PowerPoint.Application')`,
-          `foreach ($pres in $ppApp.Presentations) {`,
-          `  if ($pres.FullName -ieq '${basePath.replace(/'/g, "''")}') {`,
-          `    $pres.SaveAs('${destPath.replace(/'/g, "''")}', 24)`,
-          `    break`,
-          `  }`,
-          `}`,
+          `$pres = @($ppApp.Presentations | Where-Object { $_.FullName -ieq '${basePath.replace(/'/g, "''")}' } | Select-Object -First 1)`,
+          `if (-not $pres) { throw 'Den genererte PowerPoint-presentasjonen ble ikke funnet.' }`,
+          `$pres.SaveCopyAs('${destPath.replace(/'/g, "''")}')`,
+          `if (-not (Test-Path -LiteralPath '${destPath.replace(/'/g, "''")}')) { throw 'PowerPoint opprettet ikke lagringsfilen.' }`,
         ].join('\n');
         const saveScriptPath = path.join(tmpDir, 'save-as.ps1');
         fs.writeFileSync(saveScriptPath, saveScript, 'utf8');
 
-        await new Promise((res) => {
+        await new Promise((resolve, reject) => {
           execFile('powershell.exe', ['-ExecutionPolicy', 'Bypass', '-File', saveScriptPath],
             (err, stdout, stderr) => {
-              if (err) console.warn('SaveAs warning:', stderr || err.message);
-              else console.log('Saved to:', destPath);
-              res(); // Ikke feile hele operasjonen hvis SaveAs har problemer
+              if (err) {
+                reject(new Error(stderr || err.message));
+                return;
+              }
+              console.log('Saved copy to:', destPath);
+              resolve();
             }
           );
         });
 
-        debugLog(`Step 7 OK: Saved to ${destPath}`);
+        debugLog(`Step 7 OK: Saved copy to ${destPath}`);
         return { ok: true, savedPath: destPath };
       }
       // Bruker trykket Avbryt – filen er fortsatt åpen i PowerPoint fra temp
