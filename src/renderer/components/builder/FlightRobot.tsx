@@ -152,6 +152,7 @@ function getMaxBestQualityDurationHours(departureAirport: string): number {
 const MAX_EXTENDED_DURATION_HOURS = 23;  // 3. BILLIGSTE: maks 23 timer
 const NIGHT_START_MINUTES = 0;            // Night period starts 00:00 (0 minutes)
 const NIGHT_END_MINUTES = 330;             // Night period ends 05:30 (5*60 + 30 = 330 minutes)
+const RETURN_NIGHT_END = "06:00";         // Hjemreise fra Tanzania før 06:00 er nattfly
 
 // =============================================================================
 // TRANSLATIONS
@@ -206,7 +207,7 @@ const translations = {
     nightsExtra: "",
     nightsLess: "",
     mainResults: "Hovedresultater",
-    mainResultsDesc: "Max 20-22t reisetid, ingen nattfly (00:00-05:30, KLM/AF: 01:06-05:30)",
+    mainResultsDesc: "Max 20-22t reisetid, ingen nattfly (utreise 00:00-05:30, hjemreise 00:00-06:00, KLM/AF fra 01:06)",
     extendedResults: "Utvidede alternativer",
     extendedResultsDesc: "Maks 23t reisetid, ingen nattfly",
     cheaperFlexible: "Beste og Billigste med andre datoer",
@@ -227,7 +228,7 @@ const translations = {
     showDetails: "Vis detaljer",
     hideDetails: "Skjul detaljer",
     noFlightsFound: "Ingen flyreiser funnet som oppfyller kriteriene",
-    noFlightsMainCriteria: "Ingen flyreiser innenfor hovedkriterier (max 20-22t, ingen nattfly 00:00-05:30, KLM/AF: 01:06-05:30)",
+    noFlightsMainCriteria: "Ingen flyreiser innenfor hovedkriterier (max 20-22t, ingen nattfly: utreise 00:00-05:30, hjemreise 00:00-06:00, KLM/AF fra 01:06)",
     onlyLongerFlights: "Det finnes kun flyreiser med lengre reisetid (over 23 timer)",
     tryExtendingSearch: "Prøv å utvide søket eller endre datoene",
     preferredAirline: "Velg/fravalg flyselskap",
@@ -285,7 +286,7 @@ const translations = {
     nightsExtra: "",
     nightsLess: "",
     mainResults: "Hovedresultater",
-    mainResultsDesc: "Max 20-22t rejsetid, ingen natfly (00:00-05:30, KLM/AF: 01:06-05:30)",
+    mainResultsDesc: "Max 20-22t rejsetid, ingen natfly (udrejse 00:00-05:30, hjemrejse 00:00-06:00, KLM/AF fra 01:06)",
     extendedResults: "Udvidede alternativer",
     extendedResultsDesc: "Maks 23t rejsetid, ingen natfly",
     cheaperFlexible: "Bedste og Billigste med andre datoer",
@@ -306,7 +307,7 @@ const translations = {
     showDetails: "Vis detaljer",
     hideDetails: "Skjul detaljer",
     noFlightsFound: "Ingen flyrejser fundet som opfylder kriterierne",
-    noFlightsMainCriteria: "Ingen flyrejser inden for hovedkriterier (max 20-22t, ingen natfly 00:00-05:30, KLM/AF: 01:06-05:30)",
+    noFlightsMainCriteria: "Ingen flyrejser inden for hovedkriterier (max 20-22t, ingen natfly: udrejse 00:00-05:30, hjemrejse 00:00-06:00, KLM/AF fra 01:06)",
     onlyLongerFlights: "Der findes kun flyrejser med længere rejsetid (over 23 timer)",
     tryExtendingSearch: "Prøv at udvide søgningen eller ændre datoerne",
     preferredAirline: "Vælg/fravælg flyselskab",
@@ -427,8 +428,8 @@ function isNightTime(dateTimeStr: string, startTime: string = "00:00", endTime: 
 /**
  * Check if flight has problematic night arrival/departure at CRITICAL ENDPOINTS ONLY:
  * BLOCKED: Arrival at final destination (JRO/ZNZ/DAR) between specified night period
- * BLOCKED: Departure from origin on return leg (JRO/ZNZ/DAR) between 00:00-05:30
- * EXCEPTION: KLM (KL) and Air France (AF) have more lenient return window: 01:06-05:30 (allows 01:05)
+ * BLOCKED: Departure from origin on return leg (JRO/ZNZ/DAR) between 00:00-06:00
+ * EXCEPTION: KLM (KL) and Air France (AF) have more lenient return start: 01:06-06:00 (allows 01:05)
  * OK: Night layovers in between are allowed (ADD, DOH, AMS, etc)
  */
 function hasProblematicNightFlight(
@@ -478,10 +479,10 @@ function hasProblematicNightFlight(
       console.log(`🛬 TURKISH RETURN CHECK - Carriers: ${returnCarrierCodes.join(', ')}, Departure: ${returnDepartureTime}, Origin: ${firstReturnSegment.departure.iataCode}`);
     }
 
-    // KLM and AF have different night window: 01:06-05:30 (allows 01:05 departure)
-    // Other airlines: 00:00-05:30 (stricter)
+    // KLM and AF have a different night start, but all home departures before 06:00 are blocked.
+    // Other airlines: 00:00-06:00 (stricter start)
     const klmAfNightStart = "01:06";
-    const klmAfNightEnd = "05:30";
+    const klmAfNightEnd = RETURN_NIGHT_END;
     
     if (hasKLM || hasAF) {
       // Check KLM/AF with their own time window (01:06-05:30)
@@ -490,8 +491,8 @@ function hasProblematicNightFlight(
         return true;
       }
     } else {
-      // Check other airlines with standard time window (00:00-05:30)
-      if (isNightTime(returnDepartureTime, nightStart, nightEnd)) {
+      // Check other airlines with standard return window (00:00-06:00).
+      if (isNightTime(returnDepartureTime, nightStart, RETURN_NIGHT_END)) {
         if (hasReturnTurkish) {
           console.log(`❌ BLOCKING Turkish return flight - departs at night: ${returnDepartureTime}`);
         }
@@ -1035,20 +1036,20 @@ export default function FlightRobot() {
 
   // Separate descriptions for each category
   const bestAndCheapestDesc = language === 'da'
-    ? `Maks ${maxBestAndCheapestHours}t, ingen natfly (${nightFlightStart}-${nightFlightEnd}, KLM/AF: 01:06-05:30)`
-    : `Maks ${maxBestAndCheapestHours}t, ingen nattfly (${nightFlightStart}-${nightFlightEnd}, KLM/AF: 01:06-05:30)`;
+    ? `Maks ${maxBestAndCheapestHours}t, ingen natfly (udrejse ${nightFlightStart}-${nightFlightEnd}, hjemrejse 00:00-06:00, KLM/AF fra 01:06)`
+    : `Maks ${maxBestAndCheapestHours}t, ingen nattfly (utreise ${nightFlightStart}-${nightFlightEnd}, hjemreise 00:00-06:00, KLM/AF fra 01:06)`;
   
   const bestQualityDesc = language === 'da'
-    ? `Maks ${maxBestQualityHours}t, ingen natfly (${nightFlightStart}-${nightFlightEnd}, KLM/AF: 01:06-05:30)`
-    : `Maks ${maxBestQualityHours}t, ingen nattfly (${nightFlightStart}-${nightFlightEnd}, KLM/AF: 01:06-05:30)`;
+    ? `Maks ${maxBestQualityHours}t, ingen natfly (udrejse ${nightFlightStart}-${nightFlightEnd}, hjemrejse 00:00-06:00, KLM/AF fra 01:06)`
+    : `Maks ${maxBestQualityHours}t, ingen nattfly (utreise ${nightFlightStart}-${nightFlightEnd}, hjemreise 00:00-06:00, KLM/AF fra 01:06)`;
   
   const cheapestExtendedDesc = language === 'da'
-    ? `Maks 23t, ingen natfly (00:00-05:30, KLM/AF: 01:06-05:30)`
-    : `Maks 23t, ingen nattfly (00:00-05:30, KLM/AF: 01:06-05:30)`;
+    ? `Maks 23t, ingen natfly (udrejse 00:00-05:30, hjemrejse 00:00-06:00, KLM/AF fra 01:06)`
+    : `Maks 23t, ingen nattfly (utreise 00:00-05:30, hjemreise 00:00-06:00, KLM/AF fra 01:06)`;
   
   const noMainResultsCriteria = language === 'da'
-    ? `Ingen flyrejser indenfor hovedkriterier (Beste og billigste: max ${maxBestAndCheapestHours}t, Beste: max ${maxBestQualityHours}t, ingen natfly 00:00-05:30, KLM/AF: 01:06-05:30)`
-    : `Ingen flyreiser innenfor hovedkriterier (Beste og billigste: maks ${maxBestAndCheapestHours}t, Beste: maks ${maxBestQualityHours}t, ingen nattfly 00:00-05:30, KLM/AF: 01:06-05:30)`;
+    ? `Ingen flyrejser indenfor hovedkriterier (Beste og billigste: max ${maxBestAndCheapestHours}t, Beste: max ${maxBestQualityHours}t, udrejse 00:00-05:30, hjemrejse 00:00-06:00, KLM/AF fra 01:06)`
+    : `Ingen flyreiser innenfor hovedkriterier (Beste og billigste: maks ${maxBestAndCheapestHours}t, Beste: maks ${maxBestQualityHours}t, utreise 00:00-05:30, hjemreise 00:00-06:00, KLM/AF fra 01:06)`;
   const [error, setError] = useState<string | null>(null);
 
   // Calendar limits - only allow 1 year ahead
