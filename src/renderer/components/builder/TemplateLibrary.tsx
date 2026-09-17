@@ -1002,18 +1002,18 @@ export default function TemplateLibrary() {
                         {list.map((t) => (
                           <div
                             key={t.id}
-                            className={`flex items-center justify-between p-3 rounded-md border gap-3 ${markedForDeletion.has(t.id) ? 'bg-red-50 border-red-200' : 'bg-background'}`}
+                            className={`flex flex-col gap-2 p-3 rounded-md border ${markedForDeletion.has(t.id) ? 'bg-red-50 border-red-200' : 'bg-background'}`}
                           >
-                            <div className="flex items-center gap-3 flex-1 min-w-0">
+                            <div className="flex items-start gap-2">
                               <Checkbox
                                 checked={markedForDeletion.has(t.id)}
                                 onCheckedChange={() => toggleMarkTemplate(t.id)}
-                                className="flex-shrink-0"
+                                className="flex-shrink-0 mt-0.5"
                               />
-                              <span className="font-medium text-sm truncate">{t.name}</span>
+                              <span className="font-medium text-sm break-words" title={t.name}>{t.name}</span>
                             </div>
 
-                            <div className="flex items-center gap-2 flex-shrink-0">
+                            <div className="flex items-center justify-end gap-2 flex-wrap">
                               {/* Category change dropdown - kun admin eller egne filer */}
                               {(userIsAdmin || isPersonalCategory) && (
                                 <Select
@@ -1116,8 +1116,8 @@ export default function TemplateLibrary() {
                                       <div className="space-y-2">
                                         {subList.map(t => (
                                           <div key={t.id} className="flex items-center justify-between p-2 rounded-md border gap-2 bg-background">
-                                            <span className="font-medium text-sm truncate flex-1">{t.name}</span>
-                                            <Button variant="ghost" size="sm" onClick={() => handleDelete(t.id, t.name)} className="h-7 w-7 p-0 text-destructive hover:text-destructive" title="Slett"><Trash2 className="h-4 w-4" /></Button>
+                                            <span className="font-medium text-sm break-words flex-1" title={t.name}>{t.name}</span>
+                                            <Button variant="ghost" size="sm" onClick={() => handleDelete(t.id, t.name)} className="h-7 w-7 p-0 flex-shrink-0 text-destructive hover:text-destructive" title="Slett"><Trash2 className="h-4 w-4" /></Button>
                                           </div>
                                         ))}
                                       </div>
