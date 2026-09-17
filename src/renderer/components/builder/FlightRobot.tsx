@@ -509,7 +509,7 @@ function hasProblematicNightFlight(
  * Only applies to Norwegian flights (NO language).
  *
  * Rules:
- *  - UTREISE (itinerary[0]): ≥2t i sommersesongen (1 apr – 15 okt), ≥3t i vintersesongen (16 okt – 31 mar)
+ *  - UTREISE (itinerary[0]): ≥2t i sommersesongen (1 apr – 15 okt), ≥2t30m i vintersesongen (16 okt – 31 mar)
  *  - HJEMREISE (itinerary[1+]): alltid ≥3t
  */
 function hasInvalidOsloLayover(offer: FlightOffer): boolean {
@@ -535,14 +535,14 @@ function hasInvalidOsloLayover(offer: FlightOffer): boolean {
         } else {
           // Utreise: sesongbasert
           // Sommer: 1 april – 15 oktober → 2 timer
-          // Vinter: 16 oktober – 31 mars → 3 timer
+          // Vinter: 16 oktober – 31 mars → 2t30m
           const depDate = new Date(nextSeg.departure.at);
           const month = depDate.getUTCMonth() + 1; // 1-12
           const day = depDate.getUTCDate();
           const isSummer =
             (month > 4 || (month === 4 && day >= 1)) &&
             (month < 10 || (month === 10 && day <= 15));
-          minLayoverMinutes = isSummer ? 120 : 180;
+          minLayoverMinutes = isSummer ? 120 : 150;
         }
 
         if (layoverMinutes < minLayoverMinutes) {
@@ -796,7 +796,7 @@ function isBetterBB(challenger: ProcessedFlight, current: ProcessedFlight, langu
  * 3. BILLIGSTE (≤23h, ingen nattfly)
  *
  * HARD FILTER: Aldri fly over 23 timer
- * HARD FILTER (NO): Oslo-mellomlanding: utreise ≥2t (1 apr–15 okt) / ≥3t (16 okt–31 mar); hjemreise alltid ≥3t
+ * HARD FILTER (NO): Oslo-mellomlanding: utreise ≥2t (1 apr–15 okt) / ≥2t30m (16 okt–31 mar); hjemreise alltid ≥3t
  */
 function categorizeFlights(
   flights: ProcessedFlight[], 
@@ -811,6 +811,8 @@ function categorizeFlights(
   cheapestExtended: ProcessedFlight | null;
   bestAndCheapestIsBest: boolean;
   bestAndCheapestIsAlsoCheapest: boolean;
+  shortOsloLayoverBestAndCheapest: ProcessedFlight | null;
+  shortOsloLayoverBestQuality: ProcessedFlight | null;
 } {
   const MAX_BEST_AND_CHEAPEST_HOURS = customMaxBBHours ?? getMaxBestAndCheapestDurationHours(departureAirport);
   const MAX_BEST_QUALITY_HOURS = getMaxBestQualityDurationHours(departureAirport);
@@ -821,9 +823,12 @@ function categorizeFlights(
     f.totalDurationMinutes <= MAX_EXTENDED_DURATION_HOURS * 60
   );
 
-  // HARD FILTER (NO only): Oslo-mellomlanding: utreise ≥2t (sommer) / ≥3t (vinter); hjemreise alltid ≥3t
+  // HARD FILTER (NO only): Oslo-mellomlanding: utreise ≥2t (sommer) / ≥2t30m (vinter); hjemreise alltid ≥3t
+  // Fly som kun feiler på denne regelen tas vare på (osloBlockedFlights) slik at de kan tilbys som eget forslag i UI.
+  let osloBlockedFlights: ProcessedFlight[] = [];
   if (language === 'no') {
     const beforeOsloFilter = validFlights.length;
+    osloBlockedFlights = validFlights.filter(f => f.hasInvalidOsloLayover === true);
     validFlights = validFlights.filter(f => f.hasInvalidOsloLayover !== true);
     const removedOslo = beforeOsloFilter - validFlights.length;
     if (removedOslo > 0) {
@@ -835,7 +840,7 @@ function categorizeFlights(
   
   if (validFlights.length === 0) {
     console.warn('⚠️ Ingen fly under 23 timer – viser ingenting');
-    return { bestAndCheapest: null, bestQuality: null, cheapestExtended: null, bestAndCheapestIsBest: false, bestAndCheapestIsAlsoCheapest: false };
+    return { bestAndCheapest: null, bestQuality: null, cheapestExtended: null, bestAndCheapestIsBest: false, bestAndCheapestIsAlsoCheapest: false, shortOsloLayoverBestAndCheapest: null, shortOsloLayoverBestQuality: null };
   }
 
   // Felles sorteringsregler for alle 3 kategorier:
@@ -910,6 +915,26 @@ function categorizeFlights(
     : `❌ Ingen B&B funnet (ingen fly passerer ≤${MAX_BEST_AND_CHEAPEST_HOURS}h + ingen natt)`
   );
 
+  // Fly som ble luket bort KUN pga. for kort Oslo-mellomlanding, men som ellers ville vunnet Beste og billigste
+  const shortOsloLayoverBestAndCheapest = (() => {
+    if (osloBlockedFlights.length === 0) return null;
+    const candidates = osloBlockedFlights.filter(f =>
+      f.totalDurationMinutes <= MAX_BEST_AND_CHEAPEST_HOURS * 60 && !f.hasNightFlight
+    );
+    if (candidates.length === 0) return null;
+    const topCandidate = [...candidates].sort((a, b) => {
+      const isANeg = a.fareType === 'NEGOTIATED';
+      const isBNeg = b.fareType === 'NEGOTIATED';
+      if (isANeg && !isBNeg && a.price <= b.price + PACKAGE_FARE_TOLERANCE) return -1;
+      if (!isANeg && isBNeg && b.price <= a.price + PACKAGE_FARE_TOLERANCE) return 1;
+      return a.price - b.price;
+    })[0];
+    if (!bestAndCheapest || isBetterBB(topCandidate, bestAndCheapest, language)) {
+      return topCandidate;
+    }
+    return null;
+  })();
+
   // CATEGORY 2: BESTE
   // Første fly i sortedFlights som passerer ≤17t/19.5t + ingen nattfly + ikke Business/First
   // OG har kortere reisetid enn B&B
@@ -964,6 +989,32 @@ function categorizeFlights(
     ) ?? null;
   }
 
+  // Fly som ble luket bort KUN pga. for kort Oslo-mellomlanding, men som ellers ville vunnet Beste
+  const shortOsloLayoverBestQuality = (() => {
+    if (osloBlockedFlights.length === 0) return null;
+    const candidates = osloBlockedFlights.filter(f =>
+      f.totalDurationMinutes <= MAX_BEST_QUALITY_HOURS * 60 &&
+      !f.hasNightFlight &&
+      f.travelClass !== 'BUSINESS' &&
+      f.travelClass !== 'FIRST'
+    );
+    if (candidates.length === 0) return null;
+    const topCandidate = [...candidates].sort((a, b) => {
+      const aStops = a.outbound.stops + (a.inbound?.stops ?? 0);
+      const bStops = b.outbound.stops + (b.inbound?.stops ?? 0);
+      if (aStops !== bStops) return aStops - bStops;
+      const aDur = a.combinedDurationMinutes || a.totalDurationMinutes;
+      const bDur = b.combinedDurationMinutes || b.totalDurationMinutes;
+      return aDur - bDur;
+    })[0];
+    if (!bestQuality) return topCandidate;
+    const candStops = topCandidate.outbound.stops + (topCandidate.inbound?.stops ?? 0);
+    const bestStops = bestQuality.outbound.stops + (bestQuality.inbound?.stops ?? 0);
+    if (candStops < bestStops) return topCandidate;
+    if (candStops === bestStops && topCandidate.totalDurationMinutes < bestQuality.totalDurationMinutes) return topCandidate;
+    return null;
+  })();
+
   // CATEGORY 3: BILLIGSTE (≤23t, ingen nattfly)
   // Finn billigste fly som IKKE er samme fly som B&B (uavhengig av pris)
   // Hvis B&B allerede er det billigste alternativet, vises neste billigste med et notat
@@ -981,6 +1032,8 @@ function categorizeFlights(
     cheapestExtended,
     bestAndCheapestIsBest,
     bestAndCheapestIsAlsoCheapest,
+    shortOsloLayoverBestAndCheapest,
+    shortOsloLayoverBestQuality,
   };
 }
 
@@ -1204,6 +1257,12 @@ export default function FlightRobot() {
   // Flagg: Beste og Billigste er allerede det billigste – Billigste viser neste alternativ
   const [bestAndCheapestIsAlsoCheapest, setBestAndCheapestIsAlsoCheapest] = useState(false);
 
+  // Fly som ble luket bort kun pga. for kort Oslo-mellomlanding, men som ellers ville vunnet
+  const [shortOsloLayoverBestAndCheapest, setShortOsloLayoverBestAndCheapest] = useState<ProcessedFlight | null>(null);
+  const [shortOsloLayoverBestQuality, setShortOsloLayoverBestQuality] = useState<ProcessedFlight | null>(null);
+  const [showShortOsloBestAndCheapest, setShowShortOsloBestAndCheapest] = useState(false);
+  const [showShortOsloBestQuality, setShowShortOsloBestQuality] = useState(false);
+
   // Preferred airline results (separate state since they're shown alongside regular results)
   const [preferredAirlineResults, setPreferredAirlineResults] = useState<{
     bestAndCheapest: ProcessedFlight | null;
@@ -1346,6 +1405,10 @@ export default function FlightRobot() {
     setHasPreferredAirlineResults(false);
     setBestAndCheapestIsBest(false);
     setBestAndCheapestIsAlsoCheapest(false);
+    setShortOsloLayoverBestAndCheapest(null);
+    setShortOsloLayoverBestQuality(null);
+    setShowShortOsloBestAndCheapest(false);
+    setShowShortOsloBestQuality(false);
     setSearchProgress({ current: 0, max: 0 });
     abortController?.abort();
     setAbortController(null);
@@ -1469,6 +1532,10 @@ export default function FlightRobot() {
     // BESTE-flagg
     setBestAndCheapestIsBest(false);
     setBestAndCheapestIsAlsoCheapest(false);
+    setShortOsloLayoverBestAndCheapest(null);
+    setShortOsloLayoverBestQuality(null);
+    setShowShortOsloBestAndCheapest(false);
+    setShowShortOsloBestQuality(false);
 
     // Søkefremgang
     setSearchProgress({ current: 0, max: 0 });
@@ -1910,6 +1977,10 @@ function saveToPowerPointSingle(flight: ProcessedFlight, title: string) {
     setBestQualityResult(null);
     setBestAndCheapestIsBest(false);
     setBestAndCheapestIsAlsoCheapest(false);
+    setShortOsloLayoverBestAndCheapest(null);
+    setShortOsloLayoverBestQuality(null);
+    setShowShortOsloBestAndCheapest(false);
+    setShowShortOsloBestQuality(false);
     setCheapestExtendedResult(null);
     setFlexibleResult(null);
     setAddNightsResult(null);
@@ -1948,6 +2019,8 @@ function saveToPowerPointSingle(flight: ProcessedFlight, title: string) {
       setBestQualityResult(categories.bestQuality);
       setBestAndCheapestIsBest(categories.bestAndCheapestIsBest);
       setBestAndCheapestIsAlsoCheapest(categories.bestAndCheapestIsAlsoCheapest);
+      setShortOsloLayoverBestAndCheapest(categories.shortOsloLayoverBestAndCheapest);
+      setShortOsloLayoverBestQuality(categories.shortOsloLayoverBestQuality);
       setCheapestExtendedResult(categories.cheapestExtended);
       
       let foundCount = 0;
@@ -3501,6 +3574,39 @@ function saveToPowerPointSingle(flight: ProcessedFlight, title: string) {
             </div>
           )}
 
+          {/* Kortere Oslo-mellomlanding: fant en billigere/bedre B&B-rute, men avvist pga. for kort Oslo-mellomlanding */}
+          {shortOsloLayoverBestAndCheapest && (
+            <div className="rounded-md border border-amber-200 bg-amber-50/50 dark:border-amber-800 dark:bg-amber-950/20 p-3 space-y-3">
+              <button
+                onClick={() => setShowShortOsloBestAndCheapest(v => !v)}
+                className="flex items-center gap-2 w-full text-left text-sm text-amber-800 dark:text-amber-200"
+              >
+                <AlertTriangle className="h-4 w-4 shrink-0" />
+                <span className="flex-1">
+                  {language === 'da'
+                    ? `${t.bestAndCheapest}: Der findes en rute med ${shortOsloLayoverBestAndCheapest.outbound.airlineNames?.[0] || shortOsloLayoverBestAndCheapest.outbound.airlines[0]}, men mellemlandingen i Oslo er for kort. Vil du se den?`
+                    : `${t.bestAndCheapest}: Det finnes en rute med ${shortOsloLayoverBestAndCheapest.outbound.airlineNames?.[0] || shortOsloLayoverBestAndCheapest.outbound.airlines[0]}, men mellomlandingen i Oslo er for kort. Vil du se den?`}
+                </span>
+                <ChevronDown className={`h-4 w-4 shrink-0 transition-transform ${showShortOsloBestAndCheapest ? 'rotate-180' : ''}`} />
+              </button>
+              {showShortOsloBestAndCheapest && (
+                <FlightResultCard
+                  flight={shortOsloLayoverBestAndCheapest}
+                  language={language}
+                  translations={t}
+                  formatTime={formatTime}
+                  formatDate={formatDate}
+                  formatDuration={formatDuration}
+                  onSave={saveToPowerPointSingle}
+                  title={t.bestAndCheapest}
+                  childrenCount={parseInt(children)}
+                  hasNightFlight={shortOsloLayoverBestAndCheapest.hasNightFlight}
+                  onBookFarewise={handleFarewiseBooking}
+                />
+              )}
+            </div>
+          )}
+
           {/* PREFERRED AIRLINE: Best and Cheapest */}
           {usePreferredAirline && selectedAirlines.length > 0 && preferredAirlineResults.bestAndCheapest && (!onlyBusinessClass || preferredAirlineResults.bestAndCheapest.travelClass === 'BUSINESS') && (
             <div className="space-y-4">
@@ -3575,6 +3681,39 @@ function saveToPowerPointSingle(flight: ProcessedFlight, title: string) {
                 hasNightFlight={bestQualityResult.hasNightFlight}
                 onBookFarewise={handleFarewiseBooking}
               />
+            </div>
+          )}
+
+          {/* Kortere Oslo-mellomlanding: fant en bedre Beste-rute, men avvist pga. for kort Oslo-mellomlanding */}
+          {shortOsloLayoverBestQuality && (
+            <div className="rounded-md border border-amber-200 bg-amber-50/50 dark:border-amber-800 dark:bg-amber-950/20 p-3 space-y-3">
+              <button
+                onClick={() => setShowShortOsloBestQuality(v => !v)}
+                className="flex items-center gap-2 w-full text-left text-sm text-amber-800 dark:text-amber-200"
+              >
+                <AlertTriangle className="h-4 w-4 shrink-0" />
+                <span className="flex-1">
+                  {language === 'da'
+                    ? `${t.beste}: Der findes en rute med ${shortOsloLayoverBestQuality.outbound.airlineNames?.[0] || shortOsloLayoverBestQuality.outbound.airlines[0]}, men mellemlandingen i Oslo er for kort. Vil du se den?`
+                    : `${t.beste}: Det finnes en rute med ${shortOsloLayoverBestQuality.outbound.airlineNames?.[0] || shortOsloLayoverBestQuality.outbound.airlines[0]}, men mellomlandingen i Oslo er for kort. Vil du se den?`}
+                </span>
+                <ChevronDown className={`h-4 w-4 shrink-0 transition-transform ${showShortOsloBestQuality ? 'rotate-180' : ''}`} />
+              </button>
+              {showShortOsloBestQuality && (
+                <FlightResultCard
+                  flight={shortOsloLayoverBestQuality}
+                  language={language}
+                  translations={t}
+                  formatTime={formatTime}
+                  formatDate={formatDate}
+                  formatDuration={formatDuration}
+                  onSave={saveToPowerPointSingle}
+                  title={t.beste}
+                  childrenCount={parseInt(children)}
+                  hasNightFlight={shortOsloLayoverBestQuality.hasNightFlight}
+                  onBookFarewise={handleFarewiseBooking}
+                />
+              )}
             </div>
           )}
 

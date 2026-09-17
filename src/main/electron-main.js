@@ -1462,15 +1462,16 @@ ipcMain.handle("ppt:generate", async (_, payload) => {
 
       if (!saveResult.canceled && saveResult.filePath) {
         const destPath = saveResult.filePath.endsWith('.pptx') ? saveResult.filePath : saveResult.filePath + '.pptx';
-        debugLog(`Step 7: Saving copy to ${destPath}`);
-        // SaveCopyAs keeps the generated presentation open from its local temp path.
-        // SaveAs makes PowerPoint switch to the SharePoint URL behind a synced folder.
+        debugLog(`Step 7: Saving to ${destPath}`);
+        // SaveAs (not SaveCopyAs) rebinds the live presentation to destPath, so any
+        // further manual edits/saves by the user (Ctrl+S, Lagre som PDF) go to the
+        // customer folder instead of silently staying on the abandoned temp file.
         const saveScript = [
           `$ErrorActionPreference = 'Stop'`,
           `$ppApp = [System.Runtime.InteropServices.Marshal]::GetActiveObject('PowerPoint.Application')`,
           `$pres = @($ppApp.Presentations | Where-Object { $_.FullName -ieq '${basePath.replace(/'/g, "''")}' } | Select-Object -First 1)`,
           `if (-not $pres) { throw 'Den genererte PowerPoint-presentasjonen ble ikke funnet.' }`,
-          `$pres.SaveCopyAs('${destPath.replace(/'/g, "''")}')`,
+          `$pres.SaveAs('${destPath.replace(/'/g, "''")}', 24)`,
           `if (-not (Test-Path -LiteralPath '${destPath.replace(/'/g, "''")}')) { throw 'PowerPoint opprettet ikke lagringsfilen.' }`,
         ].join('\n');
         const saveScriptPath = path.join(tmpDir, 'save-as.ps1');
@@ -1483,13 +1484,13 @@ ipcMain.handle("ppt:generate", async (_, payload) => {
                 reject(new Error(stderr || err.message));
                 return;
               }
-              console.log('Saved copy to:', destPath);
+              console.log('Saved to:', destPath);
               resolve();
             }
           );
         });
 
-        debugLog(`Step 7 OK: Saved copy to ${destPath}`);
+        debugLog(`Step 7 OK: Saved to ${destPath}`);
         return { ok: true, savedPath: destPath };
       }
       // Bruker trykket Avbryt – filen er fortsatt åpen i PowerPoint fra temp
