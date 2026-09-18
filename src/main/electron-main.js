@@ -1463,16 +1463,19 @@ ipcMain.handle("ppt:generate", async (_, payload) => {
       if (!saveResult.canceled && saveResult.filePath) {
         const destPath = saveResult.filePath.endsWith('.pptx') ? saveResult.filePath : saveResult.filePath + '.pptx';
         debugLog(`Step 7: Saving to ${destPath}`);
-        // SaveAs (not SaveCopyAs) rebinds the live presentation to destPath, so any
-        // further manual edits/saves by the user (Ctrl+S, Lagre som PDF) go to the
-        // customer folder instead of silently staying on the abandoned temp file.
+        // SaveCopyAs writes to the local synced OneDrive path without requiring
+        // PowerPoint to resolve the folder as a SharePoint URL.
         const saveScript = [
           `$ErrorActionPreference = 'Stop'`,
           `$ppApp = [System.Runtime.InteropServices.Marshal]::GetActiveObject('PowerPoint.Application')`,
           `$pres = @($ppApp.Presentations | Where-Object { $_.FullName -ieq '${basePath.replace(/'/g, "''")}' } | Select-Object -First 1)`,
           `if (-not $pres) { throw 'Den genererte PowerPoint-presentasjonen ble ikke funnet.' }`,
-          `$pres.SaveAs('${destPath.replace(/'/g, "''")}', 24)`,
+          `$pres.SaveCopyAs('${destPath.replace(/'/g, "''")}')`,
           `if (-not (Test-Path -LiteralPath '${destPath.replace(/'/g, "''")}')) { throw 'PowerPoint opprettet ikke lagringsfilen.' }`,
+          `$pres.Close()`,
+          `$activePres = $ppApp.Presentations.Open('${destPath.replace(/'/g, "''")}', $false, $false, $true)`,
+          `if (-not $activePres) { throw 'PowerPoint kunne ikke åpne den lagrede kundemappe-filen.' }`,
+          `$ppApp.UserControl = $true`,
         ].join('\n');
         const saveScriptPath = path.join(tmpDir, 'save-as.ps1');
         fs.writeFileSync(saveScriptPath, saveScript, 'utf8');
