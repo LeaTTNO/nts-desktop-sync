@@ -114,7 +114,7 @@ interface ProcessedFlight {
   totalDurationMinutes: number; // Max single leg duration (for filtering)
   combinedDurationMinutes?: number; // Combined out+in duration (for scoring)
   hasNightFlight: boolean;
-  hasInvalidOsloLayover?: boolean; // Oslo layover too short (utreise: 2t sommer/3t vinter, hjemreise: alltid 3t)
+  hasInvalidOsloLayover?: boolean; // Oslo layover too short (utreise: 2t sommer/1t44m vinter, hjemreise: 2t30m)
   hasKlmAfMidnightReturn?: boolean; // KLM/AF return departs 00:00-01:31 (allowed but show warning)
   searchDate?: string;
   nightsDiff?: number;
@@ -236,7 +236,7 @@ const translations = {
     selectAirline: "Velg flyselskap",
     noPreferredAirlineResults: "Ingen resultater funnet med valgt flyselskap som passer til kriteriene",
     allowTwoStopBB: "Tillat 2-stopp i B&B hvis billigere",
-    allowTwoStopBBInfo: "Som standard vises kun 1-stopp fly i 'Beste og billigste' fra OSL/HAM/CPH. Kryss av for å tillate 2-stopp hvis de er rimeligere enn 1-stopp alternativene. 2-stopp kan uansett dukke opp i 'Billigste'.",
+    allowTwoStopBBInfo: "Som standard vises kun ruter med maks ett stopp per flyben i 'Beste og billigste'. Kryss av for å la en billigere rute med 2 stopp velges.",
   },
   da: {
     title: "FLYROBOT",
@@ -315,7 +315,7 @@ const translations = {
     selectAirline: "Vælg flyselskab",
     noPreferredAirlineResults: "Ingen resultater fundet med valgt flyselskab som passer til kriterierne",
     allowTwoStopBB: "Tillad 2-stop i B&B hvis billigere",
-    allowTwoStopBBInfo: "Som standard vises kun 1-stop fly i 'Bedste og billigste' fra OSL/HAM/CPH. Sæt hak for at tillade 2-stop hvis de er billigere end 1-stop alternativerne. 2-stop kan alligevel dukke op i 'Billigste'.",
+    allowTwoStopBBInfo: "Som standard vises kun ruter med højst ét stop pr. flyben i 'Bedste og billigste'. Sæt hak for at lade en billigere rute med 2 stop blive valgt.",
   },
 };
 
@@ -509,8 +509,8 @@ function hasProblematicNightFlight(
  * Only applies to Norwegian flights (NO language).
  *
  * Rules:
- *  - UTREISE (itinerary[0]): ≥2t i sommersesongen (1 apr – 15 okt), ≥2t30m i vintersesongen (16 okt – 31 mar)
- *  - HJEMREISE (itinerary[1+]): alltid ≥3t
+ *  - UTREISE (itinerary[0]): ≥2t i sommersesongen (1 apr – 15 okt), ≥1t44m i vintersesongen (16 okt – 31 mar)
+ *  - HJEMREISE (itinerary[1+]): alltid ≥2t30m
  */
 function hasInvalidOsloLayover(offer: FlightOffer): boolean {
   for (let iIdx = 0; iIdx < offer.itineraries.length; iIdx++) {
@@ -530,19 +530,19 @@ function hasInvalidOsloLayover(offer: FlightOffer): boolean {
 
         let minLayoverMinutes: number;
         if (isInbound) {
-          // Hjemreise: alltid minst 3 timer
-          minLayoverMinutes = 180;
+          // Hjemreise: alltid minst 2t30m
+          minLayoverMinutes = 150;
         } else {
           // Utreise: sesongbasert
           // Sommer: 1 april – 15 oktober → 2 timer
-          // Vinter: 16 oktober – 31 mars → 2t30m
+          // Vinter: 16 oktober – 31 mars → 1t44m
           const depDate = new Date(nextSeg.departure.at);
           const month = depDate.getUTCMonth() + 1; // 1-12
           const day = depDate.getUTCDate();
           const isSummer =
             (month > 4 || (month === 4 && day >= 1)) &&
             (month < 10 || (month === 10 && day <= 15));
-          minLayoverMinutes = isSummer ? 120 : 150;
+          minLayoverMinutes = isSummer ? 120 : 104;
         }
 
         if (layoverMinutes < minLayoverMinutes) {
@@ -796,8 +796,12 @@ function isBetterBB(challenger: ProcessedFlight, current: ProcessedFlight, langu
  * 3. BILLIGSTE (≤23h, ingen nattfly)
  *
  * HARD FILTER: Aldri fly over 23 timer
- * HARD FILTER (NO): Oslo-mellomlanding: utreise ≥2t (1 apr–15 okt) / ≥2t30m (16 okt–31 mar); hjemreise alltid ≥3t
+ * HARD FILTER (NO): Oslo-mellomlanding: utreise ≥2t (1 apr–15 okt) / ≥1t44m (16 okt–31 mar); hjemreise alltid ≥2t30m
  */
+function hasAtMostOneStopPerLeg(flight: ProcessedFlight): boolean {
+  return flight.outbound.stops <= 1 && (flight.inbound?.stops ?? 0) <= 1;
+}
+
 function categorizeFlights(
   flights: ProcessedFlight[], 
   t: typeof translations.no,
@@ -823,7 +827,7 @@ function categorizeFlights(
     f.totalDurationMinutes <= MAX_EXTENDED_DURATION_HOURS * 60
   );
 
-  // HARD FILTER (NO only): Oslo-mellomlanding: utreise ≥2t (sommer) / ≥2t30m (vinter); hjemreise alltid ≥3t
+  // HARD FILTER (NO only): Oslo-mellomlanding: utreise ≥2t (sommer) / ≥1t44m (vinter); hjemreise alltid ≥2t30m
   // Fly som kun feiler på denne regelen tas vare på (osloBlockedFlights) slik at de kan tilbys som eget forslag i UI.
   let osloBlockedFlights: ProcessedFlight[] = [];
   if (language === 'no') {
@@ -877,35 +881,15 @@ function categorizeFlights(
     );
   });
 
-  // CATEGORY 1: BESTE OG BILLIGSTE
-  // Fra OSL/HAM/CPH: viser alltid 1-stopp med mindre allowTwoStopBB er aktivert
-  // allowTwoStopBB=false (default): 1-stopp foretrekkes alltid, 2-stopp vises kun i Billigste
-  // allowTwoStopBB=true: 2-stopp tillates i B&B hvis det er billigere enn 1-stopp
-  const MAJOR_HUBS_BB = ['OSL', 'HAM', 'CPH'];
-  const isHubDeparture = MAJOR_HUBS_BB.includes(departureAirport.toUpperCase());
+  // CATEGORY 1: BESTE OG BILLIGSTE: maks ett stopp per flyben som standard.
+  // To stopp tillates bare hvis brukeren eksplisitt har valgt det.
   const bestAndCheapest = (() => {
-    const STOP_TOLERANCE = language === 'da' ? 1500 : 2000;
     const qualifyingFlights = sortedFlights.filter(f =>
-      f.totalDurationMinutes <= MAX_BEST_AND_CHEAPEST_HOURS * 60 && !f.hasNightFlight
+      f.totalDurationMinutes <= MAX_BEST_AND_CHEAPEST_HOURS * 60 &&
+      !f.hasNightFlight &&
+      (allowTwoStopBB || hasAtMostOneStopPerLeg(f))
     );
     if (qualifyingFlights.length === 0) return null;
-
-    // Fra regionflyplasser (ikke OSL/HAM/CPH): bare billigste, ingen stopp-preferanse
-    if (!isHubDeparture) {
-      return { ...qualifyingFlights[0], isRecommended: true };
-    }
-
-    // Fra hub-flyplasser (OSL/HAM/CPH) + allowTwoStopBB=false: alltid maks 1-stopp PER BEN i B&B
-    if (!allowTwoStopBB) {
-      const oneStopFlights = qualifyingFlights.filter(f =>
-        f.outbound.stops <= 1 && (f.inbound?.stops ?? 0) <= 1
-      );
-      if (oneStopFlights.length > 0) return { ...oneStopFlights[0], isRecommended: true };
-      // Ingen maks-1-stopp-per-ben tilgjengelig – fall back til billigste
-      return { ...qualifyingFlights[0], isRecommended: true };
-    }
-
-    // Hub + allowTwoStopBB=true: billigste uansett stopp
     return { ...qualifyingFlights[0], isRecommended: true };
   })();
   const basePrice = bestAndCheapest?.price || 0;
@@ -919,7 +903,9 @@ function categorizeFlights(
   const shortOsloLayoverBestAndCheapest = (() => {
     if (osloBlockedFlights.length === 0) return null;
     const candidates = osloBlockedFlights.filter(f =>
-      f.totalDurationMinutes <= MAX_BEST_AND_CHEAPEST_HOURS * 60 && !f.hasNightFlight
+      f.totalDurationMinutes <= MAX_BEST_AND_CHEAPEST_HOURS * 60 &&
+      !f.hasNightFlight &&
+      (allowTwoStopBB || hasAtMostOneStopPerLeg(f))
     );
     if (candidates.length === 0) return null;
     const topCandidate = [...candidates].sort((a, b) => {
@@ -1221,7 +1207,6 @@ export default function FlightRobot() {
   const [intervalRemoveNightsCount, setIntervalRemoveNightsCount] = useState(1);
   // Interval-specific overrides
   const [intervalAllowNightFlights, setIntervalAllowNightFlights] = useState(false);
-  const [intervalAllowTwoStopBB, setIntervalAllowTwoStopBB] = useState(false);
 
   // Extended interval results
   type IntervalCategoryResult = {
@@ -1377,7 +1362,7 @@ export default function FlightRobot() {
     setIntervalIncludeAddNights(false);
     setIntervalIncludeRemoveNights(false);
     setIntervalAllowNightFlights(false);
-    setIntervalAllowTwoStopBB(false);
+    setAllowTwoStopBB(false);
     setIntervalBesteResult({ best: null, alternatives: [] });
     setIntervalBilligsteResult({ best: null, alternatives: [] });
     setIntervalAddNightsResult({ best: null, alternatives: [] });
@@ -1523,7 +1508,6 @@ export default function FlightRobot() {
     setIntervalIncludeAddNights(false);
     setIntervalIncludeRemoveNights(false);
     setIntervalAllowNightFlights(false);
-    setIntervalAllowTwoStopBB(false);
     setIntervalBesteResult({ best: null, alternatives: [] });
     setIntervalBilligsteResult({ best: null, alternatives: [] });
     setIntervalAddNightsResult({ best: null, alternatives: [] });
@@ -1614,7 +1598,8 @@ export default function FlightRobot() {
     // For strict categories, also filter by stricter duration limits
     if (category === 'strict') {
       const strictFiltered = filtered.filter(f => 
-        f.totalDurationMinutes <= MAX_DURATION_HOURS * 60
+        f.totalDurationMinutes <= MAX_DURATION_HOURS * 60 &&
+        (sortBy !== 'price' || allowTwoStopBB || hasAtMostOneStopPerLeg(f))
       );
       console.log(`    Strict flights (≤${MAX_DURATION_HOURS}h): ${strictFiltered.length}/${filtered.length}`);
       
@@ -2145,7 +2130,9 @@ function saveToPowerPointSingle(flight: ProcessedFlight, title: string) {
             const processed = processFlightOffers(offers, { date: newDepDate, nightsDiff: 0 }, pax, allowNightFlights, nightFlightStart, nightFlightEnd, excludedAirlines);
             // Use BESTE OG BILLIGSTE criteria: Max 21-23h, no night flights
             let valid = processed.filter(f =>
-              f.totalDurationMinutes <= MAX_BEST_AND_CHEAPEST_HOURS * 60 && !f.hasNightFlight
+              f.totalDurationMinutes <= MAX_BEST_AND_CHEAPEST_HOURS * 60 &&
+              !f.hasNightFlight &&
+              (allowTwoStopBB || hasAtMostOneStopPerLeg(f))
             );
             
             // Filter Oslo layover (NO only)
@@ -2222,7 +2209,9 @@ function saveToPowerPointSingle(flight: ProcessedFlight, title: string) {
             
             // Use BESTE OG BILLIGSTE criteria: Max 21-23h, no night flights
             let valid = processed.filter(f =>
-              f.totalDurationMinutes <= MAX_BEST_AND_CHEAPEST_HOURS * 60 && !f.hasNightFlight
+              f.totalDurationMinutes <= MAX_BEST_AND_CHEAPEST_HOURS * 60 &&
+              !f.hasNightFlight &&
+              (allowTwoStopBB || hasAtMostOneStopPerLeg(f))
             );
             console.log(`  ✅ After filters: ${valid.length} valid flights (≤${MAX_BEST_AND_CHEAPEST_HOURS}h, no night flights)`);
             
@@ -2306,7 +2295,9 @@ function saveToPowerPointSingle(flight: ProcessedFlight, title: string) {
             
             // Use BESTE OG BILLIGSTE criteria: Max 21-23h, no night flights
             let valid = processed.filter(f =>
-              f.totalDurationMinutes <= MAX_BEST_AND_CHEAPEST_HOURS * 60 && !f.hasNightFlight
+              f.totalDurationMinutes <= MAX_BEST_AND_CHEAPEST_HOURS * 60 &&
+              !f.hasNightFlight &&
+              (allowTwoStopBB || hasAtMostOneStopPerLeg(f))
             );
             console.log(`  ✅ After filters: ${valid.length} valid flights (≤${MAX_BEST_AND_CHEAPEST_HOURS}h, no night flights)`);
             
@@ -2406,7 +2397,6 @@ function saveToPowerPointSingle(flight: ProcessedFlight, title: string) {
 
         // Search ALL dates in interval to find BEST option using SCORE (not just price!)
         const intNightFlights = intervalAllowNightFlights || allowNightFlights;
-        const intTwoStopBB = intervalAllowTwoStopBB || allowTwoStopBB;
         for (let i = 0; i <= daysDiff; i++) {
           const searchDepDate = format(new Date(startDate.getTime() + i * 24 * 60 * 60 * 1000), 'yyyy-MM-dd');
           // +1 because "antall netter" = nights at destination (from arrival day, not departure day)
@@ -2428,7 +2418,7 @@ function saveToPowerPointSingle(flight: ProcessedFlight, title: string) {
             const processed = processFlightOffers(offers, { date: searchDepDate, nightsDiff: 0 }, pax, intNightFlights, nightFlightStart, nightFlightEnd, excludedAirlines);
 
             // Use exactly the same B&B logic as the main search
-            const intervalCats = categorizeFlights(processed, t, departure, language, intTwoStopBB, useCustomMaxBBHours ? customMaxBBHours : null);
+            const intervalCats = categorizeFlights(processed, t, departure, language, allowTwoStopBB, useCustomMaxBBHours ? customMaxBBHours : null);
             const bestForDate = intervalCats.bestAndCheapest;
 
             if (bestForDate) {
@@ -2481,7 +2471,7 @@ function saveToPowerPointSingle(flight: ProcessedFlight, title: string) {
               try {
                 const addOffers = await searchFlightsApi(departure, destination, returnFrom, returnTo, searchDepDate, addRetDate, pax, currency);
                 const addProcessed = processFlightOffers(addOffers, { date: searchDepDate, nightsDiff: n }, pax, intNightFlights, nightFlightStart, nightFlightEnd, excludedAirlines);
-                const addCats = categorizeFlights(addProcessed, t, departure, language, intTwoStopBB, useCustomMaxBBHours ? customMaxBBHours : null);
+                const addCats = categorizeFlights(addProcessed, t, departure, language, allowTwoStopBB, useCustomMaxBBHours ? customMaxBBHours : null);
                 if (addCats.bestAndCheapest) {
                   const f = { ...addCats.bestAndCheapest, searchDate: searchDepDate, nightsDiff: n };
                   const fAirline = f.outbound.airlineNames?.[0] || f.outbound.airlines[0] || 'N/A';
@@ -2505,7 +2495,7 @@ function saveToPowerPointSingle(flight: ProcessedFlight, title: string) {
               try {
                 const remOffers = await searchFlightsApi(departure, destination, returnFrom, returnTo, searchDepDate, remRetDate, pax, currency);
                 const remProcessed = processFlightOffers(remOffers, { date: searchDepDate, nightsDiff: -n }, pax, intNightFlights, nightFlightStart, nightFlightEnd, excludedAirlines);
-                const remCats = categorizeFlights(remProcessed, t, departure, language, intTwoStopBB, useCustomMaxBBHours ? customMaxBBHours : null);
+                const remCats = categorizeFlights(remProcessed, t, departure, language, allowTwoStopBB, useCustomMaxBBHours ? customMaxBBHours : null);
                 if (remCats.bestAndCheapest) {
                   const f = { ...remCats.bestAndCheapest, searchDate: searchDepDate, nightsDiff: -n };
                   const fAirline = f.outbound.airlineNames?.[0] || f.outbound.airlines[0] || 'N/A';
@@ -3018,34 +3008,31 @@ function saveToPowerPointSingle(flight: ProcessedFlight, title: string) {
                 </Label>
               </div>
 
-              {/* Rad 2 – Kol 3: Tillat 2-stopp (kun OSL/HAM/CPH) */}
-              {['OSL', 'HAM', 'CPH'].includes((departure || '').toUpperCase()) ? (
+              <div className="flex items-center gap-2">
+                <Checkbox
+                  id="allowTwoStopBB"
+                  checked={allowTwoStopBB}
+                  onCheckedChange={(checked) => setAllowTwoStopBB(checked === true)}
+                />
                 <div className="flex items-center gap-2">
-                  <Checkbox
-                    id="allowTwoStopBB"
-                    checked={allowTwoStopBB}
-                    onCheckedChange={(checked) => setAllowTwoStopBB(checked === true)}
-                  />
-                  <div className="flex items-center gap-2">
-                    <Label htmlFor="allowTwoStopBB" className="cursor-pointer text-sm">
-                      {t.allowTwoStopBB}
-                    </Label>
-                    <Tooltip>
-                      <TooltipTrigger asChild>
-                        <button className="text-muted-foreground hover:text-foreground transition-colors">
-                          <Info className="h-4 w-4" />
-                        </button>
-                      </TooltipTrigger>
-                      <TooltipContent className="w-80">
-                        <div className="flex gap-2">
-                          <Info className="h-5 w-5 text-blue-500 flex-shrink-0 mt-0.5" />
-                          <p className="text-sm text-muted-foreground">{t.allowTwoStopBBInfo}</p>
-                        </div>
-                      </TooltipContent>
-                    </Tooltip>
-                  </div>
+                  <Label htmlFor="allowTwoStopBB" className="cursor-pointer text-sm">
+                    {t.allowTwoStopBB}
+                  </Label>
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <button className="text-muted-foreground hover:text-foreground transition-colors">
+                        <Info className="h-4 w-4" />
+                      </button>
+                    </TooltipTrigger>
+                    <TooltipContent className="w-80">
+                      <div className="flex gap-2">
+                        <Info className="h-5 w-5 text-blue-500 flex-shrink-0 mt-0.5" />
+                        <p className="text-sm text-muted-foreground">{t.allowTwoStopBBInfo}</p>
+                      </div>
+                    </TooltipContent>
+                  </Tooltip>
                 </div>
-              ) : <div />}
+              </div>
 
             </div>
 
@@ -3456,18 +3443,6 @@ function saveToPowerPointSingle(flight: ProcessedFlight, title: string) {
                           {language === 'da' ? 'Tillad natfly i tidsrum' : 'Tillat nattfly i tidsrom'}
                         </Label>
                       </div>
-                      {['OSL', 'HAM', 'CPH'].includes((departure || '').toUpperCase()) && (
-                        <div className="flex items-center gap-2">
-                          <Checkbox
-                            id="intervalAllowTwoStopBB"
-                            checked={intervalAllowTwoStopBB}
-                            onCheckedChange={(c) => setIntervalAllowTwoStopBB(c === true)}
-                          />
-                          <Label htmlFor="intervalAllowTwoStopBB" className="cursor-pointer text-sm">
-                            {t.allowTwoStopBB}
-                          </Label>
-                        </div>
-                      )}
                     </div>
                   </div>
                   <p className="text-[11px] text-amber-500/80">
