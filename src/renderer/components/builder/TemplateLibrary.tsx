@@ -56,6 +56,8 @@ export default function TemplateLibrary() {
   const { user, userEmail, isAdmin: userIsAdmin } = useAuth();
   const { language: userLanguage } = useLanguage(); // Reaktiv – oppdateres når NO/DK byttes
   const userPrefix = userEmail ? getUserPrefix(userEmail) : undefined;
+  // Kort helper for språkvalg i UI-tekster: tt(dansk, norsk)
+  const tt = (daText: string, noText: string) => (userLanguage === 'da' ? daText : noText);
 
   const {
     templates,
@@ -86,7 +88,7 @@ export default function TemplateLibrary() {
 
   const handleSaveCategoryName = (catId?: string) => {
     if (!editingCategoryName.trim()) {
-      toast.error("Kategorinavn kan ikke være tomt");
+      toast.error(tt("Kategorinavn kan ikke være tomt", "Kategorinavn kan ikke være tomt"));
       return;
     }
     const userCat = userCategories.find(c => c.id === catId);
@@ -99,7 +101,7 @@ export default function TemplateLibrary() {
         setBuiltinCategoryName(catId, editingCategoryName.trim());
       }
     }
-    toast.success("Kategorinavn oppdatert");
+    toast.success(tt("Kategorinavn opdateret", "Kategorinavn oppdatert"));
     setEditingCategoryId(null);
     setEditingCategoryName("");
     loadFromDB();
@@ -109,7 +111,7 @@ export default function TemplateLibrary() {
     const userCat = userCategories.find(c => c.id === catId);
     if (userCat) {
       updateUserCategory(catId, { hasCheckbox: !userCat.hasCheckbox });
-      toast.success(userCat.hasCheckbox ? "Vises alltid" : "Vises med checkbox");
+      toast.success(userCat.hasCheckbox ? tt("Vises altid", "Vises alltid") : tt("Vises med afkrydsning", "Vises med checkbox"));
     } else if (userIsAdmin) {
       // For innebygde kategorier - kun admin kan endre
       const currentHasCheckbox = builtInCategorySettings[catId]?.hasCheckbox ?? true;
@@ -117,9 +119,9 @@ export default function TemplateLibrary() {
         ...prev,
         [catId]: { ...prev[catId], hasCheckbox: !currentHasCheckbox }
       }));
-      toast.success(currentHasCheckbox ? "Vises alltid" : "Vises med checkbox");
+      toast.success(currentHasCheckbox ? tt("Vises altid", "Vises alltid") : tt("Vises med afkrydsning", "Vises med checkbox"));
     } else {
-      toast.error("Checkbox kan kun endres for egendefinerte kategorier");
+      toast.error(tt("Afkrydsning kan kun ændres for brugerdefinerede kategorier", "Checkbox kan kun endres for egendefinerte kategorier"));
     }
   };
 
@@ -127,7 +129,7 @@ export default function TemplateLibrary() {
     const userCat = userCategories.find(c => c.id === catId);
     if (userCat) {
       updateUserCategory(catId, { isVisible: !userCat.isVisible });
-      toast.success(userCat.isVisible ? "Kategori skjult i frontend" : "Kategori synlig i frontend");
+      toast.success(userCat.isVisible ? tt("Kategori skjult i frontend", "Kategori skjult i frontend") : tt("Kategori synlig i frontend", "Kategori synlig i frontend"));
     } else if (userIsAdmin) {
       // For innebygde kategorier - lagre i useUserCategoryStore (persistent)
       const currentIsVisible = isBuiltinCategoryVisible(catId);
@@ -137,9 +139,9 @@ export default function TemplateLibrary() {
         ...prev,
         [catId]: { ...prev[catId], isVisible: !currentIsVisible }
       }));
-      toast.success(currentIsVisible ? "Kategori skjult i frontend" : "Kategori synlig i frontend");
+      toast.success(currentIsVisible ? tt("Kategori skjult i frontend", "Kategori skjult i frontend") : tt("Kategori synlig i frontend", "Kategori synlig i frontend"));
     } else {
-      toast.error("Synlighet kan kun endres for egendefinerte kategorier");
+      toast.error(tt("Synlighed kan kun ændres for brugerdefinerede kategorier", "Synlighet kan kun endres for egendefinerte kategorier"));
     }
   };
 
@@ -149,18 +151,18 @@ export default function TemplateLibrary() {
     
     const userCat = userCategories.find(c => c.id === catId);
     if (userCat) {
-      if (confirm(`Er du sikker på at du vil slette kategorien "${category.name}"?`)) {
+      if (confirm(tt(`Er du sikker på, at du vil slette kategorien "${category.name}"?`, `Er du sikker på at du vil slette kategorien "${category.name}"?`))) {
         deleteUserCategory(catId);
-        toast.success("Kategori slettet");
+        toast.success(tt("Kategori slettet", "Kategori slettet"));
         setEditingCategoryId(null);
       }
     } else {
       // For innebygde kategorier - fjern alle maler og skjul kategorien
-      if (confirm(`Er du sikker på at du vil slette kategorien "${category.name}" og alle malene i den?`)) {
+      if (confirm(tt(`Er du sikker på, at du vil slette kategorien "${category.name}" og alle filerne i den?`, `Er du sikker på at du vil slette kategorien "${category.name}" og alle malene i den?`))) {
         const templatesToDelete = templates.filter(t => t.category === catId);
         templatesToDelete.forEach(t => deleteTemplate(t.id));
         setHiddenCategories(prev => [...prev, catId]);
-        toast.success(`Kategori "${category.name}" og ${templatesToDelete.length} mal(er) slettet`);
+        toast.success(tt(`Kategori "${category.name}" og ${templatesToDelete.length} fil(er) slettet`, `Kategori "${category.name}" og ${templatesToDelete.length} mal(er) slettet`));
         setEditingCategoryId(null);
       }
     }
@@ -171,13 +173,13 @@ export default function TemplateLibrary() {
     e.stopPropagation();
     
     if (!categoryUserId) {
-      toast.error("Kan ikke finne bruker-ID for denne kategorien");
+      toast.error(tt("Kan ikke finde bruger-ID for denne kategori", "Kan ikke finne bruker-ID for denne kategorien"));
       return;
     }
 
     // Check if current user is admin
     if (!userIsAdmin) {
-      toast.error("Kun admin kan endre admin-rettigheter");
+      toast.error(tt("Kun admin kan ændre admin-rettigheder", "Kun admin kan endre admin-rettigheter"));
       return;
     }
 
@@ -185,7 +187,7 @@ export default function TemplateLibrary() {
     const newStatus = toggleAdminUser(categoryUserId);
     
     // Force reload to update UI (since isAdmin is cached in auth context)
-    toast.success(newStatus ? "Bruker gitt admin-rettigheter" : "Admin-rettigheter fjernet");
+    toast.success(newStatus ? tt("Bruger givet admin-rettigheder", "Bruker gitt admin-rettigheter") : tt("Admin-rettigheder fjernet", "Admin-rettigheter fjernet"));
     
     // Trigger a re-render by forcing context update
     setTimeout(() => {
@@ -219,11 +221,19 @@ export default function TemplateLibrary() {
     const lastSyncDate = localStorage.getItem('onedrive-last-sync-date');
     if (lastSyncDate !== today) {
       console.log(`🚀 Startup-sync: siste synk var ${lastSyncDate ?? 'aldri'} – synkroniserer nå`);
+      let cancelled = false;
+      // Retry med backoff hvis OneDrive-mappen ikke er ferdig montert lokalt ennå (typisk ved ny installasjon)
+      const attempt = async (retriesLeft: number, delayMs: number) => {
+        if (cancelled) return;
+        const result = await handleSyncNow();
+        if (result.bothFailed && retriesLeft > 0 && !cancelled) {
+          console.log(`⏳ OneDrive-mappe ikke funnet ennå, prøver igjen om ${delayMs / 1000}s (${retriesLeft} forsøk igjen)`);
+          setTimeout(() => attempt(retriesLeft - 1, delayMs * 2), delayMs);
+        }
+      };
       // Liten forsinkelse så appen er ferdig å laste før sync starter
-      const timer = setTimeout(() => {
-        handleSyncNow();
-      }, 3000);
-      return () => clearTimeout(timer);
+      const timer = setTimeout(() => attempt(4, 30000), 3000);
+      return () => { cancelled = true; clearTimeout(timer); };
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []); // Kjør kun én gang ved oppstart
@@ -237,7 +247,7 @@ export default function TemplateLibrary() {
     const unsubscribe = window.electron.on('onedrive:auto-sync-trigger', () => {
       console.log('⏰ Auto-sync triggered at 08:00 - syncing templates');
       handleSyncNow();
-      toast.info('Auto-synkronisering kl 08:00 startet...');
+      toast.info(tt('Auto-synkronisering kl. 08:00 startet...', 'Auto-synkronisering kl 08:00 startet...'));
     });
 
     return () => {
@@ -328,25 +338,25 @@ export default function TemplateLibrary() {
   
   const handleCreateCategory = () => {
     if (!userEmail) {
-      toast.error("Du må være logget inn for å opprette en kategori");
+      toast.error(tt("Du skal være logget ind for at oprette en kategori", "Du må være logget inn for å opprette en kategori"));
       return;
     }
     
     if (!newCategoryName.trim()) {
-      toast.error("Kategorinavn kan ikke være tomt");
+      toast.error(tt("Kategorinavn kan ikke være tomt", "Kategorinavn kan ikke være tomt"));
       return;
     }
     
     const exists = allCategories.some(c => c.name.toLowerCase() === newCategoryName.trim().toLowerCase());
     if (exists) {
-      toast.error("En kategori med dette navnet finnes allerede");
+      toast.error(tt("En kategori med dette navn findes allerede", "En kategori med dette navnet finnes allerede"));
       return;
     }
     
     // Bruk userEmail som userId
     const userId = userEmail || 'unknown';
     addUserCategory(newCategoryName.trim(), userId, true, newCategoryParentId ?? undefined);
-    toast.success(`Kategori "${newCategoryName}" ble opprettet`);
+    toast.success(tt(`Kategori "${newCategoryName}" blev oprettet`, `Kategori "${newCategoryName}" ble opprettet`));
     setNewCategoryName("");
     setNewCategoryParentId(null);
     setIsDialogOpen(false);
@@ -355,11 +365,11 @@ export default function TemplateLibrary() {
   const handleDeleteUserCategory = (categoryId: string, categoryName: string) => {
     const hasTemplates = templates.some(t => t.category === categoryName);
     if (hasTemplates) {
-      toast.error("Kan ikke slette kategori med maler. Flytt eller slett malene først.");
+      toast.error(tt("Kan ikke slette kategori med filer. Flyt eller slet filerne først.", "Kan ikke slette kategori med maler. Flytt eller slett malene først."));
       return;
     }
     deleteUserCategory(categoryId);
-    toast.success(`Kategori "${categoryName}" ble slettet`);
+    toast.success(tt(`Kategori "${categoryName}" blev slettet`, `Kategori "${categoryName}" ble slettet`));
   };
 
   async function handleUpload(categoryName: string, categoryId: string) {
@@ -439,23 +449,23 @@ export default function TemplateLibrary() {
       
       // Show summary toast
       if (successCount > 0 && failCount === 0) {
-        toast.success(`${successCount} fil${successCount > 1 ? 'er' : ''} lastet opp til ${categoryName}`);
+        toast.success(tt(`${successCount} fil${successCount > 1 ? 'er' : ''} uploadet til ${categoryName}`, `${successCount} fil${successCount > 1 ? 'er' : ''} lastet opp til ${categoryName}`));
       } else if (successCount > 0 && failCount > 0) {
-        toast.warning(`${successCount} fil${successCount > 1 ? 'er' : ''} lastet opp, ${failCount} feilet`);
+        toast.warning(tt(`${successCount} fil${successCount > 1 ? 'er' : ''} uploadet, ${failCount} fejlede`, `${successCount} fil${successCount > 1 ? 'er' : ''} lastet opp, ${failCount} feilet`));
       } else if (failCount > 0) {
-        toast.error(`Kunne ikke laste opp ${failCount} fil${failCount > 1 ? 'er' : ''}`);
+        toast.error(tt(`Kunne ikke uploade ${failCount} fil${failCount > 1 ? 'er' : ''}`, `Kunne ikke laste opp ${failCount} fil${failCount > 1 ? 'er' : ''}`));
       }
     } catch (error) {
       console.error('Upload error:', error);
-      toast.error('Feil ved opplasting');
+      toast.error(tt('Fejl ved upload', 'Feil ved opplasting'));
     }
   }
 
   function handleDelete(id: string, name: string) {
-    if (!userIsAdmin && !confirm(`Slett "${name}"?\n\nMalen fjernes fra din lokale database. Synkroniser på nytt for å hente den tilbake.`)) return;
+    if (!userIsAdmin && !confirm(tt(`Slet "${name}"?\n\nFilen fjernes fra din lokale database. Synkroniser på ny for at hente den tilbage.`, `Slett "${name}"?\n\nMalen fjernes fra din lokale database. Synkroniser på nytt for å hente den tilbake.`))) return;
     deleteTemplate(id);
     setMarkedForDeletion(prev => { const next = new Set(prev); next.delete(id); return next; });
-    toast.success(`"${name}" slettet`);
+    toast.success(tt(`"${name}" slettet`, `"${name}" slettet`));
   }
 
   function toggleMarkTemplate(id: string) {
@@ -483,7 +493,7 @@ export default function TemplateLibrary() {
   async function handleBulkDelete(list: { id: string; name: string }[]) {
     const toDelete = list.filter(t => markedForDeletion.has(t.id));
     if (toDelete.length === 0) return;
-    if (!confirm(`Slett ${toDelete.length} markerte mal${toDelete.length !== 1 ? 'er' : ''}?`)) return;
+    if (!confirm(tt(`Slet ${toDelete.length} markerede fil${toDelete.length !== 1 ? 'er' : ''}?`, `Slett ${toDelete.length} markerte mal${toDelete.length !== 1 ? 'er' : ''}?`))) return;
     for (const t of toDelete) {
       await deleteTemplate(t.id);
     }
@@ -492,7 +502,7 @@ export default function TemplateLibrary() {
       toDelete.forEach(t => next.delete(t.id));
       return next;
     });
-    toast.success(`${toDelete.length} mal${toDelete.length !== 1 ? 'er' : ''} slettet`);
+    toast.success(tt(`${toDelete.length} fil${toDelete.length !== 1 ? 'er' : ''} slettet`, `${toDelete.length} mal${toDelete.length !== 1 ? 'er' : ''} slettet`));
   }
 
   function toggleVisibility(id: string, currentlyVisible: boolean) {
@@ -502,12 +512,12 @@ export default function TemplateLibrary() {
 
   async function handleResetAndSync() {
     const langLabel = userLanguage === 'da' ? 'DK (dansk)' : 'NO (norsk)';
-    if (!confirm(`Sletter ALLE maler fra lokal database og laster inn ${langLabel}-maler på nytt. Fortsett?`)) return;
+    if (!confirm(tt(`Sletter ALLE filer fra lokal database og henter ${langLabel}-filer igen. Fortsæt?`, `Sletter ALLE maler fra lokal database og laster inn ${langLabel}-maler på nytt. Fortsett?`))) return;
     setIsSyncing(true);
     try {
       await clearAllTemplates();
       console.log('🗑️ Alle templates slettet fra IndexedDB');
-      toast.info('Database nullstilt – laster inn maler på nytt...');
+      toast.info(tt('Database nulstillet – henter filer igen...', 'Database nullstilt – laster inn maler på nytt...'));
     } catch (e) {
       console.error('Feil ved nullstilling:', e);
     }
@@ -715,11 +725,11 @@ export default function TemplateLibrary() {
     return { successCount, errorCount };
   }
 
-  async function handleSyncNow() {
+  async function handleSyncNow(): Promise<{ bothFailed: boolean }> {
     setIsSyncing(true);
     try {
       console.log("🔄 Starting OneDrive sync – NO + DK...");
-      toast.info("Synkroniserer NO og DK fra OneDrive...");
+      toast.info(tt("Synkroniserer NO og DK fra OneDrive...", "Synkroniserer NO og DK fra OneDrive..."));
 
       // Synk sekvensielt for å unngå OOM ved nedlasting av store .pptx-filer
       const resNo = await syncLanguage('no');
@@ -737,20 +747,20 @@ export default function TemplateLibrary() {
       if (bothFailed) {
         // OneDrive-mappen ble ikke funnet på denne PC-en
         toast.error(
-          `❌ OneDrive-mappe ikke funnet. Sørg for at OneDrive er synkronisert og at du har tilgang til "TANZANIA TOURS"-biblioteket.`,
+          tt(`❌ OneDrive-mappe ikke fundet. Sørg for at OneDrive er synkroniseret, og at du har adgang til "TANZANIA TOURS"-biblioteket.`, `❌ OneDrive-mappe ikke funnet. Sørg for at OneDrive er synkronisert og at du har tilgang til "TANZANIA TOURS"-biblioteket.`),
           { duration: 8000 }
         );
       } else if (totalSuccess > 0) {
-        const noPart = resNo.successCount > 0 ? `${resNo.successCount} NO-mal${resNo.successCount !== 1 ? 'er' : ''}` : null;
-        const dkPart = resDk.successCount > 0 ? `${resDk.successCount} DK-mal${resDk.successCount !== 1 ? 'er' : ''}` : null;
-        toast.success(`✅ Synkronisert ${[noPart, dkPart].filter(Boolean).join(' + ')}`);
-        if (anyFailed) toast.warning('⚠️ Én språkmappe ble ikke funnet i OneDrive');
+        const noPart = resNo.successCount > 0 ? `${resNo.successCount} NO-${tt('fil', 'mal')}${resNo.successCount !== 1 ? 'er' : ''}` : null;
+        const dkPart = resDk.successCount > 0 ? `${resDk.successCount} DK-${tt('fil', 'mal')}${resDk.successCount !== 1 ? 'er' : ''}` : null;
+        toast.success(`✅ ${tt('Synkroniseret', 'Synkronisert')} ${[noPart, dkPart].filter(Boolean).join(' + ')}`);
+        if (anyFailed) toast.warning(tt('⚠️ En sprogmappe blev ikke fundet i OneDrive', '⚠️ Én språkmappe ble ikke funnet i OneDrive'));
       } else {
-        toast.info("✅ Alt er oppdatert – ingen nye filer siden siste synk");
-        if (anyFailed) toast.warning('⚠️ Én språkmappe ble ikke funnet i OneDrive');
+        toast.info(tt("✅ Alt er opdateret – ingen nye filer siden sidste synk", "✅ Alt er oppdatert – ingen nye filer siden siste synk"));
+        if (anyFailed) toast.warning(tt('⚠️ En sprogmappe blev ikke fundet i OneDrive', '⚠️ Én språkmappe ble ikke funnet i OneDrive'));
       }
       if (totalErrors > 0) {
-        toast.error(`⚠️ ${totalErrors} feil under synkronisering`);
+        toast.error(tt(`⚠️ ${totalErrors} fejl under synkronisering`, `⚠️ ${totalErrors} feil under synkronisering`));
       }
 
       // Lagre dato for siste vellykkede synk kun hvis minst én språkmappe ble funnet
@@ -758,10 +768,11 @@ export default function TemplateLibrary() {
         localStorage.setItem('onedrive-last-sync-date', new Date().toDateString());
       }
       console.log(`🎉 Sync complete: ${totalSuccess} success, ${totalErrors} errors`);
-      
+      return { bothFailed };
     } catch (error) {
       console.error("❌ Sync error:", error);
-      toast.error("Kunne ikke synkronisere: " + (error instanceof Error ? error.message : 'Ukjent feil'));
+      toast.error(tt("Kunne ikke synkronisere: ", "Kunne ikke synkronisere: ") + (error instanceof Error ? error.message : tt('Ukendt fejl', 'Ukjent feil')));
+      return { bothFailed: false };
     } finally {
       setIsSyncing(false);
     }
@@ -829,7 +840,7 @@ export default function TemplateLibrary() {
                           <span 
                             className="inline-flex items-center justify-center h-7 w-7 rounded-md hover:bg-accent hover:text-accent-foreground cursor-pointer" 
                             onClick={e => { e.stopPropagation(); handleSaveCategoryName(cat.id); }} 
-                            title="Lagre"
+                            title={tt("Gem", "Lagre")}
                           >
                             <Save className="h-4 w-4 text-green-600" />
                           </span>
@@ -841,7 +852,7 @@ export default function TemplateLibrary() {
                                   e.stopPropagation(); 
                                   handleToggleCategoryVisibility(cat.id); 
                                 }} 
-                                title={(userCategories.find(c => c.id === cat.id)?.isVisible ?? builtInCategorySettings[cat.id]?.isVisible ?? true) ? "Synlig i frontend" : "Skjult i frontend"}
+                                title={(userCategories.find(c => c.id === cat.id)?.isVisible ?? builtInCategorySettings[cat.id]?.isVisible ?? true) ? tt("Synlig i frontend", "Synlig i frontend") : tt("Skjult i frontend", "Skjult i frontend")}
                               >
                                 {(userCategories.find(c => c.id === cat.id)?.isVisible ?? builtInCategorySettings[cat.id]?.isVisible ?? true) ? (
                                   <Eye className="h-4 w-4 text-blue-600" />
@@ -855,7 +866,7 @@ export default function TemplateLibrary() {
                                   e.stopPropagation(); 
                                   handleToggleCategoryCheckbox(cat.id); 
                                 }} 
-                                title={(userCategories.find(c => c.id === cat.id)?.hasCheckbox ?? builtInCategorySettings[cat.id]?.hasCheckbox ?? true) ? "Vises med checkbox" : "Vises alltid"}
+                                title={(userCategories.find(c => c.id === cat.id)?.hasCheckbox ?? builtInCategorySettings[cat.id]?.hasCheckbox ?? true) ? tt("Vises med afkrydsning", "Vises med checkbox") : tt("Vises altid", "Vises alltid")}
                               >
                                 {(userCategories.find(c => c.id === cat.id)?.hasCheckbox ?? builtInCategorySettings[cat.id]?.hasCheckbox ?? true) ? (
                                   <CheckSquare className="h-4 w-4 text-purple-600" />
@@ -868,14 +879,14 @@ export default function TemplateLibrary() {
                           <span 
                             className="inline-flex items-center justify-center h-7 w-7 rounded-md hover:bg-accent hover:text-accent-foreground cursor-pointer" 
                             onClick={e => { e.stopPropagation(); handleDeleteCategory(cat.id); }} 
-                            title="Slett kategori"
+                            title={tt("Slet kategori", "Slett kategori")}
                           >
                             <Trash2 className="h-4 w-4 text-red-600" />
                           </span>
                           <span 
                             className="inline-flex items-center justify-center h-7 w-7 rounded-md hover:bg-accent hover:text-accent-foreground cursor-pointer" 
                             onClick={e => { e.stopPropagation(); setEditingCategoryId(null); }} 
-                            title="Avbryt"
+                            title={tt("Annuller", "Avbryt")}
                           >
                             ✕
                           </span>
@@ -887,7 +898,7 @@ export default function TemplateLibrary() {
                             <span 
                               className="inline-flex items-center justify-center h-7 w-7 rounded-md hover:bg-accent hover:text-accent-foreground cursor-pointer" 
                               onClick={e => { e.stopPropagation(); handleEditCategory(cat.id, cat.name); }} 
-                              title="Endre navn"
+                              title={tt("Ændre navn", "Endre navn")}
                             >
                               <Edit2 className="h-4 w-4 text-blue-600" />
                             </span>
@@ -897,7 +908,7 @@ export default function TemplateLibrary() {
                             <span 
                               className="inline-flex items-center justify-center h-7 w-7 rounded-md hover:bg-accent hover:text-accent-foreground cursor-pointer" 
                               onClick={e => handleToggleAdminStatus(cat.userId, e)} 
-                              title={isAdminUser(cat.userId) ? "Fjern admin-rettigheter" : "Gi admin-rettigheter"}
+                              title={isAdminUser(cat.userId) ? tt("Fjern admin-rettigheder", "Fjern admin-rettigheter") : tt("Giv admin-rettigheder", "Gi admin-rettigheter")}
                             >
                               <Star 
                                 className={`h-4 w-4 ${isAdminUser(cat.userId) ? 'fill-yellow-500 text-yellow-500' : 'text-gray-400'}`}
@@ -906,7 +917,7 @@ export default function TemplateLibrary() {
                           )}
                           {isPersonalCategory && (
                             <span className="text-xs px-1.5 py-0.5 bg-blue-100 text-blue-700 rounded">
-                              Personlig
+                              {tt("Personlig", "Personlig")}
                             </span>
                           )}
                         </>
@@ -921,7 +932,7 @@ export default function TemplateLibrary() {
                             e.stopPropagation(); 
                             handleToggleCategoryVisibility(cat.id); 
                           }} 
-                          title={(userCategories.find(c => c.id === cat.id)?.isVisible ?? builtInCategorySettings[cat.id]?.isVisible ?? true) ? "Synlig i Bygg reiseprogram" : "Skjult i Bygg reiseprogram"}
+                          title={(userCategories.find(c => c.id === cat.id)?.isVisible ?? builtInCategorySettings[cat.id]?.isVisible ?? true) ? tt("Synlig i Byg rejseprogram", "Synlig i Bygg reiseprogram") : tt("Skjult i Byg rejseprogram", "Skjult i Bygg reiseprogram")}
                         >
                           {(userCategories.find(c => c.id === cat.id)?.isVisible ?? builtInCategorySettings[cat.id]?.isVisible ?? true) ? (
                             <Eye className="h-4 w-4 text-green-600" />
@@ -938,13 +949,13 @@ export default function TemplateLibrary() {
                             e.stopPropagation(); 
                             handleDeleteCategory(cat.id); 
                           }} 
-                          title="Slett kategori"
+                          title={tt("Slet kategori", "Slett kategori")}
                         >
                           <Trash2 className="h-4 w-4 text-red-600" />
                         </span>
                       )}
                       <span className="text-xs text-muted-foreground">
-                        {list.length} filer
+                        {list.length} {tt("filer", "filer")}
                       </span>
                     </div>
                   </div>
@@ -962,7 +973,7 @@ export default function TemplateLibrary() {
                           className="gap-2"
                         >
                           <Upload className="h-4 w-4" />
-                          Last opp filer
+                          {tt("Upload filer", "Last opp filer")}
                         </Button>
                       )}
                       {list.length > 0 && (
@@ -973,9 +984,9 @@ export default function TemplateLibrary() {
                           className="gap-2"
                         >
                           {list.every(t => markedForDeletion.has(t.id)) ? (
-                            <><CheckSquare className="h-4 w-4" /> Fjern markering</>
+                            <><CheckSquare className="h-4 w-4" /> {tt("Fjern markering", "Fjern markering")}</>
                           ) : (
-                            <><Square className="h-4 w-4" /> Marker alle</>
+                            <><Square className="h-4 w-4" /> {tt("Marker alle", "Marker alle")}</>
                           )}
                         </Button>
                       )}
@@ -987,7 +998,7 @@ export default function TemplateLibrary() {
                           className="gap-2"
                         >
                           <Trash2 className="h-4 w-4" />
-                          Slett {list.filter(t => markedForDeletion.has(t.id)).length} markerte
+                          {tt("Slet", "Slett")} {list.filter(t => markedForDeletion.has(t.id)).length} {tt("markerede", "markerte")}
                         </Button>
                       )}
                     </div>
@@ -995,7 +1006,7 @@ export default function TemplateLibrary() {
                     {/* Template list */}
                     {list.length === 0 ? (
                       <p className="text-sm text-muted-foreground">
-                        Ingen maler i denne kategorien
+                        {tt("Ingen filer i denne kategori", "Ingen maler i denne kategorien")}
                       </p>
                     ) : (
                       <div className="space-y-2">
@@ -1020,7 +1031,7 @@ export default function TemplateLibrary() {
                                   value={t.category}
                                   onValueChange={(newCat) => {
                                     updateTemplateCategory(t.id, newCat);
-                                    toast.success(`"${t.name}" flyttet til ${newCat}`);
+                                    toast.success(tt(`"${t.name}" flyttet til ${newCat}`, `"${t.name}" flyttet til ${newCat}`));
                                   }}
                                   disabled={!userIsAdmin && !isPersonalCategory}
                                 >
@@ -1044,7 +1055,7 @@ export default function TemplateLibrary() {
                                   size="sm"
                                   onClick={() => toggleVisibility(t.id, t.visibleInBuilder)}
                                   className="h-8 w-8 p-0"
-                                  title={t.visibleInBuilder ? "Skjul i builder" : "Vis i builder"}
+                                  title={t.visibleInBuilder ? tt("Skjul i builder", "Skjul i builder") : tt("Vis i builder", "Vis i builder")}
                                 >
                                   {t.visibleInBuilder ? (
                                     <Eye className="h-4 w-4 text-primary" />
@@ -1060,7 +1071,7 @@ export default function TemplateLibrary() {
                                 size="sm"
                                 onClick={() => handleDelete(t.id, t.name)}
                                 className="h-8 w-8 p-0 text-destructive hover:text-destructive"
-                                title="Slett fra lokal database"
+                                title={tt("Slet fra lokal database", "Slett fra lokal database")}
                               >
                                 <Trash2 className="h-4 w-4" />
                               </Button>
@@ -1077,7 +1088,7 @@ export default function TemplateLibrary() {
                     if (subCats.length === 0) return null;
                     return (
                       <div className="mt-3 border-t pt-3 space-y-2">
-                        <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">Underkategorier</p>
+                        <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">{tt("Underkategorier", "Underkategorier")}</p>
                         <Accordion type="multiple">
                           {subCats.map(subCat => {
                             const subList = filteredTemplates.filter(t =>
@@ -1107,17 +1118,17 @@ export default function TemplateLibrary() {
                                   <div className="space-y-2 pt-2">
                                     {canEditSub && (
                                       <Button variant="outline" size="sm" className="gap-2 mb-2" onClick={() => handleUpload(subCat.name, subCat.id)}>
-                                        <Upload className="h-4 w-4" /> Last opp filer
+                                        <Upload className="h-4 w-4" /> {tt("Upload filer", "Last opp filer")}
                                       </Button>
                                     )}
                                     {subList.length === 0 ? (
-                                      <p className="text-sm text-muted-foreground">Ingen maler i denne underkategorien</p>
+                                      <p className="text-sm text-muted-foreground">{tt("Ingen filer i denne underkategori", "Ingen maler i denne underkategorien")}</p>
                                     ) : (
                                       <div className="space-y-2">
                                         {subList.map(t => (
                                           <div key={t.id} className="flex items-center justify-between p-2 rounded-md border gap-2 bg-background">
                                             <span className="font-medium text-sm break-words flex-1" title={t.name}>{t.name}</span>
-                                            <Button variant="ghost" size="sm" onClick={() => handleDelete(t.id, t.name)} className="h-7 w-7 p-0 flex-shrink-0 text-destructive hover:text-destructive" title="Slett"><Trash2 className="h-4 w-4" /></Button>
+                                            <Button variant="ghost" size="sm" onClick={() => handleDelete(t.id, t.name)} className="h-7 w-7 p-0 flex-shrink-0 text-destructive hover:text-destructive" title={tt("Slet", "Slett")}><Trash2 className="h-4 w-4" /></Button>
                                           </div>
                                         ))}
                                       </div>
@@ -1147,10 +1158,10 @@ export default function TemplateLibrary() {
               className="gap-2 text-destructive hover:text-destructive"
               onClick={handleResetAndSync}
               disabled={isSyncing}
-              title="Slett alle maler og last inn på nytt med korrekt språk"
+              title={tt("Slet alle filer og hent igen med korrekt sprog", "Slett alle maler og last inn på nytt med korrekt språk")}
             >
               <RefreshCw className={`h-4 w-4 ${isSyncing ? 'animate-spin' : ''}`} />
-              Nullstill og synk
+              {tt("Nulstil og synk", "Nullstill og synk")}
             </Button>
           )}
           <Button 
@@ -1161,31 +1172,31 @@ export default function TemplateLibrary() {
             disabled={isSyncing}
           >
             <RefreshCw className={`h-4 w-4 ${isSyncing ? 'animate-spin' : ''}`} />
-            {isSyncing ? "Synkroniserer..." : "Synkroniser nå"}
+            {isSyncing ? tt("Synkroniserer...", "Synkroniserer...") : tt("Synkroniser nu", "Synkroniser nå")}
           </Button>
           {userIsAdmin && (
             <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
               <DialogTrigger asChild>
                 <Button variant="outline" size="sm" className="gap-2">
                   <FolderPlus className="h-4 w-4" />
-                  Ny kategori
+                  {tt("Ny kategori", "Ny kategori")}
                 </Button>
               </DialogTrigger>
               <DialogContent>
                 <DialogHeader>
-                  <DialogTitle>Opprett ny kategori</DialogTitle>
+                  <DialogTitle>{tt("Opret ny kategori", "Opprett ny kategori")}</DialogTitle>
                   <DialogDescription>
-                    Lag en ny kategori for å organisere maler (kun admin)
+                    {tt("Lav en ny kategori til at organisere filer (kun admin)", "Lag en ny kategori for å organisere maler (kun admin)")}
                   </DialogDescription>
                 </DialogHeader>
                 <div className="space-y-4 py-4">
                   <div className="space-y-2">
-                    <Label htmlFor="category-name">Kategorinavn</Label>
+                    <Label htmlFor="category-name">{tt("Kategorinavn", "Kategorinavn")}</Label>
                     <Input
                       id="category-name"
                       value={newCategoryName}
                       onChange={(e) => setNewCategoryName(e.target.value)}
-                      placeholder="F.eks. Mine egne maler"
+                      placeholder={tt("F.eks. Mine egne skabeloner", "F.eks. Mine egne maler")}
                       onKeyDown={(e) => {
                         if (e.key === "Enter") {
                           handleCreateCategory();
@@ -1194,16 +1205,16 @@ export default function TemplateLibrary() {
                     />
                   </div>
                   <div className="space-y-2">
-                    <Label htmlFor="category-parent">Underkategori av (valgfritt)</Label>
+                    <Label htmlFor="category-parent">{tt("Underkategori af (valgfrit)", "Underkategori av (valgfritt)")}</Label>
                     <Select
                       value={newCategoryParentId ?? "__none__"}
                       onValueChange={(v) => setNewCategoryParentId(v === "__none__" ? null : v)}
                     >
                       <SelectTrigger id="category-parent">
-                        <SelectValue placeholder="Ingen (toppnivå)" />
+                        <SelectValue placeholder={tt("Ingen (topniveau)", "Ingen (toppnivå)")} />
                       </SelectTrigger>
                       <SelectContent>
-                        <SelectItem value="__none__">Ingen (toppnivå)</SelectItem>
+                        <SelectItem value="__none__">{tt("Ingen (topniveau)", "Ingen (toppnivå)")}</SelectItem>
                         {allCategories
                           .filter(c => !('parentId' in c && c.parentId))
                           .map(c => (
@@ -1216,10 +1227,10 @@ export default function TemplateLibrary() {
                 </div>
                 <DialogFooter>
                   <Button variant="outline" onClick={() => setIsDialogOpen(false)}>
-                    Avbryt
+                    {tt("Annuller", "Avbryt")}
                   </Button>
                   <Button onClick={handleCreateCategory}>
-                    Opprett kategori
+                    {tt("Opret kategori", "Opprett kategori")}
                   </Button>
                 </DialogFooter>
               </DialogContent>

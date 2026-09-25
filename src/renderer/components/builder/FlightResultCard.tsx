@@ -24,6 +24,7 @@ interface ProcessedFlight {
   outbound: FlightLeg;
   inbound?: FlightLeg;
   price: number;
+  childPrice?: number; // Ekte barnepris per person fra Farewise, hvis tilgjengelig
   currency: string;
   fareType?: "NEGOTIATED" | "PUBLIC";
   isRecommended: boolean;
@@ -248,7 +249,7 @@ export default function FlightResultCard({
 </p>`;
       
       if (childrenCount > 0) {
-        const childPrice = Math.ceil((flight.price * 0.75) / 50) * 50;
+        const childPrice = flight.childPrice ?? Math.ceil((flight.price * 0.75) / 50) * 50;
         priceText += `<p style="font-family: Arial, sans-serif;">
 <strong>Barnepris (${childrenCount} barn):</strong> kr ${childPrice.toLocaleString('nb-NO')} per barn
 </p>`;
@@ -260,7 +261,7 @@ export default function FlightResultCard({
 </p>`;
       
       if (childrenCount > 0) {
-        const childPrice = Math.ceil((flight.price * 0.75) / 50) * 50;
+        const childPrice = flight.childPrice ?? Math.ceil((flight.price * 0.75) / 50) * 50;
         priceText += `<p style="font-family: Arial, sans-serif;">
 <strong>Børnepris (${childrenCount} børn):</strong> kr ${childPrice.toLocaleString('da-DK')} per barn
 </p>`;
@@ -486,10 +487,10 @@ export default function FlightResultCard({
               {childrenCount > 0 && (
                 <div className="mt-0.5">
                   <div className="text-base font-semibold text-primary/80">
-                    {formatPrice(flight.price * 0.75, flight.currency)}
+                    {formatPrice(flight.childPrice ?? flight.price * 0.75, flight.currency)}
                   </div>
                   <div className="text-[10px] text-muted-foreground">
-                    per barn ({childrenCount})
+                    per barn ({childrenCount}){flight.childPrice == null && " (est.)"}
                   </div>
                 </div>
               )}

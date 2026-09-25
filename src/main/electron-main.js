@@ -186,6 +186,7 @@ async function searchFlightsMain(params) {
     returnDate,
     returnOriginCode,
     adults = 1,
+    children = 0,
     language = "no", // Default til norsk
   } = params;
 
@@ -219,6 +220,13 @@ async function searchFlightsMain(params) {
   // Bruk language-spesifikk region
   const region = FAREWISE_REGIONS[language] || FAREWISE_REGIONS.no;
 
+  // Barn ble tidligere ALDRI sendt til Farewise (hardkodet til []) — dette gjorde at
+  // barnepris i UI var et rent gjettet 75%-anslag i stedet for ekte pris fra Farewise/Amadeus.
+  // VIKTIG: Farewise krever alder som et rent tall i array (f.eks. [10]), IKKE objekter ({age:10})
+  // — objekt-form gir 500 Internal Server Error ("Object reference not set to an instance of an object")
+  // (verifisert live mot https://farewise.no/api/recommendations/search-v2 2026-09-25).
+  const childrenList = Array.from({ length: Number(children) || 0 }, () => 10);
+
   const requestBody = {
     customerId: region.customerId,
     customerName: region.customerName,
@@ -226,7 +234,7 @@ async function searchFlightsMain(params) {
     dataSources: [],
     passengers: {
       adults: Number(adults),
-      children: [],
+      children: childrenList,
     },
     advancedSearchParams: {
       publicFares: true,
@@ -568,12 +576,27 @@ function convertFarewiseToAmadeus(farewiseData, currency = "NOK", convertPrices 
       console.log(`✈️ Non-economy class detected: ${travelClass} for ${rec.id || index}`);
     }
 
+    // Ekte per-passasjertype pris — Farewise (IKKE standard Amadeus travelerPricings) returnerer dette
+    // direkte på rec: rec.adult.total / rec.child.total (verifisert live mot search-v2 2026-09-25).
+    // Brukes i stedet for et gjettet 75%-anslag for barnepris i UI.
+    let adultPricePerPerson = null;
+    let childPricePerPerson = null;
+    const rawAdultTotal = rec.adult?.total ?? rec.adult?.sell;
+    const rawChildTotal = (rec.childCount > 0) ? (rec.child?.total ?? rec.child?.sell) : null;
+    if (rawAdultTotal != null) adultPricePerPerson = convertPrices ? Math.round(rawAdultTotal * NOK_TO_DKK) : rawAdultTotal;
+    if (rawChildTotal != null) childPricePerPerson = convertPrices ? Math.round(rawChildTotal * NOK_TO_DKK) : rawChildTotal;
+    if (index === 0) {
+      console.log('👶 rec.adult/child pricing check:', { adultPricePerPerson, childPricePerPerson, rawAdult: rec.adult, rawChild: rec.child });
+    }
+
     return {
       id: rec.id || `farewise-${index}`,
       price: {
         total: String(finalPrice),
         currency: currency, // NOK for norsk, DKK for dansk
         grandTotal: String(finalPrice),
+        adultPrice: adultPricePerPerson != null ? String(adultPricePerPerson) : undefined,
+        childPrice: childPricePerPerson != null ? String(childPricePerPerson) : undefined,
       },
       fareType: fareType,
       travelClass: travelClass,
@@ -1478,12 +1501,16 @@ ipcMain.handle("ppt:generate", async (_, payload) => {
           `$ppApp.UserControl = $true`,
         ].join('\n');
         const saveScriptPath = path.join(tmpDir, 'save-as.ps1');
-        fs.writeFileSync(saveScriptPath, saveScript, 'utf8');
+        // BOM required so Windows PowerShell reads æ/ø/å in customer paths as UTF-8, not ANSI.
+        fs.writeFileSync(saveScriptPath, '\uFEFF' + saveScript, 'utf8');
 
         await new Promise((resolve, reject) => {
           execFile('powershell.exe', ['-ExecutionPolicy', 'Bypass', '-File', saveScriptPath],
             (err, stdout, stderr) => {
+              if (stdout) console.log('📝 PowerShell (save-as) output:\n' + stdout);
+              if (stderr) console.warn('⚠️ PowerShell (save-as) warnings:\n' + stderr);
               if (err) {
+                debugLog(`Step 7 FAILED: ${stderr || err.message}`);
                 reject(new Error(stderr || err.message));
                 return;
               }

@@ -1,4 +1,4 @@
-taskkill /IM node.exe /F 2>$null ; taskkill /IM electron.exe /F 2>$null ; Start-Sleep 3 ; npm run dev// src/config/userBaseTemplates.ts
+// src/config/userBaseTemplates.ts
 import type { AccountInfo } from "@azure/msal-browser";
 
 export type LanguageCode = "no" | "da";

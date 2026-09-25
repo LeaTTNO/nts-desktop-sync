@@ -55,6 +55,7 @@ html, body {
   height: 100%;
   overflow-x: hidden;
   scrollbar-gutter: stable;
+  font-size: 14px; /* Skalerer ned all Tailwind rem-basert tekst/avstand i hele appen */
 }
 
 body {
@@ -191,9 +192,9 @@ body {
 .tts-language .lang-btn {
   padding: 10px 22px;
   border-radius: 30px;
-  border: 2px solid rgba(255,255,255,0.4);
-  background-color: rgba(0,0,0,0.2);
-  color: rgba(255,255,255,0.6);
+  border: 2px solid rgba(255,255,255,0.75);
+  background-color: rgba(0,0,0,0.35);
+  color: rgba(255,255,255,0.95);
   font-family: "Montserrat", sans-serif;
   font-size: 14px;
   font-weight: 700;
@@ -201,8 +202,8 @@ body {
   cursor: pointer;
   backdrop-filter: blur(6px);
   transition: all 0.2s ease;
-  opacity: 0.5;
-  box-shadow: 0 2px 6px rgba(0,0,0,0.15);
+  opacity: 1;
+  box-shadow: 0 2px 6px rgba(0,0,0,0.3);
 }
 
 .tts-language .lang-btn.active {
@@ -215,9 +216,9 @@ body {
 }
 
 .tts-language .lang-btn:hover {
-  background-color: rgba(255,255,255,0.5);
-  opacity: 0.85;
-  border-color: rgba(255,255,255,0.7);
+  background-color: rgba(0,0,0,0.5);
+  opacity: 1;
+  border-color: rgba(255,255,255,1);
 }
 
 /* =========================================

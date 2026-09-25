@@ -213,6 +213,10 @@ export default function TravelProgramBuilder({ language = 'no' }: TravelProgramB
     if (defaultTemplate) {
       setBaseProgramId(defaultTemplate.id);
       addSelectedTemplate(defaultTemplate.id);
+    } else {
+      // Brukerens base-kategori finnes, men mangler Safari & Zanzibar-filen — varsle i stedet for å feile stille
+      console.warn(`⚠️ Fant ingen "${defaultFileName}" i basefilene til ${userPrefix} (${userLanguage}). Admin må laste den opp i Malbiblioteket.`);
+      toast.error(`Standard basefil (Safari & Zanzibar) mangler for denne brukeren (${userLanguage.toUpperCase()}). Kontakt admin for å laste den opp.`);
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [templates, userLanguage, userPrefix]);
@@ -286,7 +290,7 @@ export default function TravelProgramBuilder({ language = 'no' }: TravelProgramB
 
   async function generatePowerPoint() {
     if (!baseProgramId) {
-      toast.error("Reiseprogram og tilbud mangler");
+      toast.error(userLanguage === 'da' ? "Rejseprogram og tilbud mangler" : "Reiseprogram og tilbud mangler");
       return;
     }
 
@@ -386,13 +390,13 @@ export default function TravelProgramBuilder({ language = 'no' }: TravelProgramB
       console.log('🗓️ generatePowerPoint called with departureDate:', JSON.stringify(departureDate));
 
       if (result) {
-        toast.success(`PowerPoint åpnet med ${moduleTemplates.length + 1} slides`);
+        toast.success(userLanguage === 'da' ? `PowerPoint åbnet med ${moduleTemplates.length + 1} slides` : `PowerPoint åpnet med ${moduleTemplates.length + 1} slides`);
       } else {
-        toast.success(`PowerPoint åpnet med ${moduleTemplates.length + 1} slides`);
+        toast.success(userLanguage === 'da' ? `PowerPoint åbnet med ${moduleTemplates.length + 1} slides` : `PowerPoint åpnet med ${moduleTemplates.length + 1} slides`);
       }
     } catch (error) {
       console.error("Error generating PowerPoint:", error);
-      toast.error("Feil ved generering av PowerPoint");
+      toast.error(userLanguage === 'da' ? "Fejl ved generering af PowerPoint" : "Feil ved generering av PowerPoint");
     } finally {
       setIsGenerating(false);
     }
@@ -440,7 +444,7 @@ export default function TravelProgramBuilder({ language = 'no' }: TravelProgramB
       }
     }
     
-    toast.info("Skjema nullstilt");
+    toast.info(userLanguage === 'da' ? "Skema nulstillet" : "Skjema nullstilt");
   }
 
   /* =========================
@@ -602,7 +606,9 @@ export default function TravelProgramBuilder({ language = 'no' }: TravelProgramB
                   !selectedTemplate && "text-muted-foreground"
                 )}
               >
-                {selectedTemplate?.name || (hotelNames.length > 0 ? 'Velg hotell...' : 'Velg mal...')}
+                {selectedTemplate?.name || (hotelNames.length > 0
+                  ? (userLanguage === 'da' ? 'Vælg hotel...' : 'Velg hotell...')
+                  : (userLanguage === 'da' ? 'Vælg skabelon...' : 'Velg mal...'))}
                 <ChevronDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
               </Button>
             </PopoverTrigger>
@@ -630,7 +636,7 @@ export default function TravelProgramBuilder({ language = 'no' }: TravelProgramB
                           onClick={(e) => { e.preventDefault(); e.stopPropagation(); setSelectedHotel(null); }}
                           className="w-full text-left px-3 py-2 text-sm rounded-sm hover:bg-accent hover:text-accent-foreground transition-colors text-muted-foreground flex items-center gap-2"
                         >
-                          <ArrowLeft className="h-3 w-3" />Tilbake
+                          <ArrowLeft className="h-3 w-3" />{userLanguage === 'da' ? 'Tilbage' : 'Tilbake'}
                         </button>
                         <div className="px-3 py-1 text-xs font-semibold text-primary border-b mb-1">+ {selectedHotel}</div>
                         {(stoneTownGroups[selectedHotel!] || []).sort().map((combo) => (
@@ -649,7 +655,7 @@ export default function TravelProgramBuilder({ language = 'no' }: TravelProgramB
                           onClick={(e) => { e.preventDefault(); e.stopPropagation(); setSelectedCombo(null); }}
                           className="w-full text-left px-3 py-2 text-sm rounded-sm hover:bg-accent hover:text-accent-foreground transition-colors text-muted-foreground flex items-center gap-2"
                         >
-                          <ArrowLeft className="h-3 w-3" />Tilbake
+                          <ArrowLeft className="h-3 w-3" />{userLanguage === 'da' ? 'Tilbage' : 'Tilbake'}
                         </button>
                         <div className="px-3 py-1 text-xs font-semibold text-primary border-b mb-1">{selectedCombo}</div>
                         {sortTemplatesByDays(groupedTemplates![selectedCombo!] || []).map((t) => (
@@ -691,7 +697,7 @@ export default function TravelProgramBuilder({ language = 'no' }: TravelProgramB
                           onClick={(e) => { e.preventDefault(); e.stopPropagation(); setSelectedHotel(null); }}
                           className="w-full text-left px-3 py-2 text-sm rounded-sm hover:bg-accent hover:text-accent-foreground transition-colors text-muted-foreground flex items-center gap-2"
                         >
-                          <ArrowLeft className="h-3 w-3" />Tilbake
+                          <ArrowLeft className="h-3 w-3" />{userLanguage === 'da' ? 'Tilbage' : 'Tilbake'}
                         </button>
                         <div className="px-3 py-1 text-xs font-semibold text-primary border-b mb-1">{selectedHotel}</div>
                         {sortTemplatesByDays(groupedTemplates![selectedHotel] || []).map((t) => (
@@ -743,7 +749,7 @@ export default function TravelProgramBuilder({ language = 'no' }: TravelProgramB
                           className="w-full text-left px-3 py-2 text-sm rounded-sm hover:bg-accent hover:text-accent-foreground transition-colors text-muted-foreground flex items-center gap-2"
                         >
                           <ArrowLeft className="h-3 w-3" />
-                          Tilbake
+                          {userLanguage === 'da' ? 'Tilbage' : 'Tilbake'}
                         </button>
                         <div className="px-3 py-1 text-xs font-semibold text-primary border-b mb-1">
                           {selectedHotel}
@@ -843,7 +849,7 @@ export default function TravelProgramBuilder({ language = 'no' }: TravelProgramB
               !selectedTemplate && "text-muted-foreground"
             )}
           >
-            {selectedTemplate?.name || selectedPeriod || "Velg safariperiode"}
+            {selectedTemplate?.name || selectedPeriod || (userLanguage === 'da' ? "Vælg safariperiode" : "Velg safariperiode")}
             <ChevronDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
           </Button>
         </PopoverTrigger>
@@ -878,7 +884,7 @@ export default function TravelProgramBuilder({ language = 'no' }: TravelProgramB
                   className="w-full text-left px-3 py-2 text-sm rounded-sm hover:bg-accent hover:text-accent-foreground transition-colors text-muted-foreground flex items-center gap-2"
                 >
                   <ArrowLeft className="h-3 w-3" />
-                  Tilbake til perioder
+                  {userLanguage === 'da' ? 'Tilbage til perioder' : 'Tilbake til perioder'}
                 </button>
                 <div className="px-3 py-1 text-xs font-semibold text-primary border-b mb-1">
                   {viewingPeriod}
@@ -978,7 +984,7 @@ export default function TravelProgramBuilder({ language = 'no' }: TravelProgramB
 
         {/* 2. Utreisedato */}
         <div className="space-y-2">
-          <Label htmlFor="departure-date">Utreisedato (valgfritt)</Label>
+          <Label htmlFor="departure-date">{userLanguage === 'da' ? 'Afrejsedato (valgfrit)' : 'Utreisedato (valgfritt)'}</Label>
           <div className="flex gap-2">
             <Input
               id="departure-date"
@@ -1048,7 +1054,7 @@ export default function TravelProgramBuilder({ language = 'no' }: TravelProgramB
             </Popover>
           </div>
           {departureDate && (
-            <p className="text-xs text-green-600">✓ Dato satt: {departureDate}</p>
+            <p className="text-xs text-green-600">✓ {userLanguage === 'da' ? 'Dato sat' : 'Dato satt'}: {departureDate}</p>
           )}
         </div>
 
@@ -1069,7 +1075,7 @@ export default function TravelProgramBuilder({ language = 'no' }: TravelProgramB
             }}
           >
             <SelectTrigger className="bg-gray-50">
-              <SelectValue placeholder="Velg hotell" />
+              <SelectValue placeholder={userLanguage === 'da' ? 'Vælg hotel' : 'Velg hotell'} />
             </SelectTrigger>
             <SelectContent position="popper" className="bg-gray-50 z-50 max-h-[300px] overflow-y-auto">
               {getFilteredTemplatesByCategoryName(FIRST_NIGHT_CATEGORY, "arusha_first_night")
@@ -1122,7 +1128,7 @@ export default function TravelProgramBuilder({ language = 'no' }: TravelProgramB
             }}
           >
             <SelectTrigger className="bg-gray-50">
-              <SelectValue placeholder="Velg hotell" />
+              <SelectValue placeholder={userLanguage === 'da' ? 'Vælg hotel' : 'Velg hotell'} />
             </SelectTrigger>
             <SelectContent position="popper" className="bg-gray-50 z-50 max-h-[300px] overflow-y-auto">
               {getFilteredTemplatesByCategoryName(LAST_NIGHT_CATEGORY, "last_safari_night")
@@ -1382,7 +1388,7 @@ export default function TravelProgramBuilder({ language = 'no' }: TravelProgramB
           </Button>
           <Button variant="outline" onClick={handleReset} className="gap-2 border-2 border-primary" disabled={isGenerating}>
             <RotateCcw className="h-4 w-4" />
-            Nullstill
+            {userLanguage === 'da' ? 'Nulstil' : 'Nullstill'}
           </Button>
         </div>
     </div>

@@ -9,6 +9,7 @@ export interface FlightSearchParams {
   returnOriginCode?: string;
   returnDestinationCode?: string;
   adults: number;
+  children?: number;
   currencyCode?: string;
   max?: number;
   language?: "no" | "da"; // For å velge riktig Farewise-region
@@ -40,6 +41,8 @@ export interface FlightOffer {
     total: string;
     currency: string;
     grandTotal: string;
+    adultPrice?: string;
+    childPrice?: string;
   };
   fareType?: "PUBLIC" | "NEGOTIATED";
   travelClass?: "ECONOMY" | "BUSINESS" | "FIRST";

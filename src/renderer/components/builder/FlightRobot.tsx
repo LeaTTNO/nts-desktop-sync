@@ -105,6 +105,7 @@ interface ProcessedFlight {
     segments: string;
   };
   price: number;
+  childPrice?: number; // Ekte barnepris per person fra Farewise (travelerPricings) hvis tilgjengelig
   currency: string;
   fareType?: "NEGOTIATED" | "PUBLIC";
   travelClass?: "ECONOMY" | "BUSINESS" | "FIRST";
@@ -298,7 +299,7 @@ const translations = {
     noExtendedResults: "Ingen udvidede alternativer",
     seats: "sæder",
     layover: "mellemland.",
-    dateInterval: "Datointervall",
+    dateInterval: "Datointerval",
     dateIntervalInfo: "Søger på alle datoer i perioden med valgt antal nætter. Bruger samme kriterier som 'Bedste og billigste' (maks 20-22t, ingen natfly). Viser det bedste og billigste alternativ i hele perioden, og andre datoer med lignende pris (±600 kr).",
     earliestDeparture: "Tidligste afrejse",
     latestDeparture: "Seneste hjemrejse",
@@ -721,6 +722,7 @@ function processFlightOffers(
       outbound,
       inbound,
       price: parseFloat(offer.price.grandTotal) / passengerCount,
+      childPrice: offer.price.childPrice ? parseFloat(offer.price.childPrice) : undefined,
       currency: offer.price.currency,
       fareType: offer.fareType,
       travelClass: offer.travelClass || 'ECONOMY',
@@ -1880,6 +1882,7 @@ function saveToPowerPointSingle(flight: ProcessedFlight, title: string) {
       returnOriginCode: isOpenJaw ? retFrom : undefined,
       returnDestinationCode: isOpenJaw ? retTo : undefined,
       adults: pax,
+      children: parseInt(children) || 0, // Send faktisk antall barn til Farewise (var tidligere alltid 0)
       currencyCode: currency,
       max: 50,
       language, // Send språk til Farewise API
