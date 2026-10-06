@@ -63,6 +63,7 @@ interface FlightResultCardProps {
   title?: string;
   childrenCount?: number;
   hasNightFlight?: boolean;
+  sameAs?: string;
 }
 
 export default function FlightResultCard({
@@ -77,6 +78,7 @@ export default function FlightResultCard({
   title = "",
   childrenCount = 0,
   hasNightFlight = false,
+  sameAs,
 }: FlightResultCardProps) {
   const [copied, setCopied] = useState(false);
   const [showOutboundDetails, setShowOutboundDetails] = useState(false);
@@ -458,6 +460,11 @@ export default function FlightResultCard({
       </div>
 
       <CardContent className="p-3">
+        {sameAs && (
+          <p className="mb-2 text-xs text-muted-foreground">
+            Samme rute som {sameAs}
+          </p>
+        )}
         <div className="flex flex-col lg:flex-row gap-3">
           {/* Flight legs */}
           <div className="flex-1">

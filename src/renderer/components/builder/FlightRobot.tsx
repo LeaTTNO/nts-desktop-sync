@@ -790,6 +790,43 @@ function isBetterBB(challenger: ProcessedFlight, current: ProcessedFlight, langu
   return challenger.price < current.price;
 }
 
+function getFlightItinerarySignature(flight: ProcessedFlight): string {
+  const itineraries = flight.rawOffer?.itineraries;
+  if (itineraries?.length) {
+    return JSON.stringify(itineraries.map(itinerary =>
+      itinerary.segments.map(segment => [
+        segment.carrierCode,
+        segment.number,
+        segment.departure.iataCode,
+        segment.departure.at,
+        segment.arrival.iataCode,
+        segment.arrival.at,
+      ])
+    ));
+  }
+
+  return JSON.stringify([flight.outbound, flight.inbound].map(leg => leg && ({
+    departure: leg.departure,
+    arrival: leg.arrival,
+    departureTime: leg.departureTime,
+    arrivalTime: leg.arrivalTime,
+    stops: leg.stops,
+    airlines: leg.airlines,
+    segments: leg.segments,
+  })));
+}
+
+function areSameFlight(left: ProcessedFlight, right: ProcessedFlight): boolean {
+  return getFlightItinerarySignature(left) === getFlightItinerarySignature(right);
+}
+
+function getSameFlightLabel(
+  flight: ProcessedFlight,
+  candidates: Array<{ label: string; flight: ProcessedFlight | null }>
+): string | undefined {
+  return candidates.find(candidate => candidate.flight && areSameFlight(flight, candidate.flight))?.label;
+}
+
 /**
  * Filter and categorize flights according to user's exact specifications:
  * ALWAYS returns 3 main categories:
@@ -945,7 +982,7 @@ function categorizeFlights(
     // - Samme stopp men kortere reisetid
     const baseBBStops = bestAndCheapest.outbound.stops + (bestAndCheapest.inbound?.stops ?? 0);
     bestQuality = durationSortedFlights.find(f => {
-      if (f.id === bestAndCheapest!.id) return false;
+      if (areSameFlight(f, bestAndCheapest!)) return false;
       if (f.totalDurationMinutes > MAX_BEST_QUALITY_HOURS * 60) return false;
       if (f.hasNightFlight) return false;
       if (f.travelClass === 'BUSINESS' || f.travelClass === 'FIRST') return false;
@@ -1006,13 +1043,14 @@ function categorizeFlights(
   // CATEGORY 3: BILLIGSTE (≤23t, ingen nattfly)
   // Finn billigste fly som IKKE er samme fly som B&B (uavhengig av pris)
   // Hvis B&B allerede er det billigste alternativet, vises neste billigste med et notat
-  const cheapestExtended = sortedFlights.find(f =>
+  const cheapestAlternative = sortedFlights.find(f =>
     f.totalDurationMinutes <= MAX_EXTENDED_DURATION_HOURS * 60 &&
     !f.hasNightFlight &&
-    f.id !== bestAndCheapest?.id
+    (!bestAndCheapest || !areSameFlight(f, bestAndCheapest))
   ) ?? null;
+  const cheapestExtended = cheapestAlternative ?? bestAndCheapest;
   // Flagg: B&B er allerede det billigste – Billigste viser neste alternativ
-  const bestAndCheapestIsAlsoCheapest = bestAndCheapest !== null && cheapestExtended !== null && cheapestExtended.price >= basePrice;
+  const bestAndCheapestIsAlsoCheapest = bestAndCheapest !== null && cheapestAlternative !== null && cheapestAlternative.price >= basePrice;
 
   return {
     bestAndCheapest,
@@ -3766,6 +3804,10 @@ function saveToPowerPointSingle(flight: ProcessedFlight, title: string) {
                 title={t.cheapest}
                 childrenCount={parseInt(children)}
                 hasNightFlight={cheapestExtendedResult.hasNightFlight}
+                sameAs={getSameFlightLabel(cheapestExtendedResult, [
+                  { label: t.bestAndCheapest, flight: mainResults.bestAndCheapest },
+                  { label: t.beste, flight: bestQualityResult },
+                ])}
                 onBookFarewise={handleFarewiseBooking}
               />
             </div>
@@ -3841,6 +3883,11 @@ function saveToPowerPointSingle(flight: ProcessedFlight, title: string) {
             title={t.cheaperFlexible}
             childrenCount={parseInt(children)}
             hasNightFlight={flexibleResult.hasNightFlight}
+            sameAs={getSameFlightLabel(flexibleResult, [
+              { label: t.bestAndCheapest, flight: mainResults.bestAndCheapest },
+              { label: t.beste, flight: bestQualityResult },
+              { label: t.cheapest, flight: cheapestExtendedResult },
+            ])}
             onBookFarewise={handleFarewiseBooking}
           />
         </div>
@@ -3901,6 +3948,12 @@ function saveToPowerPointSingle(flight: ProcessedFlight, title: string) {
             title={`${t.cheaperExtended} ${Math.abs(addNightsResult.nightsDiff || 0)} ${t.extraNights}`}
             childrenCount={parseInt(children)}
             hasNightFlight={addNightsResult.hasNightFlight}
+            sameAs={getSameFlightLabel(addNightsResult, [
+              { label: t.bestAndCheapest, flight: mainResults.bestAndCheapest },
+              { label: t.beste, flight: bestQualityResult },
+              { label: t.cheapest, flight: cheapestExtendedResult },
+              { label: t.cheaperFlexible, flight: flexibleResult },
+            ])}
             onBookFarewise={handleFarewiseBooking}
           />
         </div>
