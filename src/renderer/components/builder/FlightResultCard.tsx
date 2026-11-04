@@ -24,6 +24,7 @@ interface ProcessedFlight {
   outbound: FlightLeg;
   inbound?: FlightLeg;
   price: number;
+  adultPrice?: number;
   childPrice?: number; // Ekte barnepris per person fra Farewise, hvis tilgjengelig
   currency: string;
   fareType?: "NEGOTIATED" | "PUBLIC";
@@ -104,6 +105,7 @@ export default function FlightResultCard({
     const formattedNumber = Math.round(price).toLocaleString(language === "da" ? "da-DK" : "nb-NO");
     return `${formattedNumber} ${currency}`;
   };
+  const adultPrice = flight.adultPrice ?? flight.price;
 
   // Calculate layover durations for an itinerary
   const getLayoverData = (itineraryIndex: number): Array<{
@@ -159,7 +161,7 @@ export default function FlightResultCard({
 
   const copyToClipboard = async () => {
     const airline = flight.outbound.airlineNames?.[0] || flight.outbound.airlines[0] || "Flyreise";
-    const roundedPrice = Math.ceil(flight.price / 50) * 50;
+    const roundedPrice = Math.ceil(adultPrice / 50) * 50;
     
     const formatShortDate = (isoDateTime: string): string => {
       const dateMatch = isoDateTime.match(/^(\d{4})-(\d{2})-(\d{2})/);
@@ -251,7 +253,7 @@ export default function FlightResultCard({
 </p>`;
       
       if (childrenCount > 0) {
-        const childPrice = flight.childPrice ?? Math.ceil((flight.price * 0.75) / 50) * 50;
+        const childPrice = flight.childPrice ?? Math.ceil((adultPrice * 0.75) / 50) * 50;
         priceText += `<p style="font-family: Arial, sans-serif;">
 <strong>Barnepris (${childrenCount} barn):</strong> kr ${childPrice.toLocaleString('nb-NO')} per barn
 </p>`;
@@ -263,7 +265,7 @@ export default function FlightResultCard({
 </p>`;
       
       if (childrenCount > 0) {
-        const childPrice = flight.childPrice ?? Math.ceil((flight.price * 0.75) / 50) * 50;
+        const childPrice = flight.childPrice ?? Math.ceil((adultPrice * 0.75) / 50) * 50;
         priceText += `<p style="font-family: Arial, sans-serif;">
 <strong>Børnepris (${childrenCount} børn):</strong> kr ${childPrice.toLocaleString('da-DK')} per barn
 </p>`;
@@ -487,14 +489,14 @@ export default function FlightResultCard({
               )}
               
               <div className="text-xl font-bold text-primary">
-                {formatPrice(flight.price, flight.currency)}
+                {formatPrice(adultPrice, flight.currency)}
               </div>
               <div className="text-[10px] text-muted-foreground">{t.perPerson}</div>
 
               {childrenCount > 0 && (
                 <div className="mt-0.5">
                   <div className="text-base font-semibold text-primary/80">
-                    {formatPrice(flight.childPrice ?? flight.price * 0.75, flight.currency)}
+                    {formatPrice(flight.childPrice ?? adultPrice * 0.75, flight.currency)}
                   </div>
                   <div className="text-[10px] text-muted-foreground">
                     per barn ({childrenCount}){flight.childPrice == null && " (est.)"}

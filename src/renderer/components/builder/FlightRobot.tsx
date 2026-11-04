@@ -105,6 +105,7 @@ interface ProcessedFlight {
     segments: string;
   };
   price: number;
+  adultPrice?: number;
   childPrice?: number; // Ekte barnepris per person fra Farewise (travelerPricings) hvis tilgjengelig
   currency: string;
   fareType?: "NEGOTIATED" | "PUBLIC";
@@ -722,6 +723,7 @@ function processFlightOffers(
       outbound,
       inbound,
       price: parseFloat(offer.price.grandTotal) / passengerCount,
+      adultPrice: offer.price.adultPrice ? parseFloat(offer.price.adultPrice) : undefined,
       childPrice: offer.price.childPrice ? parseFloat(offer.price.childPrice) : undefined,
       currency: offer.price.currency,
       fareType: offer.fareType,
