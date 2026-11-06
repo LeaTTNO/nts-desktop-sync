@@ -854,8 +854,10 @@ function categorizeFlights(
   bestAndCheapest: ProcessedFlight | null;
   bestQuality: ProcessedFlight | null;
   cheapestExtended: ProcessedFlight | null;
+  bestAndCheapestUsesFallback: boolean;
   bestAndCheapestIsBest: boolean;
-  bestAndCheapestIsAlsoCheapest: boolean;
+  bestQualityUsesFallback: boolean;
+  cheapestOverlapCategory: "bestAndCheapest" | "bestQuality" | null;
   shortOsloLayoverBestAndCheapest: ProcessedFlight | null;
   shortOsloLayoverBestQuality: ProcessedFlight | null;
 } {
@@ -885,7 +887,7 @@ function categorizeFlights(
   
   if (validFlights.length === 0) {
     console.warn('⚠️ Ingen fly under 23 timer – viser ingenting');
-    return { bestAndCheapest: null, bestQuality: null, cheapestExtended: null, bestAndCheapestIsBest: false, bestAndCheapestIsAlsoCheapest: false, shortOsloLayoverBestAndCheapest: null, shortOsloLayoverBestQuality: null };
+    return { bestAndCheapest: null, bestQuality: null, cheapestExtended: null, bestAndCheapestUsesFallback: false, bestAndCheapestIsBest: false, bestQualityUsesFallback: false, cheapestOverlapCategory: null, shortOsloLayoverBestAndCheapest: null, shortOsloLayoverBestQuality: null };
   }
 
   // Felles sorteringsregler for alle 3 kategorier:
@@ -924,14 +926,17 @@ function categorizeFlights(
 
   // CATEGORY 1: BESTE OG BILLIGSTE: maks ett stopp per flyben som standard.
   // To stopp tillates bare hvis brukeren eksplisitt har valgt det.
+  let bestAndCheapestUsesFallback = false;
   const bestAndCheapest = (() => {
     const qualifyingFlights = sortedFlights.filter(f =>
       f.totalDurationMinutes <= MAX_BEST_AND_CHEAPEST_HOURS * 60 &&
       !f.hasNightFlight &&
       (allowTwoStopBB || hasAtMostOneStopPerLeg(f))
     );
-    if (qualifyingFlights.length === 0) return null;
-    return { ...qualifyingFlights[0], isRecommended: true };
+    const fallbackFlight = qualifyingFlights[0] ?? sortedFlights.find(f => !f.hasNightFlight);
+    if (!fallbackFlight) return null;
+    bestAndCheapestUsesFallback = qualifyingFlights.length === 0;
+    return { ...fallbackFlight, isRecommended: true };
   })();
   const basePrice = bestAndCheapest?.price || 0;
   const baseDuration = bestAndCheapest?.totalDurationMinutes || 0;
@@ -963,8 +968,7 @@ function categorizeFlights(
   })();
 
   // CATEGORY 2: BESTE
-  // Første fly i sortedFlights som passerer ≤17t/19.5t + ingen nattfly + ikke Business/First
-  // OG har kortere reisetid enn B&B
+  // Prefer a better-quality itinerary than B&B, but never repeat its itinerary.
   let bestQuality: ProcessedFlight | null = null;
   let bestAndCheapestIsBest = false;
 
@@ -978,16 +982,26 @@ function categorizeFlights(
     return aDur - bDur;
   });
 
+  const isBestQualityEligible = (flight: ProcessedFlight) =>
+    flight.totalDurationMinutes <= MAX_BEST_QUALITY_HOURS * 60 &&
+    !flight.hasNightFlight &&
+    flight.travelClass !== 'BUSINESS' &&
+    flight.travelClass !== 'FIRST';
+
+  const qualityCandidates = durationSortedFlights.filter(f =>
+    isBestQualityEligible(f) && (!bestAndCheapest || !areSameFlight(f, bestAndCheapest))
+  );
+  const qualityFallbackCandidates = durationSortedFlights.filter(f =>
+    !f.hasNightFlight &&
+    f.travelClass !== 'BUSINESS' &&
+    f.travelClass !== 'FIRST' &&
+    (!bestAndCheapest || !areSameFlight(f, bestAndCheapest))
+  );
+  let bestQualityUsesFallback = false;
+
   if (bestAndCheapest) {
-    // BESTE skal vises hvis flyet er genuint bedre enn B&B:
-    // - Færre stopp enn B&B (selv om reisetiden er litt lengre), ELLER
-    // - Samme stopp men kortere reisetid
     const baseBBStops = bestAndCheapest.outbound.stops + (bestAndCheapest.inbound?.stops ?? 0);
-    bestQuality = durationSortedFlights.find(f => {
-      if (areSameFlight(f, bestAndCheapest!)) return false;
-      if (f.totalDurationMinutes > MAX_BEST_QUALITY_HOURS * 60) return false;
-      if (f.hasNightFlight) return false;
-      if (f.travelClass === 'BUSINESS' || f.travelClass === 'FIRST') return false;
+    const genuinelyBetter = qualityCandidates.find(f => {
       const fStops = f.outbound.stops + (f.inbound?.stops ?? 0);
       // Bedre: færre stopp enn B&B → alltid kvalifisert (uavhengig av reisetid)
       if (fStops < baseBBStops) return true;
@@ -997,23 +1011,20 @@ function categorizeFlights(
       if (fStops === baseBBStops && f.totalDurationMinutes === baseDuration &&
           (f.combinedDurationMinutes ?? f.totalDurationMinutes) < (bestAndCheapest!.combinedDurationMinutes ?? baseDuration)) return true;
       return false;
-    }) ?? null;
-    if (!bestQuality) {
-      // Ingen fly er genuint bedre – vis B&B-flyet også som Beste (samme reise), med notat i UI
-      bestAndCheapestIsBest = true;
-      bestQuality = bestAndCheapest;
+    });
+    bestQuality = genuinelyBetter ?? qualityCandidates[0] ?? qualityFallbackCandidates[0] ?? null;
+    bestQualityUsesFallback = qualityCandidates.length === 0 && !!bestQuality;
+    bestAndCheapestIsBest = isBestQualityEligible(bestAndCheapest) && !genuinelyBetter;
+    if (bestAndCheapestIsBest) {
+      console.log(`ℹ️ BESTE: B&B er allerede beste (stopp=${baseBBStops}, ${Math.round(baseDuration/60*10)/10}t) – viser neste unike reise som Beste`);
+    } else if (bestQuality) {
+      console.log(`✅ BESTE valgt: ${bestQuality.price} kr, ${Math.round(bestQuality.totalDurationMinutes/60*10)/10}t, stopp=${bestQuality.outbound.stops + (bestQuality.inbound?.stops ?? 0)} (B&B stopp=${baseBBStops}), class=${bestQuality.travelClass}`);
+    } else {
+      console.log('⚠️ BESTE: Fant ingen separat reiserute innenfor Beste-kriteriene');
     }
-    console.log(bestAndCheapestIsBest
-      ? `ℹ️ BESTE: B&B er allerede beste (stopp=${baseBBStops}, ${Math.round(baseDuration/60*10)/10}t) – viser samme reise som Beste`
-      : `✅ BESTE valgt: ${bestQuality.price} kr, ${Math.round(bestQuality.totalDurationMinutes/60*10)/10}t, stopp=${bestQuality.outbound.stops + (bestQuality.inbound?.stops ?? 0)} (B&B stopp=${baseBBStops}), class=${bestQuality.travelClass}`
-    );
   } else {
-    bestQuality = durationSortedFlights.find(f =>
-      f.totalDurationMinutes <= MAX_BEST_QUALITY_HOURS * 60 &&
-      !f.hasNightFlight &&
-      f.travelClass !== 'BUSINESS' &&
-      f.travelClass !== 'FIRST'
-    ) ?? null;
+    bestQuality = qualityCandidates[0] ?? qualityFallbackCandidates[0] ?? null;
+    bestQualityUsesFallback = qualityCandidates.length === 0 && !!bestQuality;
   }
 
   // Fly som ble luket bort KUN pga. for kort Oslo-mellomlanding, men som ellers ville vunnet Beste
@@ -1042,24 +1053,30 @@ function categorizeFlights(
     return null;
   })();
 
-  // CATEGORY 3: BILLIGSTE (≤23t, ingen nattfly)
-  // Finn billigste fly som IKKE er samme fly som B&B (uavhengig av pris)
-  // Hvis B&B allerede er det billigste alternativet, vises neste billigste med et notat
-  const cheapestAlternative = sortedFlights.find(f =>
+  // CATEGORY 3: BILLIGSTE (≤23t, ingen nattfly), distinct from both other categories.
+  const priceSortedFlights = validFlights.filter(f =>
     f.totalDurationMinutes <= MAX_EXTENDED_DURATION_HOURS * 60 &&
-    !f.hasNightFlight &&
-    (!bestAndCheapest || !areSameFlight(f, bestAndCheapest))
+    !f.hasNightFlight
+  ).sort((a, b) => a.price - b.price);
+  const cheapestWinner = priceSortedFlights[0] ?? null;
+  const cheapestExtended = priceSortedFlights.find(f =>
+    (!bestAndCheapest || !areSameFlight(f, bestAndCheapest)) &&
+    (!bestQuality || !areSameFlight(f, bestQuality))
   ) ?? null;
-  const cheapestExtended = cheapestAlternative ?? bestAndCheapest;
-  // Flagg: B&B er allerede det billigste – Billigste viser neste alternativ
-  const bestAndCheapestIsAlsoCheapest = bestAndCheapest !== null && cheapestAlternative !== null && cheapestAlternative.price >= basePrice;
+  const cheapestOverlapCategory = cheapestWinner && bestAndCheapest && areSameFlight(cheapestWinner, bestAndCheapest)
+    ? "bestAndCheapest"
+    : cheapestWinner && bestQuality && areSameFlight(cheapestWinner, bestQuality)
+      ? "bestQuality"
+      : null;
 
   return {
     bestAndCheapest,
     bestQuality,
     cheapestExtended,
+    bestAndCheapestUsesFallback,
     bestAndCheapestIsBest,
-    bestAndCheapestIsAlsoCheapest,
+    bestQualityUsesFallback,
+    cheapestOverlapCategory,
     shortOsloLayoverBestAndCheapest,
     shortOsloLayoverBestQuality,
   };
@@ -1281,8 +1298,10 @@ export default function FlightRobot() {
 
   // Flagg: Beste og Billigste er allerede den korteste reisen på denne datoen
   const [bestAndCheapestIsBest, setBestAndCheapestIsBest] = useState(false);
-  // Flagg: Beste og Billigste er allerede det billigste – Billigste viser neste alternativ
-  const [bestAndCheapestIsAlsoCheapest, setBestAndCheapestIsAlsoCheapest] = useState(false);
+  const [bestAndCheapestUsesFallback, setBestAndCheapestUsesFallback] = useState(false);
+  const [bestQualityUsesFallback, setBestQualityUsesFallback] = useState(false);
+  // Indicates that a cheaper route is already shown in another main category.
+  const [cheapestOverlapCategory, setCheapestOverlapCategory] = useState<"bestAndCheapest" | "bestQuality" | null>(null);
 
   // Fly som ble luket bort kun pga. for kort Oslo-mellomlanding, men som ellers ville vunnet
   const [shortOsloLayoverBestAndCheapest, setShortOsloLayoverBestAndCheapest] = useState<ProcessedFlight | null>(null);
@@ -1431,7 +1450,9 @@ export default function FlightRobot() {
     });
     setHasPreferredAirlineResults(false);
     setBestAndCheapestIsBest(false);
-    setBestAndCheapestIsAlsoCheapest(false);
+    setBestAndCheapestUsesFallback(false);
+    setBestQualityUsesFallback(false);
+    setCheapestOverlapCategory(null);
     setShortOsloLayoverBestAndCheapest(null);
     setShortOsloLayoverBestQuality(null);
     setShowShortOsloBestAndCheapest(false);
@@ -1557,7 +1578,9 @@ export default function FlightRobot() {
 
     // BESTE-flagg
     setBestAndCheapestIsBest(false);
-    setBestAndCheapestIsAlsoCheapest(false);
+    setBestAndCheapestUsesFallback(false);
+    setBestQualityUsesFallback(false);
+    setCheapestOverlapCategory(null);
     setShortOsloLayoverBestAndCheapest(null);
     setShortOsloLayoverBestQuality(null);
     setShowShortOsloBestAndCheapest(false);
@@ -2004,7 +2027,9 @@ function saveToPowerPointSingle(flight: ProcessedFlight, title: string) {
     setMainResults({ bestAndCheapest: null, cheapest: null });
     setBestQualityResult(null);
     setBestAndCheapestIsBest(false);
-    setBestAndCheapestIsAlsoCheapest(false);
+    setBestAndCheapestUsesFallback(false);
+    setBestQualityUsesFallback(false);
+    setCheapestOverlapCategory(null);
     setShortOsloLayoverBestAndCheapest(null);
     setShortOsloLayoverBestQuality(null);
     setShowShortOsloBestAndCheapest(false);
@@ -2046,7 +2071,9 @@ function saveToPowerPointSingle(flight: ProcessedFlight, title: string) {
       setMainResults({ bestAndCheapest: categories.bestAndCheapest, cheapest: null });
       setBestQualityResult(categories.bestQuality);
       setBestAndCheapestIsBest(categories.bestAndCheapestIsBest);
-      setBestAndCheapestIsAlsoCheapest(categories.bestAndCheapestIsAlsoCheapest);
+      setBestAndCheapestUsesFallback(categories.bestAndCheapestUsesFallback);
+      setBestQualityUsesFallback(categories.bestQualityUsesFallback);
+      setCheapestOverlapCategory(categories.cheapestOverlapCategory);
       setShortOsloLayoverBestAndCheapest(categories.shortOsloLayoverBestAndCheapest);
       setShortOsloLayoverBestQuality(categories.shortOsloLayoverBestQuality);
       setCheapestExtendedResult(categories.cheapestExtended);
@@ -3562,7 +3589,7 @@ function saveToPowerPointSingle(flight: ProcessedFlight, title: string) {
       )}
 
       {/* MAIN RESULTS - ALWAYS SHOW ALL 3 CATEGORIES (≤20-22h/≤23h, NO night flights) */}
-      {hasSearched && (mainResults.bestAndCheapest || bestQualityResult || cheapestExtendedResult) && (
+      {hasSearched && (!useDateInterval || (departureDate && returnDate)) && (
         <div className="space-y-6">
           {/* CATEGORY 1: Best and Cheapest (≤21h, no night) */}
           {mainResults.bestAndCheapest && (!onlyBusinessClass || mainResults.bestAndCheapest.travelClass === 'BUSINESS') && (
@@ -3572,6 +3599,13 @@ function saveToPowerPointSingle(flight: ProcessedFlight, title: string) {
                 <div>
                   <h3 className="font-semibold text-foreground">{t.bestAndCheapest}</h3>
                   <p className="text-xs text-muted-foreground">{bestAndCheapestDesc}</p>
+                  {bestAndCheapestUsesFallback && (
+                    <p className="text-xs text-amber-600 dark:text-amber-400 mt-0.5">
+                      {language === 'da'
+                        ? '⚠ Ingen rejser opfylder alle betingelserne. Det bedste tilgængelige alternativ vises nedenfor.'
+                        : '⚠ Ingen reiser oppfyller alle betingelsene. Det beste tilgjengelige alternativet vises nedenfor.'}
+                    </p>
+                  )}
                 </div>
               </div>
               <div className="relative">
@@ -3590,6 +3624,13 @@ function saveToPowerPointSingle(flight: ProcessedFlight, title: string) {
                 />
               </div>
             </div>
+          )}
+          {(!mainResults.bestAndCheapest || (onlyBusinessClass && mainResults.bestAndCheapest.travelClass !== 'BUSINESS')) && (
+            <Card><CardContent className="pt-4 text-sm text-muted-foreground">
+              <strong>{t.bestAndCheapest}:</strong> {language === 'da'
+                ? 'Ingen rejser fundet inden for betingelserne. Prøv at udvide søgekriterierne for at finde det bedste tilgængelige alternativ.'
+                : 'Ingen reiser funnet innenfor betingelsene. Prøv å utvide søkekriteriene for å finne det beste tilgjengelige alternativet.'}
+            </CardContent></Card>
           )}
 
           {/* Kortere Oslo-mellomlanding: fant en billigere/bedre B&B-rute, men avvist pga. for kort Oslo-mellomlanding */}
@@ -3669,7 +3710,7 @@ function saveToPowerPointSingle(flight: ProcessedFlight, title: string) {
               </CardContent>
             </Card>
           )}
-          {/* CATEGORY 2: Beste – korteste reisetid (samme reise som Beste og Billigste vises med notat hvis ingen kortere finnes) */}
+          {/* CATEGORY 2: Best-quality itinerary, always distinct from Best and Cheapest */}
           {bestQualityResult && (!onlyBusinessClass || bestQualityResult.travelClass === 'BUSINESS') && (
             <div className="space-y-4">
               <div className="flex items-center gap-2">
@@ -3677,11 +3718,18 @@ function saveToPowerPointSingle(flight: ProcessedFlight, title: string) {
                 <div>
                   <h3 className="font-semibold text-foreground">{t.beste}</h3>
                   <p className="text-xs text-muted-foreground">{bestQualityDesc}</p>
+                  {bestQualityUsesFallback && (
+                    <p className="text-xs text-amber-600 dark:text-amber-400 mt-0.5">
+                      {language === 'da'
+                        ? '⚠ Ingen separat rejseplan opfyldte Bedste-kriterierne – viser næste bedste unikke rejse uden natfly.'
+                        : '⚠ Ingen separat reiseplan oppfylte Beste-kriteriene – viser nest beste unike reise uten nattfly.'}
+                    </p>
+                  )}
                   {bestAndCheapestIsBest && (
                     <p className="text-xs text-muted-foreground italic">
                       {language === 'da'
-                        ? `Samme rejse som Bedste og billigste – ingen kortere rejsetid fundet inden for Bedste-kriterierne (≤${maxBestQualityHours}t).`
-                        : `Samme reise som Beste og billigste – ingen kortere reisetid funnet innenfor Beste-kriteriene (≤${maxBestQualityHours}t).`}
+                        ? `Bedste og billigste er også bedst efter kriterierne – viser næstbedste unikke rejseplan (≤${maxBestQualityHours}t).`
+                        : `Beste og billigste er også best etter kriteriene – viser nest beste unike reiseplan (≤${maxBestQualityHours}t).`}
                     </p>
                   )}
                 </div>
@@ -3700,6 +3748,13 @@ function saveToPowerPointSingle(flight: ProcessedFlight, title: string) {
                 onBookFarewise={handleFarewiseBooking}
               />
             </div>
+          )}
+          {(!bestQualityResult || (onlyBusinessClass && bestQualityResult.travelClass !== 'BUSINESS')) && (
+            <Card><CardContent className="pt-4 text-sm text-muted-foreground">
+              <strong>{t.beste}:</strong> {language === 'da'
+                ? 'Ingen separat rejseplan fundet, der opfylder kriterierne.'
+                : 'Ingen separat reiseplan funnet som oppfyller kriteriene.'}
+            </CardContent></Card>
           )}
 
           {/* Kortere Oslo-mellomlanding: fant en bedre Beste-rute, men avvist pga. for kort Oslo-mellomlanding */}
@@ -3778,7 +3833,7 @@ function saveToPowerPointSingle(flight: ProcessedFlight, title: string) {
             </Card>
           )}
 
-          {/* CATEGORY 3: Cheapest (≤23h, NO night flights) */}
+          {/* CATEGORY 3: Cheapest itinerary, distinct from both other categories */}
           {cheapestExtendedResult && (!onlyBusinessClass || cheapestExtendedResult.travelClass === 'BUSINESS') && (
             <div className="space-y-4">
               <div className="flex items-center gap-2">
@@ -3786,11 +3841,11 @@ function saveToPowerPointSingle(flight: ProcessedFlight, title: string) {
                 <div>
                   <h3 className="font-semibold text-foreground">{t.cheapest}</h3>
                   <p className="text-xs text-muted-foreground">{cheapestExtendedDesc}</p>
-                  {bestAndCheapestIsAlsoCheapest && (
+                  {cheapestOverlapCategory && (
                     <p className="text-xs text-amber-600 dark:text-amber-400 mt-0.5">
                       {language === 'da'
-                        ? '⚠ Bedste og billigste er allerede det billigste alternativ – viser næstbilligste her'
-                        : '⚠ Beste og billigste er allerede det billigste alternativet – viser nest billigste her'}
+                        ? `⚠ ${cheapestOverlapCategory === 'bestAndCheapest' ? 'Bedste og billigste' : 'Bedste'} er også billigst – viser næstbilligste unikke rejseplan.`
+                        : `⚠ ${cheapestOverlapCategory === 'bestAndCheapest' ? 'Beste og billigste' : 'Beste'} er også billigst – viser nest billigste unike reiseplan.`}
                     </p>
                   )}
                 </div>
@@ -3813,6 +3868,13 @@ function saveToPowerPointSingle(flight: ProcessedFlight, title: string) {
                 onBookFarewise={handleFarewiseBooking}
               />
             </div>
+          )}
+          {(!cheapestExtendedResult || (onlyBusinessClass && cheapestExtendedResult.travelClass !== 'BUSINESS')) && (
+            <Card><CardContent className="pt-4 text-sm text-muted-foreground">
+              <strong>{t.cheapest}:</strong> {language === 'da'
+                ? 'Ingen unik rejseplan fundet inden for søgeresultaterne.'
+                : 'Ingen unik reiseplan funnet blant søkeresultatene.'}
+            </CardContent></Card>
           )}
 
           {/* PREFERRED AIRLINE: Cheapest Extended */}
