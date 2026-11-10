@@ -3625,7 +3625,7 @@ function saveToPowerPointSingle(flight: ProcessedFlight, title: string) {
               </div>
             </div>
           )}
-          {(!mainResults.bestAndCheapest || (onlyBusinessClass && mainResults.bestAndCheapest.travelClass !== 'BUSINESS')) && (
+          {!isSearching && (!mainResults.bestAndCheapest || (onlyBusinessClass && mainResults.bestAndCheapest.travelClass !== 'BUSINESS')) && (
             <Card><CardContent className="pt-4 text-sm text-muted-foreground">
               <strong>{t.bestAndCheapest}:</strong> {language === 'da'
                 ? 'Ingen rejser fundet inden for betingelserne. Prøv at udvide søgekriterierne for at finde det bedste tilgængelige alternativ.'
@@ -3749,7 +3749,7 @@ function saveToPowerPointSingle(flight: ProcessedFlight, title: string) {
               />
             </div>
           )}
-          {(!bestQualityResult || (onlyBusinessClass && bestQualityResult.travelClass !== 'BUSINESS')) && (
+          {!isSearching && (!bestQualityResult || (onlyBusinessClass && bestQualityResult.travelClass !== 'BUSINESS')) && (
             <Card><CardContent className="pt-4 text-sm text-muted-foreground">
               <strong>{t.beste}:</strong> {language === 'da'
                 ? 'Ingen separat rejseplan fundet, der opfylder kriterierne.'
@@ -3869,7 +3869,7 @@ function saveToPowerPointSingle(flight: ProcessedFlight, title: string) {
               />
             </div>
           )}
-          {(!cheapestExtendedResult || (onlyBusinessClass && cheapestExtendedResult.travelClass !== 'BUSINESS')) && (
+          {!isSearching && (!cheapestExtendedResult || (onlyBusinessClass && cheapestExtendedResult.travelClass !== 'BUSINESS')) && (
             <Card><CardContent className="pt-4 text-sm text-muted-foreground">
               <strong>{t.cheapest}:</strong> {language === 'da'
                 ? 'Ingen unik rejseplan fundet inden for søgeresultaterne.'
