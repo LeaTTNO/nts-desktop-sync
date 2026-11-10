@@ -27,6 +27,26 @@ $presentation = $ppApp.Presentations.Open(
     $true    # WithWindow
 )
 
+function Set-InsertedSlideLayouts {
+    param (
+        $SourcePresentation,
+        $TargetPresentation,
+        [string]$SourcePath,
+        [int]$TargetStartIndex
+    )
+
+    $sourceDesign = $TargetPresentation.Designs.Load($SourcePath)
+
+    for ($i = 1; $i -le $SourcePresentation.Slides.Count; $i++) {
+        $sourceSlide = $SourcePresentation.Slides.Item($i)
+        $targetSlide = $TargetPresentation.Slides.Item($TargetStartIndex + $i - 1)
+        $sourceLayout = $sourceDesign.SlideMaster.CustomLayouts.Item($sourceSlide.CustomLayout.Index)
+
+        $targetSlide.Design = $sourceDesign
+        $targetSlide.CustomLayout = $sourceLayout
+    }
+}
+
 # --------------------------------------------------
 # === HENT MODULER - HELLIG METODE (VBA-ekvivalent) ===
 # --------------------------------------------------
@@ -54,13 +74,16 @@ foreach ($modulePath in $ModulePaths) {
     $isFlight = ($modulePath -match 'flyinformasjon' -or $modulePath -match 'flyinformation' -or $modulePath -match 'flight')
     if ($isFlight) { continue }
 
-    # Tell slides i modulen
+    # Keep the source presentation open while restoring each inserted slide's layout.
     $tmpPres = $ppApp.Presentations.Open($modulePath, $true, $false, $false)
-    $moduleSlideCount = $tmpPres.Slides.Count
-    $tmpPres.Close()
+    try {
+        $moduleSlideCount = $tmpPres.Slides.Count
+        $presentation.Slides.InsertFromFile($modulePath, $currentInsertPos - 1, 1, $moduleSlideCount)
+        Set-InsertedSlideLayouts $tmpPres $presentation $modulePath $currentInsertPos
+    } finally {
+        $tmpPres.Close()
+    }
 
-    # InsertFromFile bevarer kildens design, layout og innhold fullstendig
-    $presentation.Slides.InsertFromFile($modulePath, $currentInsertPos - 1, 1, $moduleSlideCount)
     $currentInsertPos += $moduleSlideCount
 }
 
@@ -75,13 +98,16 @@ if ($flightModulePath -and (Test-Path $flightModulePath)) {
     $insertPos = [Math]::Max(1, $totalSlides)
     Write-Host "Setter inn flyinformasjon paa posisjon: $insertPos (av $totalSlides slides totalt)"
     
-    # Tell slides i flyinformasjon-modulen
+    # Keep the source presentation open while restoring each inserted slide's layout.
     $tmpFlight = $ppApp.Presentations.Open($flightModulePath, $true, $false, $false)
-    $flightSlideCount = $tmpFlight.Slides.Count
-    $tmpFlight.Close()
+    try {
+        $flightSlideCount = $tmpFlight.Slides.Count
+        $presentation.Slides.InsertFromFile($flightModulePath, $insertPos - 1, 1, $flightSlideCount)
+        Set-InsertedSlideLayouts $tmpFlight $presentation $flightModulePath $insertPos
+    } finally {
+        $tmpFlight.Close()
+    }
 
-    # InsertFromFile bevarer kildens design, layout og innhold fullstendig
-    $presentation.Slides.InsertFromFile($flightModulePath, $insertPos - 1, 1, $flightSlideCount)
     Write-Host "Flyinformasjon lagt til paa posisjon $insertPos - siste slide er naa posisjon $($presentation.Slides.Count)"
 }
 
