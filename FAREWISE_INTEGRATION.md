@@ -1,5 +1,10 @@
 # Farewise API Integrasjon
 
+## Pris og codeshare i flyroboten
+
+- Resultatene viser markedsførende og opererende selskap separat ved codeshare. Hvis operatøren ikke oppgis av Farewise, merkes den som ukjent; selskapet utledes ikke fra ruten.
+- Voksen- og barnepriser vises per person, med totalpris separat. Når en pris ikke kan fastslås sikkert, vises den som estimert med beregningsgrunnlaget: fordelt totalpris eller passasjertypebeløp, eller 75 % av vist personpris for manglende barnepris. Forklaringen følger med ved kopiering og i flydata lagret for PowerPoint.
+
 ## Status: ⚠️ Venter på Farewise Support
 
 **API-integrasjonen er teknisk komplett, men Farewise returnerer 0 resultater.**

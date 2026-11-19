@@ -22,6 +22,8 @@ Write-Host ""
 
 $requiredFiles = @(
     "dist/main/electron-main.js",
+    "dist/main/farewise-pricing.js",
+    "dist/main/farewise-carriers.js",
     "dist/main/preload.js",
     "dist/main/ppt-dg-dto.js",
     "dist/main/ppt-build.ps1",

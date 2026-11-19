@@ -25,6 +25,7 @@ export interface FlightSegment {
     at: string;
   };
   carrierCode: string;
+  operatingCarrierCode?: string;
   number: string;
   duration: string;
   numberOfStops: number;
@@ -41,8 +42,12 @@ export interface FlightOffer {
     total: string;
     currency: string;
     grandTotal: string;
+    adults?: number;
+    children?: number;
     adultPrice?: string;
     childPrice?: string;
+    adultPriceEstimated?: boolean;
+    childPriceEstimated?: boolean;
   };
   fareType?: "PUBLIC" | "NEGOTIATED";
   travelClass?: "ECONOMY" | "BUSINESS" | "FIRST";
@@ -83,6 +88,8 @@ export const airlineNames: Record<string, string> = {
   LH: "Lufthansa",
   AF: "Air France",
   BA: "British Airways",
+  IB: "Iberia",
+  DY: "Norwegian",
   SK: "SAS",
   KQ: "Kenya Airways",
   SN: "Brussels Airlines",
@@ -106,4 +113,3 @@ export const airportNames: Record<string, string> = {
   LHR: "London",
   CDG: "Paris",
 };
-

@@ -8,6 +8,8 @@ fs.mkdirSync(dest, { recursive: true });
 
 const filesToCopy = [
   "electron-main.js",
+  "farewise-pricing.js",
+  "farewise-carriers.js",
   "preload.js",
   "ppt-dg-dto.js",
   "ppt-build.ps1",

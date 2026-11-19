@@ -69,6 +69,7 @@ import {
   FlightOffer,
   airlineNames,
 } from "@/lib/flightRobotClient";
+import { describeItineraryAirlines, describeSegmentAirline, priceEstimateExplanations } from "@/lib/flightDisplay";
 import { useFlightInfo } from "@/contexts/FlightInfoContext";
 import {
   extractDataSource,
@@ -105,8 +106,14 @@ interface ProcessedFlight {
     segments: string;
   };
   price: number;
+  personPrice: number;
+  totalPrice: number;
+  adultsCount: number;
+  childrenCount: number;
   adultPrice?: number;
   childPrice?: number; // Ekte barnepris per person fra Farewise (travelerPricings) hvis tilgjengelig
+  adultPriceEstimated?: boolean;
+  childPriceEstimated?: boolean;
   currency: string;
   fareType?: "NEGOTIATED" | "PUBLIC";
   travelClass?: "ECONOMY" | "BUSINESS" | "FIRST";
@@ -130,6 +137,28 @@ interface MainResults {
 interface ExtendedResults {
   best: ProcessedFlight | null;     // Best allowing night flights / longer time
   cheapest: ProcessedFlight | null; // Cheapest allowing night flights / longer time
+}
+
+function flightAirlines(flight: ProcessedFlight, language: string): string {
+  return describeItineraryAirlines(
+    flight.rawOffer?.itineraries.flatMap(itinerary => itinerary.segments) ?? [],
+    language === "da" ? "da" : "no"
+  );
+}
+
+function AlternativePrice({ flight, language }: { flight: ProcessedFlight; language: string }) {
+  const explanations = priceEstimateExplanations(flight, language === "da" ? "da" : "no");
+  return (
+    <span className="text-right">
+      <span className="text-sm font-semibold">
+        {Math.round(flight.personPrice).toLocaleString(language === "da" ? "da-DK" : "nb-NO")} {flight.currency}
+        {(flight.adultPrice == null || flight.adultPriceEstimated) && (language === "da" ? " (estimeret)" : " (estimert)")}
+      </span>
+      {explanations.length > 0 && (
+        <span className="block max-w-[280px] text-xs text-amber-800">{explanations.join(" ")}</span>
+      )}
+    </span>
+  );
 }
 
 // =============================================================================
@@ -723,8 +752,16 @@ function processFlightOffers(
       outbound,
       inbound,
       price: parseFloat(offer.price.grandTotal) / passengerCount,
-      adultPrice: offer.price.adultPrice ? parseFloat(offer.price.adultPrice) : undefined,
-      childPrice: offer.price.childPrice ? parseFloat(offer.price.childPrice) : undefined,
+      personPrice: offer.price.adultPrice != null
+        ? parseFloat(offer.price.adultPrice)
+        : parseFloat(offer.price.grandTotal) / (passengerCount + (offer.price.children ?? 0)),
+      totalPrice: parseFloat(offer.price.grandTotal),
+      adultsCount: offer.price.adults ?? passengerCount,
+      childrenCount: offer.price.children ?? 0,
+      adultPrice: offer.price.adultPrice != null ? parseFloat(offer.price.adultPrice) : undefined,
+      childPrice: offer.price.childPrice != null ? parseFloat(offer.price.childPrice) : undefined,
+      adultPriceEstimated: offer.price.adultPriceEstimated,
+      childPriceEstimated: offer.price.childPriceEstimated,
       currency: offer.price.currency,
       fareType: offer.fareType,
       travelClass: offer.travelClass || 'ECONOMY',
@@ -1468,7 +1505,7 @@ export default function FlightRobot() {
     return {
       id: flight.id,
       title,
-      price: flight.price,
+      price: flight.personPrice,
       currency: flight.currency,
       outbound: {
         departure: flight.outbound.departure,
@@ -1770,7 +1807,7 @@ function saveToPowerPointSingle(flight: ProcessedFlight, title: string) {
             from: seg.departure.iataCode,
             to: seg.arrival.iataCode,
             time: `${formatTime(seg.departure.at)}–${formatTime(seg.arrival.at)}`,
-            airline: seg.carrierCode || seg.operating?.carrierCode || 'N/A'
+            airline: describeSegmentAirline(seg, language === "da" ? "da" : "no")
           });
           outboundSegmentCount++;
         });
@@ -1784,7 +1821,7 @@ function saveToPowerPointSingle(flight: ProcessedFlight, title: string) {
             from: seg.departure.iataCode,
             to: seg.arrival.iataCode,
             time: `${formatTime(seg.departure.at)}–${formatTime(seg.arrival.at)}`,
-            airline: seg.carrierCode || seg.operating?.carrierCode || 'N/A'
+            airline: describeSegmentAirline(seg, language === "da" ? "da" : "no")
           });
         });
       }
@@ -1796,7 +1833,7 @@ function saveToPowerPointSingle(flight: ProcessedFlight, title: string) {
       };
       flightData.flights.push({
         title,
-        price: `${flight.price} ${flight.currency}`,
+        price: [`${flight.personPrice} ${flight.currency}`, ...priceEstimateExplanations(flight, language === "da" ? "da" : "no")].join(" — "),
         segments,
         outboundSegmentCount,
       });
@@ -1889,7 +1926,7 @@ function saveToPowerPointSingle(flight: ProcessedFlight, title: string) {
       const addFlightInfo = (flight: ProcessedFlight, title: string) => {
         flightData.flights.push({
           title,
-          price: `${flight.price} ${flight.currency}`,
+          price: [`${flight.personPrice} ${flight.currency}`, ...priceEstimateExplanations(flight, language === "da" ? "da" : "no")].join(" — "),
           outbound: {
             route: `${flight.outbound.departure} → ${flight.outbound.arrival}`,
             departure: `${formatTime(flight.outbound.departureTime)} (${formatDate(flight.outbound.departureTime)})`,
@@ -2495,7 +2532,7 @@ function saveToPowerPointSingle(flight: ProcessedFlight, title: string) {
               const flightWithDate = { ...bestForDate, searchDate: searchDepDate };
               allIntervalFlights.push(flightWithDate);
 
-              const airline = bestForDate.outbound.airlineNames?.[0] || bestForDate.outbound.airlines[0] || 'N/A';
+              const airline = flightAirlines(bestForDate, language);
               allValidResults.push({
                 departureDate: searchDepDate,
                 returnDate: searchRetDate,
@@ -2513,7 +2550,7 @@ function saveToPowerPointSingle(flight: ProcessedFlight, title: string) {
             // BESTE (best quality) per date
             if (intervalIncludeBeste && intervalCats.bestQuality) {
               const bq = { ...intervalCats.bestQuality, searchDate: searchDepDate };
-              const bqAirline = bq.outbound.airlineNames?.[0] || bq.outbound.airlines[0] || 'N/A';
+              const bqAirline = flightAirlines(bq, language);
               allBesteResults.push({ departureDate: searchDepDate, returnDate: searchRetDate, price: bq.price, currency: bq.currency, airline: bqAirline, flight: bq });
               if (!bestBesteInterval || bq.totalDurationMinutes < bestBesteInterval.totalDurationMinutes) {
                 bestBesteInterval = bq;
@@ -2523,7 +2560,7 @@ function saveToPowerPointSingle(flight: ProcessedFlight, title: string) {
             // BILLIGSTE (cheapest extended) per date
             if (intervalIncludeBilligste && intervalCats.cheapestExtended) {
               const ce = { ...intervalCats.cheapestExtended, searchDate: searchDepDate };
-              const ceAirline = ce.outbound.airlineNames?.[0] || ce.outbound.airlines[0] || 'N/A';
+              const ceAirline = flightAirlines(ce, language);
               allBilligsteResults.push({ departureDate: searchDepDate, returnDate: searchRetDate, price: ce.price, currency: ce.currency, airline: ceAirline, flight: ce });
               if (!bestBilligsteInterval || ce.price < bestBilligsteInterval.price) {
                 bestBilligsteInterval = ce;
@@ -2544,7 +2581,7 @@ function saveToPowerPointSingle(flight: ProcessedFlight, title: string) {
                 const addCats = categorizeFlights(addProcessed, t, departure, language, allowTwoStopBB, useCustomMaxBBHours ? customMaxBBHours : null);
                 if (addCats.bestAndCheapest) {
                   const f = { ...addCats.bestAndCheapest, searchDate: searchDepDate, nightsDiff: n };
-                  const fAirline = f.outbound.airlineNames?.[0] || f.outbound.airlines[0] || 'N/A';
+                  const fAirline = flightAirlines(f, language);
                   allAddNightsResults.push({ departureDate: searchDepDate, returnDate: addRetDate, price: f.price, currency: f.currency, airline: fAirline, flight: f });
                   if (!bestAddNightsInterval || isBetterBB(f, bestAddNightsInterval, language)) {
                     bestAddNightsInterval = f;
@@ -2568,7 +2605,7 @@ function saveToPowerPointSingle(flight: ProcessedFlight, title: string) {
                 const remCats = categorizeFlights(remProcessed, t, departure, language, allowTwoStopBB, useCustomMaxBBHours ? customMaxBBHours : null);
                 if (remCats.bestAndCheapest) {
                   const f = { ...remCats.bestAndCheapest, searchDate: searchDepDate, nightsDiff: -n };
-                  const fAirline = f.outbound.airlineNames?.[0] || f.outbound.airlines[0] || 'N/A';
+                  const fAirline = flightAirlines(f, language);
                   allRemoveNightsResults.push({ departureDate: searchDepDate, returnDate: remRetDate, price: f.price, currency: f.currency, airline: fAirline, flight: f });
                   if (!bestRemoveNightsInterval || isBetterBB(f, bestRemoveNightsInterval, language)) {
                     bestRemoveNightsInterval = f;
@@ -3643,8 +3680,8 @@ function saveToPowerPointSingle(flight: ProcessedFlight, title: string) {
                 <AlertTriangle className="h-4 w-4 shrink-0" />
                 <span className="flex-1">
                   {language === 'da'
-                    ? `${t.bestAndCheapest}: Der findes en rute med ${shortOsloLayoverBestAndCheapest.outbound.airlineNames?.[0] || shortOsloLayoverBestAndCheapest.outbound.airlines[0]}, men mellemlandingen i Oslo er for kort. Vil du se den?`
-                    : `${t.bestAndCheapest}: Det finnes en rute med ${shortOsloLayoverBestAndCheapest.outbound.airlineNames?.[0] || shortOsloLayoverBestAndCheapest.outbound.airlines[0]}, men mellomlandingen i Oslo er for kort. Vil du se den?`}
+                    ? `${t.bestAndCheapest}: Der findes en rute med ${flightAirlines(shortOsloLayoverBestAndCheapest, language)}, men mellemlandingen i Oslo er for kort. Vil du se den?`
+                    : `${t.bestAndCheapest}: Det finnes en rute med ${flightAirlines(shortOsloLayoverBestAndCheapest, language)}, men mellomlandingen i Oslo er for kort. Vil du se den?`}
                 </span>
                 <ChevronDown className={`h-4 w-4 shrink-0 transition-transform ${showShortOsloBestAndCheapest ? 'rotate-180' : ''}`} />
               </button>
@@ -3767,8 +3804,8 @@ function saveToPowerPointSingle(flight: ProcessedFlight, title: string) {
                 <AlertTriangle className="h-4 w-4 shrink-0" />
                 <span className="flex-1">
                   {language === 'da'
-                    ? `${t.beste}: Der findes en rute med ${shortOsloLayoverBestQuality.outbound.airlineNames?.[0] || shortOsloLayoverBestQuality.outbound.airlines[0]}, men mellemlandingen i Oslo er for kort. Vil du se den?`
-                    : `${t.beste}: Det finnes en rute med ${shortOsloLayoverBestQuality.outbound.airlineNames?.[0] || shortOsloLayoverBestQuality.outbound.airlines[0]}, men mellomlandingen i Oslo er for kort. Vil du se den?`}
+                    ? `${t.beste}: Der findes en rute med ${flightAirlines(shortOsloLayoverBestQuality, language)}, men mellemlandingen i Oslo er for kort. Vil du se den?`
+                    : `${t.beste}: Det finnes en rute med ${flightAirlines(shortOsloLayoverBestQuality, language)}, men mellomlandingen i Oslo er for kort. Vil du se den?`}
                 </span>
                 <ChevronDown className={`h-4 w-4 shrink-0 transition-transform ${showShortOsloBestQuality ? 'rotate-180' : ''}`} />
               </button>
@@ -4183,9 +4220,7 @@ function saveToPowerPointSingle(flight: ProcessedFlight, title: string) {
                               {alt.airline}
                             </span>
                             <div className="flex items-center gap-2">
-                              <span className="text-sm font-semibold">
-                                {Math.round(alt.price).toLocaleString(language === 'da' ? 'da-DK' : 'nb-NO')} {alt.currency}
-                              </span>
+                              <AlternativePrice flight={alt.flight} language={language} />
                               <ChevronDown className={`h-4 w-4 text-muted-foreground transition-transform ${expandedIntervalIdx === idx ? 'rotate-180' : ''}`} />
                             </div>
                           </div>
@@ -4258,7 +4293,7 @@ function saveToPowerPointSingle(flight: ProcessedFlight, title: string) {
                         <span className="text-sm font-medium">{format(new Date(alt.departureDate), 'dd')} – {format(new Date(alt.returnDate), 'dd MMMM', { locale: language === 'da' ? daFns : nbFns })}</span>
                         <span className="text-sm text-muted-foreground">{alt.airline}</span>
                         <div className="flex items-center gap-2">
-                          <span className="text-sm font-semibold">{Math.round(alt.price).toLocaleString(language === 'da' ? 'da-DK' : 'nb-NO')} {alt.currency}</span>
+                          <AlternativePrice flight={alt.flight} language={language} />
                           <ChevronDown className={`h-4 w-4 text-muted-foreground transition-transform ${expandedIntervalBesteIdx === idx ? 'rotate-180' : ''}`} />
                         </div>
                       </div>
@@ -4317,7 +4352,7 @@ function saveToPowerPointSingle(flight: ProcessedFlight, title: string) {
                         <span className="text-sm font-medium">{format(new Date(alt.departureDate), 'dd')} – {format(new Date(alt.returnDate), 'dd MMMM', { locale: language === 'da' ? daFns : nbFns })}</span>
                         <span className="text-sm text-muted-foreground">{alt.airline}</span>
                         <div className="flex items-center gap-2">
-                          <span className="text-sm font-semibold">{Math.round(alt.price).toLocaleString(language === 'da' ? 'da-DK' : 'nb-NO')} {alt.currency}</span>
+                          <AlternativePrice flight={alt.flight} language={language} />
                           <ChevronDown className={`h-4 w-4 text-muted-foreground transition-transform ${expandedIntervalBilligsteIdx === idx ? 'rotate-180' : ''}`} />
                         </div>
                       </div>
@@ -4378,7 +4413,7 @@ function saveToPowerPointSingle(flight: ProcessedFlight, title: string) {
                         <span className="text-sm font-medium">{format(new Date(alt.departureDate), 'dd')} – {format(new Date(alt.returnDate), 'dd MMMM', { locale: language === 'da' ? daFns : nbFns })}</span>
                         <span className="text-sm text-muted-foreground">{alt.airline}</span>
                         <div className="flex items-center gap-2">
-                          <span className="text-sm font-semibold">{Math.round(alt.price).toLocaleString(language === 'da' ? 'da-DK' : 'nb-NO')} {alt.currency}</span>
+                          <AlternativePrice flight={alt.flight} language={language} />
                           <ChevronDown className={`h-4 w-4 text-muted-foreground transition-transform ${expandedIntervalAddNightsIdx === idx ? 'rotate-180' : ''}`} />
                         </div>
                       </div>
@@ -4439,7 +4474,7 @@ function saveToPowerPointSingle(flight: ProcessedFlight, title: string) {
                         <span className="text-sm font-medium">{format(new Date(alt.departureDate), 'dd')} – {format(new Date(alt.returnDate), 'dd MMMM', { locale: language === 'da' ? daFns : nbFns })}</span>
                         <span className="text-sm text-muted-foreground">{alt.airline}</span>
                         <div className="flex items-center gap-2">
-                          <span className="text-sm font-semibold">{Math.round(alt.price).toLocaleString(language === 'da' ? 'da-DK' : 'nb-NO')} {alt.currency}</span>
+                          <AlternativePrice flight={alt.flight} language={language} />
                           <ChevronDown className={`h-4 w-4 text-muted-foreground transition-transform ${expandedIntervalRemoveNightsIdx === idx ? 'rotate-180' : ''}`} />
                         </div>
                       </div>

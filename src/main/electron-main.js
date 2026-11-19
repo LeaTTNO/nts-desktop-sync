@@ -10,6 +10,8 @@ import os from "os";
 import "dotenv/config";
 import { execFile } from "child_process";
 import JSZip from "jszip";
+import { getFarewisePrices } from "./farewise-pricing.js";
+import { getFarewiseCarriers } from "./farewise-carriers.js";
 
 // ⚠️ electron-updater er CommonJS
 import updaterPkg from "electron-updater";
@@ -340,14 +342,14 @@ async function searchFlightsMain(params) {
   // NO API returnerer NOK
   const targetCurrency = region.currency;
   const convertPrices = false; // Farewise returnerer allerede riktig valuta per region
-  return convertFarewiseToAmadeus(result, targetCurrency, convertPrices);
+  return convertFarewiseToAmadeus(result, targetCurrency, convertPrices, Number(adults), childrenList.length);
 }
 
 /* --------------------------------------------------
    � FAREWISE → AMADEUS FORMAT CONVERTER
 -------------------------------------------------- */
 
-function convertFarewiseToAmadeus(farewiseData, currency = "NOK", convertPrices = false) {
+function convertFarewiseToAmadeus(farewiseData, currency = "NOK", convertPrices = false, adults = 1, children = 0) {
   // Valutakurs NOK til DKK (oppdatert kurs)
   const NOK_TO_DKK = 0.65;
   
@@ -410,13 +412,7 @@ function convertFarewiseToAmadeus(farewiseData, currency = "NOK", convertPrices 
           }
         }
 
-        // Try object form first, then plain string (v2 flattened some fields)
-        const carrierCode =
-          seg.marketingCarrierCode ||
-          seg.marketingCarrier?.code ||
-          (typeof seg.carrier === 'string' ? seg.carrier : seg.carrier?.code) ||
-          seg.airlineCode ||
-          "";
+        const { carrierCode, operatingCarrierCode } = getFarewiseCarriers(seg);
 
         const flightNumber =
           seg.flightNumber ||
@@ -434,6 +430,7 @@ function convertFarewiseToAmadeus(farewiseData, currency = "NOK", convertPrices 
             at: seg.arrivalDate || seg.arrival?.at || "",
           },
           carrierCode,
+          operatingCarrierCode,
           number: String(flightNumber),
           duration: duration,
         };
@@ -576,15 +573,8 @@ function convertFarewiseToAmadeus(farewiseData, currency = "NOK", convertPrices 
       console.log(`✈️ Non-economy class detected: ${travelClass} for ${rec.id || index}`);
     }
 
-    // Ekte per-passasjertype pris — Farewise (IKKE standard Amadeus travelerPricings) returnerer dette
-    // direkte på rec: rec.adult.total / rec.child.total (verifisert live mot search-v2 2026-09-25).
-    // Brukes i stedet for et gjettet 75%-anslag for barnepris i UI.
-    let adultPricePerPerson = null;
-    let childPricePerPerson = null;
-    const rawAdultTotal = rec.adult?.total ?? rec.adult?.sell;
-    const rawChildTotal = (rec.childCount > 0) ? (rec.child?.total ?? rec.child?.sell) : null;
-    if (rawAdultTotal != null) adultPricePerPerson = convertPrices ? Math.round(rawAdultTotal * NOK_TO_DKK) : rawAdultTotal;
-    if (rawChildTotal != null) childPricePerPerson = convertPrices ? Math.round(rawChildTotal * NOK_TO_DKK) : rawChildTotal;
+    const { adultPrice: adultPricePerPerson, childPrice: childPricePerPerson, adultPriceEstimated, childPriceEstimated } =
+      getFarewisePrices(rec, priceTotal, adults, children, convertPrices ? NOK_TO_DKK : 1);
     if (index === 0) {
       console.log('👶 rec.adult/child pricing check:', { adultPricePerPerson, childPricePerPerson, rawAdult: rec.adult, rawChild: rec.child });
     }
@@ -595,8 +585,12 @@ function convertFarewiseToAmadeus(farewiseData, currency = "NOK", convertPrices 
         total: String(finalPrice),
         currency: currency, // NOK for norsk, DKK for dansk
         grandTotal: String(finalPrice),
+        adults,
+        children,
         adultPrice: adultPricePerPerson != null ? String(adultPricePerPerson) : undefined,
         childPrice: childPricePerPerson != null ? String(childPricePerPerson) : undefined,
+        adultPriceEstimated,
+        childPriceEstimated,
       },
       fareType: fareType,
       travelClass: travelClass,

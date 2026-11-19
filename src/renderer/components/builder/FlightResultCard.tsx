@@ -4,7 +4,8 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Copy, Check, Users, ChevronDown, FileDown } from "lucide-react";
 import { toast } from "sonner";
-import { FlightOffer, airportNames } from "@/lib/amadeusClient";
+import { type FlightOffer, airportNames } from "@/lib/flightRobotClient";
+import { describeItineraryAirlines, describeSegmentAirline, priceEstimateExplanations } from "@/lib/flightDisplay";
 import FarewiseBookingModal, { type FarewiseBookingData } from "@/components/FarewiseBookingModal";
 
 interface FlightLeg {
@@ -24,8 +25,14 @@ interface ProcessedFlight {
   outbound: FlightLeg;
   inbound?: FlightLeg;
   price: number;
+  personPrice: number;
+  totalPrice: number;
+  adultsCount: number;
+  childrenCount: number;
   adultPrice?: number;
   childPrice?: number; // Ekte barnepris per person fra Farewise, hvis tilgjengelig
+  adultPriceEstimated?: boolean;
+  childPriceEstimated?: boolean;
   currency: string;
   fareType?: "NEGOTIATED" | "PUBLIC";
   isRecommended: boolean;
@@ -77,7 +84,7 @@ export default function FlightResultCard({
   onSave,
   onBookFarewise,
   title = "",
-  childrenCount = 0,
+  childrenCount: childrenCountProp = 0,
   hasNightFlight = false,
   sameAs,
 }: FlightResultCardProps) {
@@ -105,7 +112,17 @@ export default function FlightResultCard({
     const formattedNumber = Math.round(price).toLocaleString(language === "da" ? "da-DK" : "nb-NO");
     return `${formattedNumber} ${currency}`;
   };
-  const adultPrice = flight.adultPrice ?? flight.price;
+  const adultPrice = flight.personPrice;
+  const childrenCount = flight.childrenCount ?? childrenCountProp;
+  const displayLanguage = language === "da" ? "da" : "no";
+  const isAveragePrice = flight.adultPrice == null;
+  const personPriceLabel = isAveragePrice
+    ? (language === "da" ? "estimeret gennemsnit per person" : "estimert gjennomsnitt per person")
+    : `${t.perPerson}${flight.adultPriceEstimated ? (language === "da" ? " (estimeret)" : " (estimert)") : ""}`;
+  const childPriceEstimated = flight.childPrice == null || flight.childPriceEstimated;
+  const estimateExplanations = priceEstimateExplanations(flight, displayLanguage);
+  const allSegments = flight.rawOffer?.itineraries.flatMap(itinerary => itinerary.segments) ?? [];
+  const airlineSummary = describeItineraryAirlines(allSegments, displayLanguage);
 
   // Calculate layover durations for an itinerary
   const getLayoverData = (itineraryIndex: number): Array<{
@@ -160,8 +177,9 @@ export default function FlightResultCard({
   const availableSeats = flight.rawOffer?.numberOfBookableSeats;
 
   const copyToClipboard = async () => {
-    const airline = flight.outbound.airlineNames?.[0] || flight.outbound.airlines[0] || "Flyreise";
     const roundedPrice = Math.ceil(adultPrice / 50) * 50;
+    const escapeHtml = (text: string) => text.replace(/[&<>"']/g, char =>
+      ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[char] || char));
     
     const formatShortDate = (isoDateTime: string): string => {
       const dateMatch = isoDateTime.match(/^(\d{4})-(\d{2})-(\d{2})/);
@@ -211,7 +229,7 @@ export default function FlightResultCard({
         
         htmlTable += `
     <tr>
-      <td style="padding: 8px; border: 1px solid #ddd;">${airline}</td>
+      <td style="padding: 8px; border: 1px solid #ddd;">${escapeHtml(describeSegmentAirline(seg, displayLanguage))}</td>
       <td style="padding: 8px; border: 1px solid #ddd;">${date}</td>
       <td style="padding: 8px; border: 1px solid #ddd;">${fromCity} → ${toCity}</td>
       <td style="padding: 8px; border: 1px solid #ddd;">${depTime} – ${arrTime}${nextDay}</td>
@@ -233,7 +251,7 @@ export default function FlightResultCard({
         
         htmlTable += `
     <tr>
-      <td style="padding: 8px; border: 1px solid #ddd;">${airline}</td>
+      <td style="padding: 8px; border: 1px solid #ddd;">${escapeHtml(describeSegmentAirline(seg, displayLanguage))}</td>
       <td style="padding: 8px; border: 1px solid #ddd;">${date}</td>
       <td style="padding: 8px; border: 1px solid #ddd;">${fromCity} → ${toCity}</td>
       <td style="padding: 8px; border: 1px solid #ddd;">${depTime} – ${arrTime}${nextDay}</td>
@@ -248,31 +266,39 @@ export default function FlightResultCard({
     let priceText = '';
     if (language === "no") {
       priceText = `<p style="margin-top: 12px; font-family: Arial, sans-serif;">
-<strong>Pris:</strong> kr ${roundedPrice.toLocaleString('nb-NO')} per person<br/>
+<strong>Pris:</strong> kr ${roundedPrice.toLocaleString('nb-NO')} ${personPriceLabel}<br/>
 <em>(Innenriksfly + kr 800 utstedelsesgebyr)</em>
 </p>`;
       
       if (childrenCount > 0) {
         const childPrice = flight.childPrice ?? Math.ceil((adultPrice * 0.75) / 50) * 50;
         priceText += `<p style="font-family: Arial, sans-serif;">
-<strong>Barnepris (${childrenCount} barn):</strong> kr ${childPrice.toLocaleString('nb-NO')} per barn
+<strong>Barnepris (${childrenCount} barn):</strong> kr ${childPrice.toLocaleString('nb-NO')} per barn${childPriceEstimated ? " (estimert)" : ""}
 </p>`;
       }
     } else {
       priceText = `<p style="margin-top: 12px; font-family: Arial, sans-serif;">
-<strong>Pris:</strong> kr ${roundedPrice.toLocaleString('da-DK')} per person<br/>
+<strong>Pris:</strong> kr ${roundedPrice.toLocaleString('da-DK')} ${personPriceLabel}<br/>
 <em>(Indenriksfly + kr 500 udstedelsesgebyr)</em>
 </p>`;
       
       if (childrenCount > 0) {
         const childPrice = flight.childPrice ?? Math.ceil((adultPrice * 0.75) / 50) * 50;
         priceText += `<p style="font-family: Arial, sans-serif;">
-<strong>Børnepris (${childrenCount} børn):</strong> kr ${childPrice.toLocaleString('da-DK')} per barn
+<strong>Børnepris (${childrenCount} børn):</strong> kr ${childPrice.toLocaleString('da-DK')} per barn${childPriceEstimated ? " (estimeret)" : ""}
 </p>`;
       }
     }
     
-    const fullHtml = htmlTable + priceText;
+    const copyExplanations = [...estimateExplanations];
+    if (estimateExplanations.length > 0) {
+      copyExplanations.push(language === "da"
+        ? "Den kopierede personpris og eventuel beregnet børnepris er rundet op til nærmeste 50."
+        : "Den kopierte personprisen og eventuell beregnet barnepris er rundet opp til nærmeste 50.");
+    }
+    const estimateText = copyExplanations.map(text =>
+      `<p style="font-family: Arial, sans-serif;"><strong>${escapeHtml(text)}</strong></p>`).join("");
+    const fullHtml = htmlTable + priceText + estimateText;
     
     try {
       await navigator.clipboard.write([
@@ -390,6 +416,10 @@ export default function FlightResultCard({
                     {/* Route - narrower */}
                     <div className="text-foreground pl-5 w-[180px] flex-shrink-0">
                       {fromCity} — {toCity}
+                      <div className="text-[10px] text-muted-foreground">
+                        {describeSegmentAirline(seg, displayLanguage)}
+                        {seg.carrierCode && seg.number ? ` · ${seg.carrierCode}${seg.number}` : ""}
+                      </div>
                     </div>
                     
                     {/* Spacer to push times right - aligns under connection column */}
@@ -420,7 +450,7 @@ export default function FlightResultCard({
         )}
 
         {/* Show/hide details button */}
-        {hasLayovers && (
+        {segments.length > 0 && (
           <button 
             onClick={toggleExpanded} 
             className="flex items-center gap-1 text-[10px] text-muted-foreground hover:text-foreground py-1.5 pl-5 cursor-pointer transition-colors"
@@ -441,7 +471,7 @@ export default function FlightResultCard({
       {/* Airline header */}
       <div className="flex items-center justify-between px-3 py-1.5 bg-muted/30 border-b border-border/50">
         <div className="flex items-center gap-2">
-          <span className="font-semibold text-sm text-foreground">{flight.outbound.airlineNames?.[0] || flight.outbound.airlines[0]}</span>
+          <span className="font-semibold text-sm text-foreground">{airlineSummary}</span>
           {flight.isRecommended && (
             <Badge variant="default" className="bg-primary/10 text-primary border-primary/20 text-[10px] px-1.5 py-0">
               ⭐ {flight.recommendReason || t.recommended}
@@ -491,7 +521,7 @@ export default function FlightResultCard({
               <div className="text-xl font-bold text-primary">
                 {formatPrice(adultPrice, flight.currency)}
               </div>
-              <div className="text-[10px] text-muted-foreground">{t.perPerson}</div>
+              <div className="text-[10px] text-muted-foreground">{personPriceLabel}</div>
 
               {childrenCount > 0 && (
                 <div className="mt-0.5">
@@ -499,8 +529,21 @@ export default function FlightResultCard({
                     {formatPrice(flight.childPrice ?? adultPrice * 0.75, flight.currency)}
                   </div>
                   <div className="text-[10px] text-muted-foreground">
-                    per barn ({childrenCount}){flight.childPrice == null && " (est.)"}
+                    per barn ({childrenCount}){childPriceEstimated && (language === "da" ? " (estimeret)" : " (estimert)")}
                   </div>
+                </div>
+              )}
+
+              {estimateExplanations.length > 0 && (
+                <div className="mt-2 max-w-[240px] text-left text-xs text-amber-800 bg-amber-50 border border-amber-300 rounded p-2" role="note">
+                  <strong>{language === "da" ? "Estimeret pris" : "Estimert pris"}</strong>
+                  {estimateExplanations.map(text => <p key={text} className="mt-1">{text}</p>)}
+                </div>
+              )}
+
+              {flight.adultsCount + childrenCount > 1 && (
+                <div className="mt-1 text-[10px] text-muted-foreground">
+                  {language === "da" ? "Samlet pris" : "Totalpris"}: {formatPrice(flight.totalPrice, flight.currency)}
                 </div>
               )}
 
