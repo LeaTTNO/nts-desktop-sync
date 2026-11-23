@@ -2,57 +2,75 @@ import { strict as assert } from "node:assert";
 import { test } from "node:test";
 import { getFarewisePrices } from "./farewise-pricing.js";
 
-test("converts passenger-type totals into individual fares", () => {
+test("keeps Farewise passenger prices per person even when totals do not reconcile", () => {
+  const rec = { adult: { total: 13501 }, child: { total: 11657 } };
+  assert.deepEqual(getFarewisePrices(rec, 13581, 1, 1), {
+    adultPrice: 13501,
+    childPrice: 11657,
+  });
+  assert.deepEqual(getFarewisePrices(rec, 50316, 2, 2), {
+    adultPrice: 13501,
+    childPrice: 11657,
+  });
+});
+
+test("uses a positive sell price instead of a zero placeholder", () => {
+  const rec = { adult: { total: 13501 }, child: { total: 0, sell: 11657 } };
+  assert.equal(getFarewisePrices(rec, 13581, 1, 1).childPrice, 11657);
+});
+
+test("keeps per-person fares instead of dividing based on an ambiguous group total", () => {
   const rec = { adult: { total: 33260 }, child: { total: 12000 } };
   assert.deepEqual(getFarewisePrices(rec, 45260, 2, 1), {
-    adultPrice: 16630,
+    adultPrice: 33260,
     childPrice: 12000,
-    adultPriceEstimated: false,
-    childPriceEstimated: false,
+  });
+  assert.deepEqual(getFarewisePrices(rec, 45000, 2, 1), {
+    adultPrice: 33260,
+    childPrice: 12000,
   });
 });
 
-test("converts totals for multiple children independently", () => {
-  const rec = { adult: { total: 30000 }, child: { total: 18000 } };
-  assert.deepEqual(getFarewisePrices(rec, 48000, 2, 3), {
-    adultPrice: 15000,
-    childPrice: 6000,
-    adultPriceEstimated: false,
-    childPriceEstimated: false,
+test("reads the captured KLM fares without including the distribution charge", () => {
+  const rec = {
+    adult: { sell: 13501, total: 13501 },
+    child: { sell: 11657, total: 11657 },
+    options: [{
+      adult: { sell: 13501, total: 0 },
+      child: { sell: 11657, total: 0 },
+      total: 25318,
+    }],
+  };
+  assert.deepEqual(getFarewisePrices(rec, rec.options[0].total, 1, 1), {
+    adultPrice: 13501,
+    childPrice: 11657,
   });
+  assert.deepEqual(getFarewisePrices({ options: rec.options }, 25318, 1, 1), {
+    adultPrice: 13501,
+    childPrice: 11657,
+  });
+  assert.equal(getFarewisePrices({ child: { total: 0 }, options: rec.options }, 25318, 1, 1).childPrice, 11657);
 });
 
-test("retains fares already provided per person", () => {
-  const rec = { adult: { total: 15000 }, child: { total: 6000 } };
-  assert.deepEqual(getFarewisePrices(rec, 48000, 2, 3), {
-    adultPrice: 15000,
-    childPrice: 6000,
-    adultPriceEstimated: false,
-    childPriceEstimated: false,
-  });
+test("does not display an inconsistent zero child price as a fare", () => {
+  const rec = { adult: { total: 13501 }, child: { total: 0 } };
+  assert.equal(getFarewisePrices(rec, 13581, 1, 1).childPrice, undefined);
+  assert.equal(getFarewisePrices(rec, 13501, 1, 1).childPrice, 0);
 });
 
-test("handles single adults, missing child fares, and sell prices", () => {
-  assert.deepEqual(getFarewisePrices({ adult: { sell: "13525" } }, 13525, 1, 0), {
+test("handles missing, invalid, and sell prices without inventing a fare", () => {
+  assert.deepEqual(getFarewisePrices({ adult: { sell: "13525" }, child: { total: " " } }, 13525, 1, 1), {
     adultPrice: 13525,
     childPrice: undefined,
-    adultPriceEstimated: false,
-    childPriceEstimated: false,
   });
-  assert.deepEqual(getFarewisePrices({ adult: { total: 33260 } }, 45000, 2, 1), {
-    adultPrice: 16630,
-    childPrice: undefined,
-    adultPriceEstimated: true,
-    childPriceEstimated: false,
-  });
+  assert.equal(getFarewisePrices({ adult: { total: true }, child: { total: {} } }, 100, 1, 1).childPrice, undefined);
+  assert.equal(getFarewisePrices({ child: { total: 500 } }, 100, 1, 0).childPrice, undefined);
 });
 
-test("converts currency and keeps zero fares", () => {
-  const rec = { adult: { total: 20000 }, child: { total: 0 } };
-  assert.deepEqual(getFarewisePrices(rec, 20000, 2, 1, 0.65), {
-    adultPrice: 6500,
-    childPrice: 0,
-    adultPriceEstimated: false,
-    childPriceEstimated: false,
+test("converts Farewise prices when a conversion is requested", () => {
+  const rec = { adult: { total: 20000 }, child: { total: 10000 } };
+  assert.deepEqual(getFarewisePrices(rec, 30000, 1, 1, 0.65), {
+    adultPrice: 13000,
+    childPrice: 6500,
   });
 });

@@ -573,8 +573,13 @@ function convertFarewiseToAmadeus(farewiseData, currency = "NOK", convertPrices 
       console.log(`✈️ Non-economy class detected: ${travelClass} for ${rec.id || index}`);
     }
 
-    const { adultPrice: adultPricePerPerson, childPrice: childPricePerPerson, adultPriceEstimated, childPriceEstimated } =
+    const { adultPrice: adultPricePerPerson, childPrice: childPricePerPerson } =
       getFarewisePrices(rec, priceTotal, adults, children, convertPrices ? NOK_TO_DKK : 1);
+    if (children > 0 && childPricePerPerson == null) {
+      console.warn(`Farewise child fare unavailable or inconsistent for ${rec.id || index}`, {
+        child: rec.child, adult: rec.adult, total: priceTotal,
+      });
+    }
     if (index === 0) {
       console.log('👶 rec.adult/child pricing check:', { adultPricePerPerson, childPricePerPerson, rawAdult: rec.adult, rawChild: rec.child });
     }
@@ -589,8 +594,6 @@ function convertFarewiseToAmadeus(farewiseData, currency = "NOK", convertPrices 
         children,
         adultPrice: adultPricePerPerson != null ? String(adultPricePerPerson) : undefined,
         childPrice: childPricePerPerson != null ? String(childPricePerPerson) : undefined,
-        adultPriceEstimated,
-        childPriceEstimated,
       },
       fareType: fareType,
       travelClass: travelClass,

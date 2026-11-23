@@ -1,4 +1,4 @@
-import { airlineNames, type FlightSegment } from "./flightRobotClient";
+import { airlineNames, type FarewiseCarrier, type FlightSegment } from "./flightRobotClient";
 
 type Language = "no" | "da";
 
@@ -13,25 +13,37 @@ type PriceInfo = {
 
 const name = (code: string) => airlineNames[code] || code;
 
-export function describeSegmentAirline(segment: Pick<FlightSegment, "carrierCode" | "operatingCarrierCode">, language: Language): string {
+type SegmentCarrier = Pick<FlightSegment, "carrierCode" | "operatingCarrierCode">;
+
+function carrierName(carrier: FarewiseCarrier): string {
+  return carrier.name?.trim() || (carrier.code ? name(carrier.code.trim().toUpperCase()) : "");
+}
+
+export function describeSegmentAirline(
+  segment: SegmentCarrier,
+  language: Language,
+  carriers: FarewiseCarrier[] = [],
+  segments: SegmentCarrier[] = [segment],
+): string {
   const marketed = segment.carrierCode;
   const operating = segment.operatingCarrierCode;
-  if (operating && marketed && operating !== marketed) {
-    return language === "da"
-      ? `${name(operating)} (flyves af; sælges af ${name(marketed)})`
-      : `${name(operating)} (opereres av; selges av ${name(marketed)})`;
+  const validCarriers = carriers.filter(carrier => carrierName(carrier));
+  const matches = (code?: string) => validCarriers.find(carrier =>
+    code && carrier.code?.trim().toUpperCase() === code.trim().toUpperCase());
+  const match = matches(operating) || matches(marketed);
+  if (match) return carrierName(match);
+  if (validCarriers.length === 1 && !segments.some(item => matches(item.carrierCode) || matches(item.operatingCarrierCode))) {
+    return carrierName(validCarriers[0]);
   }
   if (operating) return name(operating);
-  if (marketed) {
-    return language === "da"
-      ? `${name(marketed)} (sælger; operatør ukendt)`
-      : `${name(marketed)} (selger; operatør ukjent)`;
-  }
+  if (marketed) return name(marketed);
   return language === "da" ? "Flyselskab ukendt" : "Flyselskap ukjent";
 }
 
-export function describeItineraryAirlines(segments: FlightSegment[], language: Language): string {
-  const descriptions = segments.map(segment => describeSegmentAirline(segment, language));
+export function describeItineraryAirlines(segments: FlightSegment[], language: Language, carriers: FarewiseCarrier[] = []): string {
+  const farewiseNames = carriers.map(carrierName).filter(Boolean);
+  if (farewiseNames.length) return [...new Set(farewiseNames)].join(" / ");
+  const descriptions = segments.map(segment => describeSegmentAirline(segment, language, carriers, segments));
   return [...new Set(descriptions)].join(" / ") ||
     (language === "da" ? "Flyselskab ukendt" : "Flyselskap ukjent");
 }
@@ -41,8 +53,8 @@ export function priceEstimateExplanations(price: PriceInfo, language: Language):
   const explanations: string[] = [];
   if (price.adultPrice == null) {
     explanations.push(da
-      ? `Personprisen kan ikke fastslås. Estimeret som totalprisen fordelt ligeligt på ${price.adultsCount + price.childrenCount} rejsende; den faktiske voksenpris kan afvige.`
-      : `Personprisen kan ikke fastslås. Estimert som totalprisen fordelt likt på ${price.adultsCount + price.childrenCount} reisende; faktisk voksenpris kan avvike.`);
+      ? "Voksenprisen er ikke tilgængelig fra Farewise."
+      : "Voksenprisen er ikke tilgjengelig fra Farewise.");
   } else if (price.adultPriceEstimated) {
     explanations.push(da
       ? `Voksenprisen kan ikke fastslås sikkert. Estimeret ved at fordele Farewise-beløbet for voksne ligeligt på ${price.adultsCount} voksne.`
@@ -51,8 +63,8 @@ export function priceEstimateExplanations(price: PriceInfo, language: Language):
   if (price.childrenCount > 0) {
     if (price.childPrice == null) {
       explanations.push(da
-        ? "Børneprisen kan ikke fastslås. Estimeret som 75 % af den viste personpris."
-        : "Barneprisen kan ikke fastslås. Estimert som 75 % av den viste personprisen.");
+        ? "Børneprisen er ikke tilgængelig fra Farewise. Kontrollér prisen i Farewise."
+        : "Barneprisen er ikke tilgjengelig fra Farewise. Kontroller prisen i Farewise.");
     } else if (price.childPriceEstimated) {
       explanations.push(da
         ? `Børneprisen kan ikke fastslås sikkert. Estimeret ved at fordele Farewise-beløbet for børn ligeligt på ${price.childrenCount} børn.`

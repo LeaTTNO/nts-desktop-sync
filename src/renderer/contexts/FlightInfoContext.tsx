@@ -4,7 +4,7 @@ import React, { createContext, useContext, useState, useEffect, ReactNode } from
 export interface FlightInfo {
   id: string;
   title: string;
-  price: number;
+  price?: number;
   currency: string;
   outbound: {
     departure: string;

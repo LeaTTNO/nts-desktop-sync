@@ -106,12 +106,12 @@ interface ProcessedFlight {
     segments: string;
   };
   price: number;
-  personPrice: number;
+  personPrice?: number;
   totalPrice: number;
   adultsCount: number;
   childrenCount: number;
   adultPrice?: number;
-  childPrice?: number; // Ekte barnepris per person fra Farewise (travelerPricings) hvis tilgjengelig
+  childPrice?: number; // Ekte barnepris per person fra Farewise hvis tilgjengelig
   adultPriceEstimated?: boolean;
   childPriceEstimated?: boolean;
   currency: string;
@@ -142,7 +142,8 @@ interface ExtendedResults {
 function flightAirlines(flight: ProcessedFlight, language: string): string {
   return describeItineraryAirlines(
     flight.rawOffer?.itineraries.flatMap(itinerary => itinerary.segments) ?? [],
-    language === "da" ? "da" : "no"
+    language === "da" ? "da" : "no",
+    flight.rawOffer?.rawRecommendation?.carriers ?? []
   );
 }
 
@@ -151,8 +152,9 @@ function AlternativePrice({ flight, language }: { flight: ProcessedFlight; langu
   return (
     <span className="text-right">
       <span className="text-sm font-semibold">
-        {Math.round(flight.personPrice).toLocaleString(language === "da" ? "da-DK" : "nb-NO")} {flight.currency}
-        {(flight.adultPrice == null || flight.adultPriceEstimated) && (language === "da" ? " (estimeret)" : " (estimert)")}
+        {flight.personPrice == null
+          ? (language === "da" ? "Pris ikke tilgængelig" : "Pris ikke tilgjengelig")
+          : `${flight.personPrice.toLocaleString(language === "da" ? "da-DK" : "nb-NO", { maximumFractionDigits: 2 })} ${flight.currency}`}
       </span>
       {explanations.length > 0 && (
         <span className="block max-w-[280px] text-xs text-amber-800">{explanations.join(" ")}</span>
@@ -752,9 +754,7 @@ function processFlightOffers(
       outbound,
       inbound,
       price: parseFloat(offer.price.grandTotal) / passengerCount,
-      personPrice: offer.price.adultPrice != null
-        ? parseFloat(offer.price.adultPrice)
-        : parseFloat(offer.price.grandTotal) / (passengerCount + (offer.price.children ?? 0)),
+      personPrice: offer.price.adultPrice != null ? parseFloat(offer.price.adultPrice) : undefined,
       totalPrice: parseFloat(offer.price.grandTotal),
       adultsCount: offer.price.adults ?? passengerCount,
       childrenCount: offer.price.children ?? 0,
@@ -1798,6 +1798,8 @@ function saveToPowerPointSingle(flight: ProcessedFlight, title: string) {
       // Extract segments from rawOffer
       const segments: any[] = [];
       let outboundSegmentCount = 0;
+      const farewiseCarriers = flight.rawOffer?.rawRecommendation?.carriers ?? [];
+      const allSegments = flight.rawOffer?.itineraries.flatMap(itinerary => itinerary.segments) ?? [];
       
       if (flight.rawOffer?.itineraries?.[0]?.segments) {
         flight.rawOffer.itineraries[0].segments.forEach((seg: any) => {
@@ -1807,7 +1809,7 @@ function saveToPowerPointSingle(flight: ProcessedFlight, title: string) {
             from: seg.departure.iataCode,
             to: seg.arrival.iataCode,
             time: `${formatTime(seg.departure.at)}–${formatTime(seg.arrival.at)}`,
-            airline: describeSegmentAirline(seg, language === "da" ? "da" : "no")
+            airline: describeSegmentAirline(seg, language === "da" ? "da" : "no", farewiseCarriers, allSegments)
           });
           outboundSegmentCount++;
         });
@@ -1821,7 +1823,7 @@ function saveToPowerPointSingle(flight: ProcessedFlight, title: string) {
             from: seg.departure.iataCode,
             to: seg.arrival.iataCode,
             time: `${formatTime(seg.departure.at)}–${formatTime(seg.arrival.at)}`,
-            airline: describeSegmentAirline(seg, language === "da" ? "da" : "no")
+            airline: describeSegmentAirline(seg, language === "da" ? "da" : "no", farewiseCarriers, allSegments)
           });
         });
       }
@@ -1833,7 +1835,7 @@ function saveToPowerPointSingle(flight: ProcessedFlight, title: string) {
       };
       flightData.flights.push({
         title,
-        price: [`${flight.personPrice} ${flight.currency}`, ...priceEstimateExplanations(flight, language === "da" ? "da" : "no")].join(" — "),
+        price: [flight.personPrice == null ? "" : `${flight.personPrice} ${flight.currency}`, ...priceEstimateExplanations(flight, language === "da" ? "da" : "no")].filter(Boolean).join(" — "),
         segments,
         outboundSegmentCount,
       });
@@ -1926,7 +1928,7 @@ function saveToPowerPointSingle(flight: ProcessedFlight, title: string) {
       const addFlightInfo = (flight: ProcessedFlight, title: string) => {
         flightData.flights.push({
           title,
-          price: [`${flight.personPrice} ${flight.currency}`, ...priceEstimateExplanations(flight, language === "da" ? "da" : "no")].join(" — "),
+          price: [flight.personPrice == null ? "" : `${flight.personPrice} ${flight.currency}`, ...priceEstimateExplanations(flight, language === "da" ? "da" : "no")].filter(Boolean).join(" — "),
           outbound: {
             route: `${flight.outbound.departure} → ${flight.outbound.arrival}`,
             departure: `${formatTime(flight.outbound.departureTime)} (${formatDate(flight.outbound.departureTime)})`,

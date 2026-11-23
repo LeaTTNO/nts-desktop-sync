@@ -1,30 +1,34 @@
 function amount(value) {
-  if (value == null || value === "") return undefined;
+  if (value == null || (typeof value === "string" && !value.trim())) return undefined;
+  if (typeof value !== "string" && typeof value !== "number") return undefined;
   const parsed = Number(value);
   return Number.isFinite(parsed) && parsed >= 0 ? parsed : undefined;
 }
 
 export function getFarewisePrices(rec, total, adults, children, rate = 1) {
-  const adultTotal = amount(rec.adult?.total ?? rec.adult?.sell);
-  const childTotal = children > 0 ? amount(rec.child?.total ?? rec.child?.sell) : undefined;
+  const fare = (passenger) => {
+    const totalPrice = amount(passenger?.total);
+    const sellPrice = amount(passenger?.sell);
+    return totalPrice === 0 && sellPrice > 0 ? sellPrice : totalPrice ?? sellPrice;
+  };
+  const option = rec.options?.[0];
+  const getPassengerFare = (type) => {
+    const recommendationFare = fare(rec[type]);
+    const optionFare = fare(option?.[type]);
+    return recommendationFare === 0 && optionFare > 0
+      ? optionFare
+      : recommendationFare ?? optionFare;
+  };
+  const adultPrice = getPassengerFare("adult");
+  let childPrice = children > 0 ? getPassengerFare("child") : undefined;
   const groupTotal = amount(total);
-
-  // Some responses contain unit fares; others contain totals for each passenger type.
-  const unitSum = adultTotal != null && (children === 0 || childTotal != null)
-    ? adultTotal * adults + (childTotal ?? 0) * children
-    : undefined;
-  const typeSum = adultTotal != null && (children === 0 || childTotal != null)
-    ? adultTotal + (childTotal ?? 0)
-    : undefined;
-  const unitPrices = groupTotal != null && unitSum != null && typeSum != null &&
-    Math.abs(groupTotal - unitSum) < Math.abs(groupTotal - typeSum);
-  const reconciled = groupTotal != null && unitSum != null && typeSum != null &&
-    Math.min(Math.abs(groupTotal - unitSum), Math.abs(groupTotal - typeSum)) <= 1;
+  if (childPrice === 0 && adultPrice != null && groupTotal != null &&
+      Math.abs(groupTotal - adultPrice * adults) > 1) {
+    childPrice = undefined;
+  }
 
   return {
-    adultPrice: adultTotal == null ? undefined : adultTotal * rate / (unitPrices ? 1 : adults),
-    childPrice: childTotal == null ? undefined : childTotal * rate / (unitPrices ? 1 : children),
-    adultPriceEstimated: adultTotal != null && adults > 1 && !reconciled,
-    childPriceEstimated: childTotal != null && children > 1 && !reconciled,
+    adultPrice: adultPrice == null ? undefined : adultPrice * rate,
+    childPrice: childPrice == null ? undefined : childPrice * rate,
   };
 }

@@ -36,6 +36,11 @@ export interface FlightItinerary {
   segments: FlightSegment[];
 }
 
+export interface FarewiseCarrier {
+  code?: string;
+  name?: string;
+}
+
 export interface FlightOffer {
   id: string;
   price: {
@@ -54,7 +59,7 @@ export interface FlightOffer {
   itineraries: FlightItinerary[];
   validatingAirlineCodes: string[];
   numberOfBookableSeats: number;
-  rawRecommendation?: any; // Original Farewise recommendation for booking flow
+  rawRecommendation?: { carriers?: FarewiseCarrier[]; [key: string]: any }; // Original Farewise recommendation for booking flow
 }
 
 /**

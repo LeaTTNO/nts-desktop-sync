@@ -2,8 +2,8 @@
 
 ## Pris og codeshare i flyroboten
 
-- Resultatene viser markedsførende og opererende selskap separat ved codeshare. Hvis operatøren ikke oppgis av Farewise, merkes den som ukjent; selskapet utledes ikke fra ruten.
-- Voksen- og barnepriser vises per person, med totalpris separat. Når en pris ikke kan fastslås sikkert, vises den som estimert med beregningsgrunnlaget: fordelt totalpris eller passasjertypebeløp, eller 75 % av vist personpris for manglende barnepris. Forklaringen følger med ved kopiering og i flydata lagret for PowerPoint.
+- Resultatoverskriften bruker navnene i Farewise-svarets `carriers`. Detaljer, kopiering og PowerPoint bruker samme navn der selskapet kan knyttes til flystrekningen; andre selskaper på reisen vises ut fra strekningens opplysninger. Tekst om ukjent selger eller operatør vises ikke.
+- Voksen- og barnepriser brukes per person slik de oppgis av Farewise. Totalprisen kan også inneholde distribusjonsgebyr og skal ikke brukes til å gjette passasjerprisene. Manglende priser erstattes ikke med anslag, men merkes som utilgjengelige. En nullpris for barn som ikke stemmer med totalprisen, merkes som utilgjengelig og må kontrolleres i Farewise.
 
 ## Status: ⚠️ Venter på Farewise Support
 
